@@ -1,0 +1,319 @@
+{
+  "fields": [
+    {
+      "field": "id",
+      "type": "string",
+      "required": true
+    },
+    {
+      "field": "youtube_url",
+      "type": "string",
+      "required": true
+    },
+    {
+      "field": "title",
+      "type": "string"
+    },
+    {
+      "field": "topic",
+      "type": "string"
+    },
+    {
+      "field": "status",
+      "type": "enum",
+      "enums": [
+        "queued",
+        "processing",
+        "completed",
+        "failed",
+        "cancelled"
+      ]
+    },
+    {
+      "field": "progress",
+      "type": "number"
+    },
+    {
+      "field": "stage",
+      "type": "string"
+    },
+    {
+      "field": "subtitle_style",
+      "type": "string"
+    },
+    {
+      "field": "aspect_ratio",
+      "type": "string"
+    },
+    {
+      "field": "color_grade",
+      "type": "string"
+    },
+    {
+      "field": "target_duration",
+      "type": "number"
+    },
+    {
+      "field": "clip_count",
+      "type": "number"
+    },
+    {
+      "field": "viral_score",
+      "type": "number"
+    },
+    {
+      "field": "output_path",
+      "type": "string"
+    },
+    {
+      "field": "thumbnail_path",
+      "type": "string"
+    },
+    {
+      "field": "duration_seconds",
+      "type": "number"
+    },
+    {
+      "field": "file_size_mb",
+      "type": "number"
+    },
+    {
+      "field": "language",
+      "type": "string"
+    },
+    {
+      "field": "created_at",
+      "type": "string"
+    },
+    {
+      "field": "completed_at",
+      "type": "string"
+    },
+    {
+      "field": "posted_platforms",
+      "type": "string"
+    },
+    {
+      "field": "notes",
+      "type": "string"
+    }
+  ],
+  "data": [
+    {
+      "id": "nx-demo-001",
+      "youtube_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "title": "Rick Astley - Never Gonna Give You Up",
+      "topic": "80s music classic",
+      "status": "completed",
+      "progress": 100,
+      "stage": "completed",
+      "subtitle_style": "hormozi",
+      "aspect_ratio": "9:16",
+      "color_grade": "vibrant",
+      "target_duration": 60,
+      "clip_count": 3,
+      "viral_score": 87.5,
+      "output_path": "/output/nx-demo-001/final.mp4",
+      "thumbnail_path": "/output/nx-demo-001/thumbnails/thumbnail_00.jpg",
+      "duration_seconds": 58,
+      "file_size_mb": 8.4,
+      "language": "en",
+      "created_at": "2026-08-10 14:30:00",
+      "completed_at": "2026-08-10 14:35:22",
+      "posted_platforms": "tiktok, youtube_shorts",
+      "notes": "High-energy hook, great engagement potential"
+    },
+    {
+      "id": "nx-demo-002",
+      "youtube_url": "https://www.youtube.com/watch?v=example2",
+      "title": "AI Revolution 2026: What's Coming Next",
+      "topic": "AI technology future",
+      "status": "processing",
+      "progress": 65,
+      "stage": "rendering",
+      "subtitle_style": "mrbeast",
+      "aspect_ratio": "9:16",
+      "color_grade": "cinematic",
+      "target_duration": 45,
+      "clip_count": 5,
+      "viral_score": 0,
+      "output_path": "",
+      "thumbnail_path": "",
+      "duration_seconds": 0,
+      "file_size_mb": 0,
+      "language": "en",
+      "created_at": "2026-08-10 15:12:00",
+      "completed_at": "",
+      "posted_platforms": "",
+      "notes": ""
+    },
+    {
+      "id": "nx-demo-003",
+      "youtube_url": "https://www.youtube.com/watch?v=example3",
+      "title": "Podcast Terpendek di Dunia",
+      "topic": "podcast comedy",
+      "status": "completed",
+      "progress": 100,
+      "stage": "completed",
+      "subtitle_style": "tiktok_viral",
+      "aspect_ratio": "9:16",
+      "color_grade": "vibrant",
+      "target_duration": 30,
+      "clip_count": 3,
+      "viral_score": 92.3,
+      "output_path": "/output/nx-demo-003/final.mp4",
+      "thumbnail_path": "/output/nx-demo-003/thumbnails/thumbnail_00.jpg",
+      "duration_seconds": 32,
+      "file_size_mb": 5.2,
+      "language": "id",
+      "created_at": "2026-08-10 10:30:00",
+      "completed_at": "2026-08-10 10:37:15",
+      "posted_platforms": "tiktok, instagram_reels, youtube_shorts",
+      "notes": "Went viral - 500K views in 24h"
+    },
+    {
+      "id": "nx-demo-004",
+      "youtube_url": "https://www.youtube.com/watch?v=example4",
+      "title": "Startup Founder Story - How I Made $10M",
+      "topic": "startup success story",
+      "status": "completed",
+      "progress": 100,
+      "stage": "completed",
+      "subtitle_style": "cinematic",
+      "aspect_ratio": "9:16",
+      "color_grade": "cinematic",
+      "target_duration": 90,
+      "clip_count": 4,
+      "viral_score": 78.9,
+      "output_path": "/output/nx-demo-004/final.mp4",
+      "thumbnail_path": "/output/nx-demo-004/thumbnails/thumbnail_00.jpg",
+      "duration_seconds": 87,
+      "file_size_mb": 12.6,
+      "language": "en",
+      "created_at": "2026-08-10 09:15:00",
+      "completed_at": "2026-08-10 09:22:44",
+      "posted_platforms": "youtube_shorts, linkedin",
+      "notes": "Great for LinkedIn audience"
+    },
+    {
+      "id": "nx-demo-005",
+      "youtube_url": "https://www.youtube.com/watch?v=example5",
+      "title": "Gaming Highlights - Insane Plays 2026",
+      "topic": "gaming esports",
+      "status": "failed",
+      "progress": 0,
+      "stage": "failed",
+      "subtitle_style": "gaming",
+      "aspect_ratio": "9:16",
+      "color_grade": "vibrant",
+      "target_duration": 45,
+      "clip_count": 5,
+      "viral_score": 0,
+      "output_path": "",
+      "thumbnail_path": "",
+      "duration_seconds": 0,
+      "file_size_mb": 0,
+      "language": "en",
+      "created_at": "2026-08-10 11:20:00",
+      "completed_at": "",
+      "posted_platforms": "",
+      "notes": "Video was age-restricted, download failed"
+    },
+    {
+      "id": "nx-demo-006",
+      "youtube_url": "https://www.youtube.com/watch?v=example6",
+      "title": "Documentary: Ancient Civilizations Uncovered",
+      "topic": "history documentary",
+      "status": "queued",
+      "progress": 0,
+      "stage": "queued",
+      "subtitle_style": "documentary",
+      "aspect_ratio": "16:9",
+      "color_grade": "cinematic",
+      "target_duration": 120,
+      "clip_count": 3,
+      "viral_score": 0,
+      "output_path": "",
+      "thumbnail_path": "",
+      "duration_seconds": 0,
+      "file_size_mb": 0,
+      "language": "en",
+      "created_at": "2026-08-10 15:45:00",
+      "completed_at": "",
+      "posted_platforms": "",
+      "notes": ""
+    },
+    {
+      "id": "nx-demo-007",
+      "youtube_url": "https://www.youtube.com/watch?v=example7",
+      "title": "Tutorial: Learn Python in 60 Seconds",
+      "topic": "python tutorial",
+      "status": "completed",
+      "progress": 100,
+      "stage": "completed",
+      "subtitle_style": "educational",
+      "aspect_ratio": "9:16",
+      "color_grade": "warm",
+      "target_duration": 60,
+      "clip_count": 4,
+      "viral_score": 81.2,
+      "output_path": "/output/nx-demo-007/final.mp4",
+      "thumbnail_path": "/output/nx-demo-007/thumbnails/thumbnail_00.jpg",
+      "duration_seconds": 62,
+      "file_size_mb": 9.1,
+      "language": "en",
+      "created_at": "2026-08-09 20:15:00",
+      "completed_at": "2026-08-09 20:22:33",
+      "posted_platforms": "youtube_shorts",
+      "notes": ""
+    },
+    {
+      "id": "nx-demo-008",
+      "youtube_url": "https://www.youtube.com/watch?v=example8",
+      "title": "Motivational Speech: Never Give Up",
+      "topic": "motivational speech",
+      "status": "completed",
+      "progress": 100,
+      "stage": "completed",
+      "subtitle_style": "motivational",
+      "aspect_ratio": "9:16",
+      "color_grade": "cinematic",
+      "target_duration": 75,
+      "clip_count": 3,
+      "viral_score": 85.6,
+      "output_path": "/output/nx-demo-008/final.mp4",
+      "thumbnail_path": "/output/nx-demo-008/thumbnails/thumbnail_00.jpg",
+      "duration_seconds": 73,
+      "file_size_mb": 10.8,
+      "language": "en",
+      "created_at": "2026-08-09 18:00:00",
+      "completed_at": "2026-08-09 18:08:12",
+      "posted_platforms": "instagram_reels, tiktok",
+      "notes": "Trending on IG"
+    },
+    {
+      "id": "nx-1786369874669",
+      "youtube_url": "https://youtu.be/-17CbvoGrhg?si=2Fi6EEju3vXwLmpr",
+      "title": "?si=2Fi6EEju3vXwLmpr",
+      "topic": "",
+      "status": "queued",
+      "progress": 0,
+      "stage": "queued",
+      "subtitle_style": "hormozi",
+      "aspect_ratio": "9:16",
+      "color_grade": "vibrant",
+      "target_duration": 60,
+      "clip_count": 1,
+      "viral_score": 0,
+      "output_path": "",
+      "thumbnail_path": "",
+      "duration_seconds": 0,
+      "file_size_mb": 0,
+      "language": "id",
+      "created_at": "2026-08-10 13:51:14",
+      "completed_at": "",
+      "posted_platforms": "",
+      "notes": ""
+    }
+  ]
+}

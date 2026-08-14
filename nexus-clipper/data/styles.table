@@ -1,0 +1,34 @@
+{
+  "fields": [
+    {"field": "id", "type": "string", "required": true},
+    {"field": "name", "type": "string"},
+    {"field": "category", "type": "enum", "enums": ["professional", "entertainment", "gaming", "cinematic", "educational", "podcast", "aesthetic", "emotional", "retro"]},
+    {"field": "font", "type": "string"},
+    {"field": "font_size", "type": "number"},
+    {"field": "primary_color", "type": "string"},
+    {"field": "highlight_color", "type": "string"},
+    {"field": "stroke_color", "type": "string"},
+    {"field": "animation", "type": "string"},
+    {"field": "position", "type": "string"},
+    {"field": "usage_count", "type": "number"},
+    {"field": "avg_viral_score", "type": "number"},
+    {"field": "featured", "type": "boolean"},
+    {"field": "description", "type": "string"}
+  ],
+  "data": [
+    {"id": "hormozi", "name": "Hormozi", "category": "professional", "font": "Arial", "font_size": 52, "primary_color": "#FFFFFF", "highlight_color": "#FFD700", "stroke_color": "#000000", "animation": "pop", "position": "center", "usage_count": 245, "avg_viral_score": 82.3, "featured": true, "description": "Alex Hormozi signature style - bold white with gold highlights"},
+    {"id": "mrbeast", "name": "MrBeast", "category": "entertainment", "font": "Impact", "font_size": 56, "primary_color": "#FFFFFF", "highlight_color": "#00FF88", "stroke_color": "#000000", "animation": "pop_fast", "position": "center", "usage_count": 189, "avg_viral_score": 88.1, "featured": true, "description": "High-energy MrBeast style - impact font with green accents"},
+    {"id": "tiktok_viral", "name": "TikTok Viral", "category": "entertainment", "font": "Arial", "font_size": 50, "primary_color": "#FF6600", "highlight_color": "#FFD700", "stroke_color": "#000000", "animation": "pop", "position": "random", "usage_count": 312, "avg_viral_score": 91.7, "featured": true, "description": "Optimized for TikTok algorithm - orange pop, random position"},
+    {"id": "cinematic", "name": "Cinematic", "category": "cinematic", "font": "Georgia", "font_size": 44, "primary_color": "#EEEEFF", "highlight_color": "#8888FF", "stroke_color": "#000011", "animation": "fade_slow", "position": "bottom", "usage_count": 87, "avg_viral_score": 76.5, "featured": false, "description": "Film-grade elegant subtitles"},
+    {"id": "gaming", "name": "Gaming", "category": "gaming", "font": "Impact", "font_size": 58, "primary_color": "#FF4444", "highlight_color": "#FFFF00", "stroke_color": "#000000", "animation": "bounce", "position": "center", "usage_count": 156, "avg_viral_score": 84.2, "featured": true, "description": "High-energy gaming style"},
+    {"id": "neon", "name": "Neon", "category": "aesthetic", "font": "Arial", "font_size": 48, "primary_color": "#FF00FF", "highlight_color": "#00FFFF", "stroke_color": "#4A0072", "animation": "flicker", "position": "center", "usage_count": 42, "avg_viral_score": 79.8, "featured": false, "description": "Cyberpunk neon aesthetic"},
+    {"id": "podcast", "name": "Podcast", "category": "podcast", "font": "Helvetica", "font_size": 38, "primary_color": "#FFFFFF", "highlight_color": "#00D4AA", "stroke_color": "#0A0A2E", "animation": "fade", "position": "bottom", "usage_count": 128, "avg_viral_score": 74.3, "featured": true, "description": "Clean podcast style"},
+    {"id": "documentary", "name": "Documentary", "category": "educational", "font": "Georgia", "font_size": 38, "primary_color": "#DDCCAA", "highlight_color": "#FFEEDD", "stroke_color": "#1A1A0A", "animation": "fade_slow", "position": "bottom", "usage_count": 63, "avg_viral_score": 71.9, "featured": false, "description": "Documentary-style narration"},
+    {"id": "educational", "name": "Educational", "category": "educational", "font": "Verdana", "font_size": 40, "primary_color": "#66BBFF", "highlight_color": "#FFD700", "stroke_color": "#0D47A1", "animation": "fade", "position": "top", "usage_count": 94, "avg_viral_score": 78.4, "featured": true, "description": "Perfect for tutorials & learning content"},
+    {"id": "motivational", "name": "Motivational", "category": "emotional", "font": "Helvetica", "font_size": 46, "primary_color": "#FFFFFF", "highlight_color": "#EEEEEE", "stroke_color": "#000000", "animation": "slow_reveal", "position": "center", "usage_count": 71, "avg_viral_score": 83.7, "featured": true, "description": "Inspiring motivational content"},
+    {"id": "horror", "name": "Horror", "category": "emotional", "font": "Impact", "font_size": 52, "primary_color": "#FF0000", "highlight_color": "#FF4444", "stroke_color": "#330000", "animation": "flicker", "position": "center", "usage_count": 28, "avg_viral_score": 86.1, "featured": false, "description": "Dark, scary horror content"},
+    {"id": "typewriter", "name": "Typewriter", "category": "retro", "font": "Courier New", "font_size": 44, "primary_color": "#88FF88", "highlight_color": "#AAFFAA", "stroke_color": "#003300", "animation": "typewriter", "position": "bottom", "usage_count": 19, "avg_viral_score": 68.2, "featured": false, "description": "Retro typewriter effect"},
+    {"id": "minimalist", "name": "Minimalist", "category": "aesthetic", "font": "Helvetica", "font_size": 34, "primary_color": "#CCCCCC", "highlight_color": "#FFFFFF", "stroke_color": "#000000", "animation": "none", "position": "bottom", "usage_count": 56, "avg_viral_score": 65.4, "featured": false, "description": "Clean, minimal aesthetic"},
+    {"id": "comedy", "name": "Comedy", "category": "entertainment", "font": "Comic Sans MS", "font_size": 48, "primary_color": "#FFCC00", "highlight_color": "#FF6600", "stroke_color": "#000000", "animation": "bounce", "position": "center", "usage_count": 43, "avg_viral_score": 80.5, "featured": false, "description": "Funny bouncy comedy style"}
+  ]
+}
