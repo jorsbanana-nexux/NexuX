@@ -7,21 +7,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 REQUIRED = [
-    "app.py",
-    "server.py",
-    "captions.py",
-    "compositor.py",
-    "editorial.py",
-    "editorial_ranker.py",
-    "audio_intelligence.py",
-    "fonts.py",
-    "scoring.py",
-    "semantic_ranker.py",
-    "timeline.py",
-    "virtual_camera.py",
-    "vision_quality.py",
-    "youtube.py",
-    "face_sampling.py",
+    "app.py", "server.py", "captions.py", "compositor.py", "editorial.py", "editorial_ranker.py",
+    "audio_intelligence.py", "fonts.py", "scoring.py", "semantic_ranker.py", "timeline.py",
+    "virtual_camera.py", "vision_quality.py", "youtube.py", "face_sampling.py", "transcription.py",
+    "job_store.py", "process_supervisor.py", "av_sync.py",
 ]
 AGENT_ROOT = ROOT.parent / "backend" / "agents"
 
@@ -32,7 +21,7 @@ def compile_all() -> list[str]:
         path = ROOT / name
         try:
             ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        except Exception as exc:  # pragma: no cover
+        except Exception as exc:
             failures.append(f"{name}: {exc}")
     return failures
 
