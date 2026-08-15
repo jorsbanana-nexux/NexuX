@@ -13,7 +13,6 @@ import server as engine
 from caption_runtime import render_ass_safe
 from sequential_vision import detect_face_subjects, detect_scene_changes, visual_quality
 from server import CompatJob, GenerateRequest
-from transcription import _model
 from vision_quality import inspect_render, media_stream_summary, tool_state
 
 # Canonical runtime adapters. The compatibility runner remains an internal implementation detail.
@@ -75,7 +74,19 @@ async def styles() -> dict:
 @app.post("/api/generate", response_model=CompatJob)
 async def generate(req: GenerateRequest, bg: BackgroundTasks) -> CompatJob:
     job_id = uuid.uuid4().hex
-    job = {"job_id": job_id, "status": "queued", "progress": 0.0, "stage": "queued", "output_path": None, "error": None, "clips": [], "broll": False, "render_meta": []}
+    job = {
+        "job_id": job_id,
+        "status": "queued",
+        "progress": 0.0,
+        "stage": "queued",
+        "output_path": None,
+        "error": None,
+        "clips": [],
+        "broll": False,
+        "render_meta": [],
+        "analysis_bundle": None,
+        "revision": 0,
+    }
     _write(job)
     engine.CANCEL_FLAGS[job_id] = False
     bg.add_task(engine._run_generation, job_id, req)
@@ -115,12 +126,27 @@ async def cancel(job_id: str) -> dict:
 @app.get("/api/vision/{job_id}")
 async def vision(job_id: str) -> dict:
     job = _read(job_id)
+    bundle = job.get("analysis_bundle")
+    if isinstance(bundle, dict):
+        return {
+            "job_id": job_id,
+            "analysis_bundle": bundle,
+            "media": job.get("meta") or {},
+            "source": "persisted-analysis-bundle",
+        }
     video = Path(job.get("video_path", ""))
     if not video.exists():
         raise HTTPException(404, "Video artifact not found")
     media = media_stream_summary(video)
     duration = float(media.get("duration") or 0.0)
-    return {"job_id": job_id, "media": media, "scenes": detect_scene_changes(video, 0.0, duration or None), "subjects": detect_face_subjects(video, 0.0, duration or None), "quality": visual_quality(video, 0.0, duration or None)}
+    return {
+        "job_id": job_id,
+        "media": media,
+        "scenes": detect_scene_changes(video, 0.0, duration or None),
+        "subjects": detect_face_subjects(video, 0.0, min(duration, 600.0) if duration else None),
+        "quality": visual_quality(video, 0.0, min(duration, 600.0) if duration else None),
+        "source": "on-demand-fallback",
+    }
 
 
 @app.get("/api/download/{job_id}")
