@@ -25,13 +25,13 @@ from app import (
     SubjectObservation,
     build_camera_path,
     path_to_dict,
-    transcribe_local,
     download_youtube,
 )
 from captions import PRESETS, render_ass
 from compositor import build_final_filter, run_ffmpeg, spec_for_aspect_ratio
 from editorial_ranker import select_diverse
 from timeline import build_timeline, ffmpeg_filter_for_timeline
+from transcription import transcribe
 from vision_quality import inspect_render, detect_scene_changes, detect_face_subjects, visual_quality
 
 router = APIRouter(prefix="/api")
@@ -154,7 +154,7 @@ async def _run_generation(job_id: str, req: GenerateRequest) -> None:
         _set(job, stage="transcribing", progress=25, video_path=str(video), meta=media)
         if CANCEL_FLAGS.get(job_id):
             _set(job, status="cancelled", stage="cancelled"); return
-        transcript = await asyncio.to_thread(transcribe_local, video)
+        transcript = await asyncio.to_thread(transcribe, video, req.language)
         _set(job, stage="analyzing", progress=45, transcript=transcript)
         if CANCEL_FLAGS.get(job_id):
             _set(job, status="cancelled", stage="cancelled"); return
