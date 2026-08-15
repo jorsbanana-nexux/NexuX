@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 
 from virtual_camera import CameraPoint
+from vision_quality import inspect_render
 
 
 @dataclass(frozen=True)
@@ -54,12 +55,6 @@ def camera_crop_expressions(
     source_height: int,
     output_aspect: float = 9 / 16,
 ) -> tuple[str, str, str, str]:
-    """Build FFmpeg crop expressions from output-time camera points.
-
-    Returns (crop_w, crop_h, x, y). Crop dimensions are conservative and kept
-    fixed to the narrowest safe path so the subject follows without resizing the
-    crop window frame-to-frame.
-    """
     if not camera_points:
         crop_w = min(source_width, int(source_height * output_aspect))
         crop_h = min(source_height, int(crop_w / max(output_aspect, 1e-6)))
@@ -91,9 +86,7 @@ def build_final_filter(
     source_height: int,
     spec: CompositionSpec = CompositionSpec(),
 ) -> str:
-    crop_w, crop_h, x, y = camera_crop_expressions(
-        camera_points, source_width, source_height, spec.aspect
-    )
+    crop_w, crop_h, x, y = camera_crop_expressions(camera_points, source_width, source_height, spec.aspect)
     ass = str(ass_path).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
     video = (
         f"[vout]crop={crop_w}:{crop_h}:x='{x}':y='{y}',"
@@ -122,3 +115,13 @@ def run_ffmpeg(
         raise RuntimeError(result.stderr[-3500:] or "Final composition render failed")
     if not output.exists() or output.stat().st_size == 0:
         raise RuntimeError("FFmpeg produced no final output")
+
+    # Every compositor output must prove its media contract before a job can use it.
+    quality = inspect_render(
+        output,
+        expected_width=spec.width,
+        expected_height=spec.height,
+        min_duration=0.10,
+    )
+    if quality["verdict"] != "APPROVED":
+        raise RuntimeError(f"Output quality gate failed: {quality}")
