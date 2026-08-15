@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import shutil
 import uuid
 from pathlib import Path
@@ -11,13 +12,28 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app import app, DATA, JOBS, OUTPUTS, build_candidates, ffprobe, render_ass, editorial_metadata, to_dict, sample_faces, SubjectObservation, build_camera_path, path_to_dict, render, transcribe_local, download_youtube, build_timeline, probe_youtube, resolve_candidate
-from compositor import CompositionSpec, build_final_filter, run_ffmpeg, spec_for_aspect_ratio
-from timeline import ffmpeg_filter_for_timeline
+from app import (
+    app,
+    DATA,
+    JOBS,
+    OUTPUTS,
+    build_candidates,
+    ffprobe,
+    editorial_metadata,
+    to_dict,
+    sample_faces,
+    SubjectObservation,
+    build_camera_path,
+    path_to_dict,
+    transcribe_local,
+    download_youtube,
+)
+from captions import PRESETS, render_ass
+from compositor import build_final_filter, run_ffmpeg, spec_for_aspect_ratio
+from timeline import build_timeline, ffmpeg_filter_for_timeline
 
 
 router = APIRouter(prefix="/api")
-
 CANCEL_FLAGS: dict[str, bool] = {}
 
 
@@ -25,12 +41,15 @@ class GenerateRequest(BaseModel):
     youtube_url: str = Field(..., min_length=10, max_length=2000)
     target_duration: int = Field(60, ge=15, le=300)
     aspect_ratio: str = Field("9:16")
-    subtitle_style: str = Field("karaoke")
+    subtitle_style: str = Field("hormozi")
     font: str = Field("Arial", max_length=160)
     font_size: int = Field(48, ge=20, le=96)
     primary_color: str = Field("#FFFFFF", pattern=r"^#[0-9A-Fa-f]{6}$")
     highlight_color: str = Field("#FFD700", pattern=r"^#[0-9A-Fa-f]{6}$")
     stroke_color: str = Field("#000000", pattern=r"^#[0-9A-Fa-f]{6}$")
+    stroke_width: int = Field(3, ge=1, le=12)
+    position: str = Field("center", pattern=r"^(top|center|bottom)$")
+    animation: str = Field("pop", max_length=32)
     auto_zoom: bool = True
     face_tracking: bool = True
     clip_count: int = Field(3, ge=1, le=10)
@@ -46,10 +65,12 @@ class CompatJob(BaseModel):
     stage: str = "queued"
     output_path: str | None = None
     error: str | None = None
-    clips: list[str] = []
+    clips: list[str] = Field(default_factory=list)
 
 
 def _job_path(job_id: str) -> Path:
+    if not job_id or not all(c in "0123456789abcdef" for c in job_id) or len(job_id) != 32:
+        raise HTTPException(422, "Invalid job_id")
     return JOBS / f"{job_id}.json"
 
 
@@ -57,13 +78,11 @@ def _read(job_id: str) -> dict[str, Any]:
     path = _job_path(job_id)
     if not path.exists():
         raise HTTPException(404, "Job not found")
-    return __import__("json").loads(path.read_text(encoding="utf-8"))
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _write(job: dict[str, Any]) -> None:
-    _job_path(job["job_id"]).write_text(
-        __import__("json").dumps(job, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    _job_path(job["job_id"]).write_text(json.dumps(job, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _set(job: dict[str, Any], **updates: Any) -> dict[str, Any]:
@@ -76,28 +95,53 @@ def _relative_output(path: Path) -> str:
     return f"/output/{path.name}"
 
 
-def _preset(value: str) -> str:
-    mapping = {
-        "hormozi": "karaoke",
-        "karaoke": "karaoke",
-        "pop_line": "pop_line",
-        "deep_diver": "deep_diver",
+def _hex_to_ass(value: str, fallback: str) -> str:
+    candidate = value.strip() if isinstance(value, str) else ""
+    if len(candidate) != 7 or not candidate.startswith("#"):
+        candidate = fallback
+    rgb = candidate[1:]
+    r, g, b = rgb[0:2], rgb[2:4], rgb[4:6]
+    return f"&H00{b}{g}{r}".upper()
+
+
+def _style_overrides(req: GenerateRequest) -> dict[str, Any]:
+    return {
+        "font": req.font,
+        "size": req.font_size,
+        "primary": _hex_to_ass(req.primary_color, "#FFFFFF"),
+        "highlight": _hex_to_ass(req.highlight_color, "#FFD700"),
+        "outline": _hex_to_ass(req.stroke_color, "#000000"),
+        "outline_width": req.stroke_width,
+        "position": req.position,
+        "animation": req.animation,
     }
-    return mapping.get(value, "karaoke")
 
 
 def _render_with_spec(video: Path, job: dict[str, Any], clip: dict[str, Any], output: Path, timeline: Any, req: GenerateRequest) -> dict[str, Any]:
+    spec = spec_for_aspect_ratio(req.aspect_ratio)
     ass = output.with_suffix(".ass")
     editorial = editorial_metadata(clip["text"], emoji_enabled=req.emoji_enabled)
-    render_ass(job["transcript"], timeline, ass, preset=_preset(req.subtitle_style), font=req.font, headline=editorial.headline, emoji=editorial.emoji)
-    media = job.get("meta") or ffprobe(video)
-    source_w, source_h = next(
-        (int(s["width"]), int(s["height"]))
-        for s in media.get("streams", [])
-        if s.get("codec_type") == "video" and s.get("width") and s.get("height")
+    style = PRESETS.get(req.subtitle_style, PRESETS["hormozi"])
+    selected_animation = req.animation or style.get("animation", "pop")
+    overrides = {**_style_overrides(req), "animation": selected_animation}
+    render_ass(
+        job["transcript"], timeline, ass,
+        preset=req.subtitle_style if req.subtitle_style in PRESETS else "hormozi",
+        font=req.font,
+        headline=editorial.headline,
+        emoji=editorial.emoji,
+        canvas_w=spec.width,
+        canvas_h=spec.height,
+        overrides=overrides,
     )
+    media = job.get("meta") or ffprobe(video)
+    video_stream = next((s for s in media.get("streams", []) if s.get("codec_type") == "video"), None)
+    if not video_stream:
+        raise RuntimeError("Video stream dimensions unavailable")
+    source_w, source_h = int(video_stream["width"]), int(video_stream["height"])
+
     camera_points: list[Any] = []
-    if req.face_tracking:
+    if req.face_tracking and req.auto_zoom:
         observations = sample_faces(video, float(clip["start"]), float(clip["end"]), sample_fps=3.0)
         mapped: list[SubjectObservation] = []
         for obs in observations:
@@ -107,12 +151,13 @@ def _render_with_spec(video: Path, job: dict[str, Any], clip: dict[str, Any], ou
         camera_points = build_camera_path(mapped)
 
     edl_graph = ffmpeg_filter_for_timeline(timeline)[0]
-    spec = spec_for_aspect_ratio(req.aspect_ratio)
     filter_complex = build_final_filter(edl_graph, camera_points, ass, source_w, source_h, spec)
     run_ffmpeg(video, output, filter_complex, spec=spec)
     return {
         "editorial": to_dict(editorial),
-        "camera": {"enabled": req.face_tracking, "points": path_to_dict(camera_points), "point_count": len(camera_points)},
+        "caption_preset": req.subtitle_style,
+        "caption_animation": selected_animation,
+        "camera": {"enabled": bool(req.face_tracking and req.auto_zoom), "points": path_to_dict(camera_points), "point_count": len(camera_points)},
         "source_dimensions": {"width": source_w, "height": source_h},
         "output_dimensions": {"width": spec.width, "height": spec.height},
         "broll": False,
@@ -139,6 +184,9 @@ async def _run_generation(job_id: str, req: GenerateRequest) -> None:
             return
 
         candidates = build_candidates(transcript["segments"])
+        # Keep the canonical heuristic score, but bias selection toward the user's requested duration.
+        target = float(req.target_duration)
+        candidates.sort(key=lambda c: (float(c.get("viral_score", 0)) - abs(float(c.get("duration", target)) - target) * 0.35), reverse=True)
         candidates = candidates[: req.clip_count]
         if not candidates:
             raise RuntimeError("No viable 20-60 second candidates found")
@@ -183,7 +231,7 @@ async def jobs(status: str | None = None):
     items = []
     for path in JOBS.glob("*.json"):
         try:
-            item = __import__("json").loads(path.read_text(encoding="utf-8"))
+            item = json.loads(path.read_text(encoding="utf-8"))
         except Exception:
             continue
         if status and item.get("status") != status:
@@ -205,17 +253,28 @@ async def cancel(job_id: str):
 
 @router.get("/health")
 async def compat_health():
-    base = {"status": "ok", "broll": False, "canonical_engine": "local-first-v5", "ffmpeg": shutil.which("ffmpeg") is not None, "ffprobe": shutil.which("ffprobe") is not None, "yt_dlp": shutil.which("yt-dlp") is not None}
-    return base
+    return {
+        "status": "ok",
+        "broll": False,
+        "canonical_engine": "local-first-v5",
+        "ffmpeg": shutil.which("ffmpeg") is not None,
+        "ffprobe": shutil.which("ffprobe") is not None,
+        "yt_dlp": shutil.which("yt-dlp") is not None,
+    }
 
 
 @router.get("/styles")
 async def styles():
+    # Return exactly the presets the renderer accepts. This keeps UI and engine contracts aligned.
+    ids = [
+        "hormozi", "mrbeast", "aliabdaal", "minimalist", "gaming", "cinematic", "neon",
+        "typewriter", "tiktok_viral", "documentary", "comedy", "horror", "motivational", "educational", "custom",
+        "karaoke", "pop_line", "deep_diver",
+    ]
     return {
         "subtitle_styles": [
-            {"id": "karaoke", "name": "Karaoke", "preview": {}},
-            {"id": "pop_line", "name": "Pop Line", "preview": {}},
-            {"id": "deep_diver", "name": "Deep Diver", "preview": {}},
+            {"id": key, "name": key.replace("_", " ").title(), "preview": {"font": PRESETS[key]["font"], "font_size": PRESETS[key]["size"], "animation": PRESETS[key]["animation"]}}
+            for key in ids
         ],
         "aspect_ratios": ["9:16", "1:1", "16:9", "4:5", "2:3", "21:9"],
         "color_grades": ["none"],
