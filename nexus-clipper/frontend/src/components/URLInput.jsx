@@ -1,9 +1,28 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { FiLink, FiPlay, FiLoader, FiClipboard } from 'react-icons/fi'
+import { FiLink, FiPlay, FiLoader, FiClipboard, FiX } from 'react-icons/fi'
+
+const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled'])
+const POLL_INTERVAL_MS = 1000
 
 export default function URLInput({ url, setUrl, config, setJobStatus }) {
   const [generating, setGenerating] = useState(false)
+  const [currentJobId, setCurrentJobId] = useState(null)
+  const pollRef = useRef(null)
+  const abortRef = useRef(null)
+
+  const clearPolling = () => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current)
+      pollRef.current = null
+    }
+    if (abortRef.current) {
+      abortRef.current.abort()
+      abortRef.current = null
+    }
+  }
+
+  useEffect(() => () => clearPolling(), [])
 
   const isValidUrl = (str) => {
     try { new URL(str); return true } catch { return false }
@@ -16,9 +35,45 @@ export default function URLInput({ url, setUrl, config, setJobStatus }) {
     } catch {}
   }
 
+  const pollJob = (jobId) => {
+    clearPolling()
+
+    const poll = async () => {
+      const controller = new AbortController()
+      abortRef.current = controller
+      try {
+        const jRes = await fetch(`/api/job/${jobId}`, { signal: controller.signal })
+        if (!jRes.ok) throw new Error(`Job status request failed (${jRes.status})`)
+
+        const job = await jRes.json()
+        setJobStatus(job)
+
+        if (TERMINAL_STATUSES.has(job.status)) {
+          clearPolling()
+          setGenerating(false)
+          setCurrentJobId(null)
+        }
+      } catch (error) {
+        if (error?.name === 'AbortError') return
+        clearPolling()
+        setGenerating(false)
+        setCurrentJobId(null)
+        setJobStatus({ status: 'failed', error: 'Lost connection to backend' })
+      } finally {
+        if (abortRef.current === controller) abortRef.current = null
+      }
+    }
+
+    void poll()
+    pollRef.current = setInterval(poll, POLL_INTERVAL_MS)
+  }
+
   const handleGenerate = async () => {
-    if (!url.trim() || !isValidUrl(url)) return
+    if (!url.trim() || !isValidUrl(url) || generating) return
+
+    clearPolling()
     setGenerating(true)
+    setCurrentJobId(null)
     setJobStatus({ status: 'queued', progress: 0, stage: 'Starting...' })
 
     try {
@@ -34,26 +89,35 @@ export default function URLInput({ url, setUrl, config, setJobStatus }) {
       }
 
       const { job_id } = await res.json()
-
-      // Poll job status
-      const poll = setInterval(async () => {
-        try {
-          const jRes = await fetch(`/api/job/${job_id}`)
-          const job = await jRes.json()
-          setJobStatus(job)
-          if (job.status === 'completed' || job.status === 'failed') {
-            clearInterval(poll)
-            setGenerating(false)
-          }
-        } catch {
-          clearInterval(poll)
-          setGenerating(false)
-          setJobStatus({ status: 'failed', error: 'Lost connection to backend' })
-        }
-      }, 1000)
+      setCurrentJobId(job_id)
+      pollJob(job_id)
     } catch (e) {
       setJobStatus({ status: 'failed', error: e.message })
       setGenerating(false)
+      setCurrentJobId(null)
+    }
+  }
+
+  const handleCancel = async () => {
+    if (!currentJobId) return
+
+    const jobId = currentJobId
+    clearPolling()
+    setGenerating(false)
+    setCurrentJobId(null)
+    setJobStatus(prev => ({ ...(prev || {}), status: 'cancelled', stage: 'Cancelled' }))
+
+    try {
+      const res = await fetch(`/api/job/${jobId}`, { method: 'DELETE' })
+      if (!res.ok && res.status !== 404) {
+        throw new Error(`Cancellation failed (${res.status})`)
+      }
+    } catch (error) {
+      setJobStatus(prev => ({
+        ...(prev || {}),
+        status: 'failed',
+        error: error.message,
+      }))
     }
   }
 
@@ -68,7 +132,6 @@ export default function URLInput({ url, setUrl, config, setJobStatus }) {
         <h3 className="text-sm font-semibold text-gray-200">Video Source</h3>
       </div>
 
-      {/* URL Input Capsule */}
       <div className="glass-capsule flex items-center px-4 py-2 gap-2">
         <input
           type="url"
@@ -94,24 +157,35 @@ export default function URLInput({ url, setUrl, config, setJobStatus }) {
         )}
       </div>
 
-      {/* Generate Button */}
-      <button
-        onClick={handleGenerate}
-        disabled={generating || !isValidUrl(url)}
-        className="btn-primary w-full flex items-center justify-center gap-2"
-      >
-        {generating ? (
-          <>
-            <FiLoader className="animate-spin" size={16} />
-            Processing...
-          </>
-        ) : (
-          <>
-            <FiPlay size={16} />
-            Get Clips
-          </>
+      <div className="flex gap-2">
+        <button
+          onClick={handleGenerate}
+          disabled={generating || !isValidUrl(url)}
+          className="btn-primary flex-1 flex items-center justify-center gap-2"
+        >
+          {generating ? (
+            <>
+              <FiLoader className="animate-spin" size={16} />
+              Processing...
+            </>
+          ) : (
+            <>
+              <FiPlay size={16} />
+              Get Clips
+            </>
+          )}
+        </button>
+
+        {generating && currentJobId && (
+          <button
+            onClick={handleCancel}
+            className="px-4 rounded-lg border border-red-500/30 text-red-300 hover:bg-red-500/10 transition-colors"
+            title="Cancel current job"
+          >
+            <FiX size={16} />
+          </button>
         )}
-      </button>
+      </div>
 
       {!url && (
         <p className="text-[11px] text-gray-600 text-center">
