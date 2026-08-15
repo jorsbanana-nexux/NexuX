@@ -132,15 +132,10 @@ def _render_with_spec(video: Path, job: dict[str, Any], clip: dict[str, Any], ou
     style = PRESETS.get(req.subtitle_style, PRESETS["hormozi"])
     selected_animation = req.animation or style.get("animation", "pop")
     render_ass_safe(
-        job["transcript"],
-        timeline,
-        ass,
+        job["transcript"], timeline, ass,
         preset=req.subtitle_style if req.subtitle_style in PRESETS else "hormozi",
-        font=req.font,
-        headline=editorial.headline,
-        emoji=editorial.emoji,
-        canvas_w=spec.width,
-        canvas_h=spec.height,
+        font=req.font, headline=editorial.headline, emoji=editorial.emoji,
+        canvas_w=spec.width, canvas_h=spec.height,
         overrides={**_style_overrides(req), "animation": selected_animation},
     )
     media = job.get("meta") or ffprobe(video)
@@ -212,7 +207,6 @@ async def _run_generation(job_id: str, req: GenerateRequest) -> None:
             raise RuntimeError("No viable 20-60 second candidates found")
         duration = float(media.get("format", {}).get("duration") or 0.0)
         scenes = await asyncio.to_thread(detect_scene_changes, video, 0.0, duration or None)
-        subjects = await asyncio.to_thread(detect_face_subjects, video, 0.0, duration or None)
         candidates = rerank_candidates(
             candidates,
             scene_boundaries=scenes,
@@ -223,7 +217,21 @@ async def _run_generation(job_id: str, req: GenerateRequest) -> None:
         )
         candidates.sort(key=lambda c: float(c.get("editorial_rank", 0.0)), reverse=True)
         candidates = candidates[: req.clip_count]
-        bundle = build_analysis_bundle(transcript, candidates, scenes, subjects)
+
+        # Subject analysis is scoped to selected candidate windows. The source-wide
+        # scene scan supplies global structure; camera tracking performs its own
+        # clip-local sampling during render.
+        subject_samples: list[dict[str, Any]] = []
+        for candidate in candidates:
+            samples = await asyncio.to_thread(
+                detect_face_subjects,
+                video,
+                float(candidate["start"]),
+                float(candidate["end"]),
+            )
+            subject_samples.append({"candidate_id": candidate["id"], "observations": samples})
+
+        bundle = build_analysis_bundle(transcript, candidates, scenes, subject_samples)
         _set(
             job,
             stage="rendering",
@@ -231,7 +239,7 @@ async def _run_generation(job_id: str, req: GenerateRequest) -> None:
             candidates=candidates,
             selected_candidate_id=candidates[0]["id"],
             analysis_bundle=bundle.to_dict(),
-            vision={"scene_count": len(scenes), "scenes": scenes, "subject_samples": subjects},
+            vision={"scene_count": len(scenes), "scenes": scenes, "subject_samples": subject_samples},
         )
         rendered: list[str] = []
         render_meta: list[dict[str, Any]] = []
@@ -241,7 +249,15 @@ async def _run_generation(job_id: str, req: GenerateRequest) -> None:
                 return
             timeline = await asyncio.to_thread(build_timeline, video, transcript, candidate)
             output = OUTPUTS / f"{job_id}_clip_{idx + 1:02d}.mp4"
-            info = await asyncio.to_thread(_render_with_spec, video, {**job, "transcript": transcript, "meta": media}, candidate, output, timeline, req)
+            info = await asyncio.to_thread(
+                _render_with_spec,
+                video,
+                {**job, "transcript": transcript, "meta": media},
+                candidate,
+                output,
+                timeline,
+                req,
+            )
             rendered.append(_relative_output(output))
             render_meta.append({
                 "candidate_id": candidate["id"],
@@ -269,17 +285,9 @@ async def _run_generation(job_id: str, req: GenerateRequest) -> None:
 async def generate(req: GenerateRequest, bg: BackgroundTasks):
     job_id = uuid.uuid4().hex
     job = {
-        "job_id": job_id,
-        "status": "queued",
-        "progress": 0.0,
-        "stage": "queued",
-        "output_path": None,
-        "error": None,
-        "clips": [],
-        "broll": False,
-        "render_meta": [],
-        "analysis_bundle": None,
-        "revision": 0,
+        "job_id": job_id, "status": "queued", "progress": 0.0, "stage": "queued",
+        "output_path": None, "error": None, "clips": [], "broll": False,
+        "render_meta": [], "analysis_bundle": None, "revision": 0,
     }
     _write(job)
     CANCEL_FLAGS[job_id] = False
@@ -320,16 +328,10 @@ async def cancel(job_id: str):
 @router.get("/health")
 async def compat_health():
     return {
-        "status": "ok",
-        "broll": False,
-        "canonical_engine": "local-first-v5",
-        "ffmpeg": shutil.which("ffmpeg") is not None,
-        "ffprobe": shutil.which("ffprobe") is not None,
-        "yt_dlp": shutil.which("yt-dlp") is not None,
-        "editorial_ranker": True,
-        "audio_intelligence": True,
-        "durable_jobs": True,
-        "hard_cancel": True,
+        "status": "ok", "broll": False, "canonical_engine": "local-first-v5",
+        "ffmpeg": shutil.which("ffmpeg") is not None, "ffprobe": shutil.which("ffprobe") is not None,
+        "yt_dlp": shutil.which("yt-dlp") is not None, "editorial_ranker": True,
+        "audio_intelligence": True, "durable_jobs": True, "hard_cancel": True,
         "analysis_bundle": True,
     }
 
@@ -344,9 +346,9 @@ async def vision(job_id: str):
     return {
         "job_id": job_id,
         "duration": duration,
-        "scenes": await asyncio.to_thread(detect_scene_changes, video, 0.0, duration or None),
-        "subjects": await asyncio.to_thread(detect_face_subjects, video, 0.0, duration or None),
-        "quality": await asyncio.to_thread(visual_quality, video, 0.0, duration or None),
+        "scenes": await asyncio.to_thread(detect_scene_changes, video, 0.0, min(duration, 3600.0) if duration else None),
+        "subjects": job.get("analysis_bundle", {}).get("subjects", []),
+        "quality": await asyncio.to_thread(visual_quality, video, 0.0, min(duration, 600.0) if duration else None),
         "analysis_bundle": job.get("analysis_bundle"),
         "editorial": {"candidate_count": len(job.get("candidates", [])), "selected": job.get("selected_candidate_id")},
     }
@@ -361,10 +363,7 @@ async def styles():
             for key in ids
         ],
         "aspect_ratios": ["9:16", "1:1", "16:9", "4:5", "2:3", "21:9"],
-        "color_grades": ["none"],
-        "video_codecs": ["h264"],
-        "audio_codecs": ["aac"],
-        "broll": False,
+        "color_grades": ["none"], "video_codecs": ["h264"], "audio_codecs": ["aac"], "broll": False,
     }
 
 
