@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import threading
 from pathlib import Path
@@ -61,23 +62,35 @@ def _transcribe_file(model: Any, media: Path, language: str | None, offset: floa
 def _transcribe_internal(video: Path, language: str | None = None) -> dict[str, Any]:
     duration = _probe_duration(video)
     chunk_seconds = max(300, min(1800, int(os.getenv("WHISPER_CHUNK_SECONDS", "900"))))
+    overlap = max(0.0, min(5.0, float(os.getenv("WHISPER_CHUNK_OVERLAP_SECONDS", "1.0"))))
     model = _model()
     all_segments: list[dict[str, Any]] = []
     detected_language: str | None = language
     with tempfile.TemporaryDirectory(prefix="nexus-whisper-") as tmp:
         tmp_root = Path(tmp)
-        start = 0.0
+        logical_start = 0.0
         next_id = 0
-        while start < duration:
-            length = min(float(chunk_seconds), duration - start)
+        while logical_start < duration:
+            logical_end = min(duration, logical_start + float(chunk_seconds))
+            chunk_start = max(0.0, logical_start - overlap if logical_start > 0 else 0.0)
+            chunk_end = min(duration, logical_end + overlap)
             chunk = tmp_root / f"chunk-{next_id:06d}.wav"
-            _chunk_audio(video, start, length, chunk)
-            segments, detected = _transcribe_file(model, chunk, language, start, next_id)
+            _chunk_audio(video, chunk_start, chunk_end - chunk_start, chunk)
+            segments, detected = _transcribe_file(model, chunk, language, chunk_start, next_id)
+            for segment in segments:
+                if segment["end"] <= logical_start or segment["start"] >= logical_end:
+                    continue
+                segment["start"] = max(logical_start, segment["start"])
+                segment["end"] = min(logical_end, segment["end"])
+                segment["words"] = [w for w in segment["words"] if w["end"] > logical_start and w["start"] < logical_end]
+                all_segments.append(segment)
             if detected_language is None and detected:
                 detected_language = detected
-            next_id += len(segments)
-            all_segments.extend(segments)
-            start += length
+            next_id = len(all_segments)
+            logical_start = logical_end
+    all_segments.sort(key=lambda item: (float(item["start"]), float(item["end"]), int(item["id"])))
+    for idx, segment in enumerate(all_segments):
+        segment["id"] = idx
     return {"language": detected_language, "segments": all_segments}
 
 
@@ -85,7 +98,8 @@ def transcribe_external(video: Path, language: str | None = None, *, job_id: str
     with tempfile.NamedTemporaryFile(prefix="nexus-transcript-", suffix=".json", delete=False) as handle:
         output = Path(handle.name)
     try:
-        cmd = ["python", "transcription_worker.py", "--input", str(video), "--output", str(output)]
+        worker = Path(__file__).resolve().with_name("transcription_worker.py")
+        cmd = [sys.executable, str(worker), "--input", str(video), "--output", str(output)]
         if language:
             cmd.extend(["--language", language])
         key = f"transcribe:{job_id or video.parent.name}"
