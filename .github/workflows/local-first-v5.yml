@@ -1,0 +1,25 @@
+name: NexuX Local-First V5
+
+on:
+  push:
+    branches:
+      - agent/local-first-v5-hardening
+  pull_request:
+    paths:
+      - "nexus-clipper/local-first-v5/**"
+      - ".github/workflows/local-first-v5.yml"
+
+jobs:
+  syntax-and-timeline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile local-first V5 Python
+        working-directory: nexus-clipper/local-first-v5
+        run: python -m py_compile app.py scoring.py timeline.py youtube.py test_timeline.py
+      - name: Run deterministic timeline tests
+        working-directory: nexus-clipper/local-first-v5
+        run: python -m pytest -q test_timeline.py
