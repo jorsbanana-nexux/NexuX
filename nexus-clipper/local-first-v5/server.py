@@ -69,13 +69,14 @@ def _read(job_id: str) -> dict[str, Any]:
     return atomic_read(JOBS, job_id)
 
 
-def _write(job: dict[str, Any]) -> None:
-    atomic_update(JOBS, job)
+def _write(job: dict[str, Any]) -> dict[str, Any]:
+    return atomic_update(JOBS, job)
 
 
 def _set(job: dict[str, Any], **updates: Any) -> dict[str, Any]:
-    job.update(updates)
-    _write(job)
+    current = atomic_update(JOBS, job, **updates)
+    job.clear()
+    job.update(current)
     return job
 
 
@@ -131,6 +132,7 @@ class CancellationRegistry(dict[str, bool]):
         super().__setitem__(job_id, value)
         if value:
             terminate_process(f"download:{job_id}")
+            terminate_process(f"transcribe:{job_id}")
             terminate_process(f"render:{job_id}")
 
 
