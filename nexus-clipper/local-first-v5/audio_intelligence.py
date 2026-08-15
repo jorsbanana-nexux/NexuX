@@ -67,7 +67,7 @@ def analyze_audio(
     start: float,
     end: float,
     *,
-    silence_db: float = -35.0,
+    silence_db: float = -36.0,
     frame_ms: float = 50.0,
     speech_segments: list[dict[str, Any]] | None = None,
 ) -> AudioProfile:
@@ -78,7 +78,7 @@ def analyze_audio(
         return AudioProfile(duration, 0.0, duration, 0.0, -80.0, -80.0, 0.0, 0.0, 0.0, 0, 0.0, 1.0)
 
     db = 20.0 * np.log10(np.maximum(env, 1e-8))
-    active = db > silence_db
+    active = db >= silence_db
     silence_ratio = float(1.0 - active.mean())
     speech_duration = duration * float(active.mean())
     silence_duration = max(0.0, duration - speech_duration)
