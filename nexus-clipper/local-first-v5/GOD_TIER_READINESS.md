@@ -29,3 +29,7 @@ Use "engineering-ready" when deterministic CI and target-machine tests are green
 Use "commercially competitive" only after matched-source human evaluation.
 
 Use "superior to X" only when a predeclared, reproducible benchmark supports the claim.
+
+## Validation discipline
+
+The readiness state is governed by the CI result for the current branch head. A cancelled, stale, or superseded workflow run is not evidence for the current code state.
