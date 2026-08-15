@@ -21,42 +21,15 @@ class Phrase:
 
 
 PRESETS: dict[str, dict[str, Any]] = {
-    "karaoke": {
-        "font": "Arial",
-        "size": 78,
-        "primary": "&H00FFFFFF",
-        "highlight": "&H0000E8FF",
-        "outline": "&H00000000",
-        "outline_width": 6,
-        "margin_v": 330,
-        "bold": True,
-    },
-    "pop_line": {
-        "font": "Arial",
-        "size": 82,
-        "primary": "&H00FFFFFF",
-        "highlight": "&H0000D7FF",
-        "outline": "&H00000000",
-        "outline_width": 7,
-        "margin_v": 360,
-        "bold": True,
-    },
-    "deep_diver": {
-        "font": "Arial",
-        "size": 62,
-        "primary": "&H00F5F5F5",
-        "highlight": "&H0000C8FF",
-        "outline": "&H00111111",
-        "outline_width": 4,
-        "margin_v": 350,
-        "bold": False,
-    },
+    "karaoke": {"font": "Arial", "size": 78, "primary": "&H00FFFFFF", "highlight": "&H0000E8FF", "outline": "&H00000000", "outline_width": 6, "margin_v": 330, "bold": True},
+    "pop_line": {"font": "Arial", "size": 82, "primary": "&H00FFFFFF", "highlight": "&H0000D7FF", "outline": "&H00000000", "outline_width": 7, "margin_v": 360, "bold": True},
+    "deep_diver": {"font": "Arial", "size": 62, "primary": "&H00F5F5F5", "highlight": "&H0000C8FF", "outline": "&H00111111", "outline_width": 4, "margin_v": 350, "bold": False},
 }
 
 KEYWORDS = {
-    "money", "uang", "growth", "tumbuh", "gagal", "failure", "success", "sukses",
-    "secret", "rahasia", "mistake", "kesalahan", "never", "jangan", "why", "kenapa",
-    "how", "cara", "important", "penting", "warning", "bahaya", "100", "10x", "million", "juta",
+    "money", "uang", "growth", "tumbuh", "gagal", "failure", "success", "sukses", "secret", "rahasia",
+    "mistake", "kesalahan", "never", "jangan", "why", "kenapa", "how", "cara", "important", "penting",
+    "warning", "bahaya", "100", "10x", "million", "juta",
 }
 
 
@@ -79,7 +52,7 @@ def phrases_from_words(words: Iterable[dict[str, Any]], max_words: int = 4, max_
             continue
         gap = w.start - current[-1].end
         duration = w.end - current[0].start
-        sentence_break = current[-1].text.rstrip().endswith(('.', '!', '?', ':'))
+        sentence_break = current[-1].text.rstrip().endswith((".", "!", "?", ":"))
         if len(current) >= max_words or duration > max_duration or gap > max_gap or sentence_break:
             phrases.append(Phrase(tuple(current), current[0].start, current[-1].end))
             current = [w]
@@ -102,7 +75,7 @@ def _escape(text: str) -> str:
     return text.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}").replace("\n", " ")
 
 
-def _face_safe_margin(face: dict[str, float] | None, canvas_h: int = 1920, default: int = 330) -> int:
+def _face_safe_margin(face: dict[str, float] | None, default: int = 330) -> int:
     if not face:
         return default
     bottom = float(face.get("y", 0)) + float(face.get("h", 0))
@@ -114,14 +87,9 @@ def _face_safe_margin(face: dict[str, float] | None, canvas_h: int = 1920, defau
 
 
 def render_ass(
-    transcript: dict[str, Any],
-    timeline: Any | None,
-    out: Path,
-    preset: str = "karaoke",
-    font: str | None = None,
-    face_samples: list[dict[str, Any]] | None = None,
-    canvas_w: int = 1080,
-    canvas_h: int = 1920,
+    transcript: dict[str, Any], timeline: Any | None, out: Path, preset: str = "karaoke", font: str | None = None,
+    face_samples: list[dict[str, Any]] | None = None, canvas_w: int = 1080, canvas_h: int = 1920,
+    headline: str | None = None, emoji: list[str] | None = None,
 ) -> Path:
     style = PRESETS.get(preset, PRESETS["karaoke"])
     chosen_font = font or style["font"]
@@ -129,7 +97,7 @@ def render_ass(
 
     def face_at(t: float) -> dict[str, float] | None:
         best = None
-        best_d = 999999.0
+        best_d = float("inf")
         for sample in face_samples:
             d = abs(float(sample.get("time", 0)) - t)
             if d < best_d and sample.get("faces"):
@@ -138,6 +106,12 @@ def render_ass(
         return best
 
     events: list[str] = []
+    if headline:
+        title = _escape(headline.upper())
+        if emoji:
+            title = f"{_escape(' '.join(emoji))}  {title}"
+        events.append(f"Dialogue: 10,0:00:00.00,9:59:59.99,Headline,,0,0,110,,{{\\an8}}{title}")
+
     for seg in transcript.get("segments", []):
         words = seg.get("words") or []
         if not words:
@@ -150,9 +124,8 @@ def render_ass(
                 if rw is not None and ew is not None and ew > rw:
                     mapped.append({"word": w.get("word", ""), "start": rw, "end": ew})
             words = mapped
-        phrases = phrases_from_words(words)
-        for phrase in phrases:
-            margin = _face_safe_margin(face_at(phrase.start), canvas_h, style["margin_v"])
+        for phrase in phrases_from_words(words):
+            margin = _face_safe_margin(face_at(phrase.start), style["margin_v"])
             active = phrase.words[0]
             phrase_text = []
             for w in phrase.words:
@@ -168,24 +141,15 @@ def render_ass(
                 else:
                     tag = f"{{\\c{style['primary']}}}"
                 phrase_text.append(f"{tag}{txt}")
-            events.append(
-                f"Dialogue: 0,{_ts(phrase.start)},{_ts(phrase.end)},Caption,,0,0,{margin},,{''.join(phrase_text)}"
-            )
+            events.append(f"Dialogue: 0,{_ts(phrase.start)},{_ts(phrase.end)},Caption,,0,0,{margin},,{''.join(phrase_text)}")
 
     header = [
-        "[Script Info]",
-        "ScriptType: v4.00+",
-        "PlayResX: 1080",
-        "PlayResY: 1920",
-        "WrapStyle: 2",
-        "ScaledBorderAndShadow: yes",
-        "",
+        "[Script Info]", "ScriptType: v4.00+", "PlayResX: 1080", "PlayResY: 1920", "WrapStyle: 2", "ScaledBorderAndShadow: yes", "",
         "[V4+ Styles]",
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+        f"Style: Headline,{chosen_font},62,&H00FFFFFF,&H00FFFFFF,&H00000000,&H90000000,{1 if style['bold'] else 0},0,0,0,100,100,0,0,1,5,2,8,70,70,110,1",
         f"Style: Caption,{chosen_font},{style['size']},{style['primary']},{style['highlight']},{style['outline']},&H80000000,{1 if style['bold'] else 0},0,0,0,100,100,0,0,1,{style['outline_width']},2,2,70,70,{style['margin_v']},1",
-        "",
-        "[Events]",
-        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+        "", "[Events]", "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
     ]
     out.write_text("\n".join(header + events), encoding="utf-8")
     return out
