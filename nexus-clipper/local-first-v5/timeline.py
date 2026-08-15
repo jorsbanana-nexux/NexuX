@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
+from audio_intelligence import analyze_audio
+
 FILLERS = {"um", "uh", "hmm", "hm", "eee", "aaa", "eh", "anu", "kayak", "like", "you know", "youknow", "actually", "basically", "maksud saya", "gitu", "jadi", "nah"}
 
 
@@ -32,6 +34,7 @@ class EditTimeline:
     duration_after: float
     cuts: tuple[Cut, ...]
     keep_ranges: tuple[KeepRange, ...]
+    audio_profile: dict[str, Any] | None = None
 
     def source_to_output(self, timestamp: float) -> float | None:
         for item in self.keep_ranges:
@@ -47,6 +50,7 @@ class EditTimeline:
             "duration_after": self.duration_after,
             "cuts": [c.__dict__ for c in self.cuts],
             "keep_ranges": [r.__dict__ for r in self.keep_ranges],
+            "audio_profile": self.audio_profile,
         }
 
 
@@ -143,10 +147,14 @@ def build_timeline(video: Path, transcript: dict[str, Any], clip: dict[str, Any]
     start, end = float(clip["start"]), float(clip["end"])
     duration = max(0.0, end - start)
     segments = transcript.get("segments", [])
-    silence = detect_silence(video, start, end)
+    audio_profile = analyze_audio(video, start, end, speech_segments=segments).to_dict()
+    min_silence = 0.65
+    if audio_profile.get("rhythm_score", 50.0) < 40.0:
+        min_silence = 0.5
+    silence = detect_silence(video, start, end, min_duration=0.45)
     filler = detect_fillers(segments, start, end)
     repetition = detect_repetition(segments, start, end)
-    meaningful_silence = [c for c in silence if (c.end - c.start) >= 0.65]
+    meaningful_silence = [c for c in silence if (c.end - c.start) >= min_silence]
     safe_cuts = _merge_cuts([*meaningful_silence, *filler, *repetition], start, end)
 
     keep: list[KeepRange] = []
@@ -168,7 +176,7 @@ def build_timeline(video: Path, transcript: dict[str, Any], clip: dict[str, Any]
         safe_cuts = []
         output_cursor = duration
 
-    return EditTimeline(start, end, duration, output_cursor, tuple(safe_cuts), tuple(keep))
+    return EditTimeline(start, end, duration, output_cursor, tuple(safe_cuts), tuple(keep), audio_profile)
 
 
 def remap_word(word: dict[str, Any], timeline: EditTimeline) -> dict[str, Any] | None:
