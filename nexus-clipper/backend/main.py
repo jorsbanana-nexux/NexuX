@@ -270,7 +270,9 @@ async def generate(req: GenerateRequest, bg: BackgroundTasks):
         "normalize_audio": req.normalize_audio,
     }
     
-    bg.add_task(_process_job, jid, req.youtube_url, style_kwargs)
+    # Keep webhook delivery outside pipeline kwargs so the engine signature
+    # remains focused on rendering/transformation options.
+    bg.add_task(_process_job, jid, req.youtube_url, style_kwargs, req.webhook_url)
     log.info(f"Job {jid} queued: {req.youtube_url[:80]}")
     
     return JobResponse(**job)
@@ -294,7 +296,6 @@ async def list_jobs(status: Optional[str] = None):
 
 @app.delete("/api/job/{job_id}")
 async def cancel_job(job_id: str):
-    global active_count
     j = jobs.get(job_id)
     if not j:
         raise HTTPException(404, f"Job {job_id} not found")
@@ -302,7 +303,8 @@ async def cancel_job(job_id: str):
         raise HTTPException(400, f"Job already {j['status']}")
     cancel_flags[job_id] = True
     j["status"] = "cancelled"
-    active_count = max(0, active_count - 1)
+    # _process_job owns active_count decrement so queued and running
+    # cancellation paths cannot decrement the counter twice.
     await ws.broadcast({"type": "job_cancelled", "job_id": job_id})
     return {"job_id": job_id, "status": "cancelled"}
 
@@ -340,7 +342,12 @@ async def ws_endpoint(websocket: WebSocket):
 
 # ── Pipeline Processor ──
 
-async def _process_job(job_id: str, url: str, kwargs: dict):
+async def _process_job(
+    job_id: str,
+    url: str,
+    kwargs: dict,
+    webhook_url: Optional[str] = None,
+):
     global active_count
     job = jobs[job_id]
 
@@ -357,6 +364,10 @@ async def _process_job(job_id: str, url: str, kwargs: dict):
         })
 
     try:
+        # A queued job may be cancelled before BackgroundTasks gets to run it.
+        if cancel_flags.get(job_id) or job["status"] == "cancelled":
+            raise asyncio.CancelledError()
+
         job["status"] = "processing"
         result = await run_pipeline(url, job_id, _progress, **kwargs)
         
@@ -371,9 +382,9 @@ async def _process_job(job_id: str, url: str, kwargs: dict):
                 "job_id": job_id,
                 "output_path": result.get("output_path"),
             })
-            # Webhook callback
-            if kwargs.get("webhook_url"):
-                await _send_webhook(kwargs["webhook_url"], job)
+            # Webhook callback is deliberately outside the engine kwargs.
+            if webhook_url:
+                await _send_webhook(webhook_url, job)
         else:
             job.update(status="failed", error=result.get("error", "Unknown error"))
             await ws.broadcast({
@@ -390,6 +401,7 @@ async def _process_job(job_id: str, url: str, kwargs: dict):
             "error": str(e),
         })
     finally:
+        # This is the single ownership point for releasing the concurrency slot.
         active_count = max(0, active_count - 1)
 
 async def _send_webhook(url: str, job: dict):
