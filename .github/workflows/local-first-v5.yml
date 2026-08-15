@@ -1,6 +1,14 @@
 name: NexuX Local-First V5
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "nexus-clipper/local-first-v5/**"
+      - "nexus-clipper/backend/**"
+      - "nexus-clipper/frontend/**"
+      - "nexus-clipper/run_nexus.*"
+      - ".github/workflows/local-first-v5.yml"
   pull_request:
     paths:
       - "nexus-clipper/local-first-v5/**"
