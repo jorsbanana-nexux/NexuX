@@ -1,19 +1,17 @@
 # NexuX Local-First V5
 
-Local-first clipping backend staged beside the legacy NexuX implementation.
+Local-first clipping backend staged beside the legacy NexuX implementation. **V5 is URL-first and intentionally has no B-roll subsystem.**
 
 ## Pipeline
 
-`YouTube URL -> local yt-dlp -> FFprobe -> faster-whisper -> content intelligence -> candidate ranking -> Smart EDL -> subject-aware camera path -> advanced ASS captions -> headline/emoji -> FFmpeg export`
-
-B-roll is intentionally **not part of V5**.
+`YouTube URL -> local yt-dlp -> FFprobe -> faster-whisper -> content intelligence -> candidate ranking -> Smart EDL -> subject tracking -> virtual camera -> captions -> headline/emoji -> FFmpeg export`
 
 ## Run
 
 ```bash
 cd nexus-clipper/local-first-v5
 python -m venv .venv
-# Windows: .venv\\Scripts\\activate
+# Windows: .venv\Scripts\activate
 # Linux/macOS: source .venv/bin/activate
 pip install -r requirements-local.txt
 uvicorn app:app --host 127.0.0.1 --port 8001
@@ -21,50 +19,62 @@ uvicorn app:app --host 127.0.0.1 --port 8001
 
 Swagger: `http://127.0.0.1:8001/docs`
 
-## Caption presets
-
-- `karaoke`: phrase grouping, active-word highlight and subtle pop scaling.
-- `pop_line`: bold, high-contrast emphasis for fast content.
-- `deep_diver`: restrained presentation with keyword emphasis.
-
-Captions consume the canonical edited timeline when available, so removed source ranges do not independently shift subtitle timing.
-
-## Visual intelligence
-
-V5 intentionally avoids B-roll insertion. Visual intelligence is focused on editorial metadata instead:
-
-- curiosity, benefit, controversy, contradiction and number signals;
-- local deterministic headline extraction;
-- optional emoji rules;
-- safe-zone metadata for headline/caption placement.
-
-## Custom fonts
-
-`fonts.py` supports `.ttf`, `.otf`, `.woff`, and `.woff2` with file-signature and minimum-size validation plus deterministic hashed storage. Invalid formats are rejected. A renderer can fall back to a system font when a requested font is unavailable.
-
 ## Primary workflow
 
 `POST /youtube/preview` -> `POST /youtube/import` -> `POST /analyze/{job_id}` -> `POST /render/{job_id}` -> `GET /download/{job_id}`
 
-`POST /fonts` and `GET /fonts` manage local font assets.
+Local file upload remains as a compatibility fallback at `POST /upload`.
+
+## Rendering
+
+The final compositor uses one canonical edit timeline for audio/video/subtitle mapping. Subject observations are remapped into output time before the virtual-camera path is built. The camera path is converted into time-varying FFmpeg crop expressions and then scaled to 1080x1920.
+
+Caption presets:
+
+- `karaoke`: grouped phrases + active-word highlight + pop scaling.
+- `pop_line`: bold, high-contrast emphasis.
+- `deep_diver`: restrained typography with keyword emphasis.
+
+Headline is rendered in an upper safe-zone. Captions use a lower safe-zone and can move vertically from face observations. Emoji is optional and deterministic.
+
+## Fonts
+
+`POST /fonts` and `GET /fonts` manage `.ttf`, `.otf`, `.woff`, and `.woff2` assets. Invalid signatures are rejected and rendering can fall back to a system font.
+
+## Quality gate
+
+Local:
+
+```bash
+python quality_gate.py
+python -m pytest -q
+```
+
+CI installs FFmpeg, the local dependency set, compiles every module, runs all deterministic tests, and runs the same quality gate.
+
+The regression suite includes a **real synthetic-media FFmpeg render**. It generates a test source with video+audio, applies EDL concatenation, dynamic camera crop, ASS overlay, and verifies that the final MP4 is 1080x1920 with both audio and video streams.
+
+## Benchmark
+
+`benchmark.py` evaluates ranked candidates against reference clips using interval IoU and reports duration compliance, overlap rate, top-1 overlap, mean best overlap, and mean heuristic score.
+
+Use a JSON file containing `candidates` and optional `reference_clips` to run it:
+
+```bash
+python benchmark.py benchmark_case.json
+```
+
+The benchmark is for engineering optimization. It does not claim prediction of any platform ranking algorithm and does not by itself prove commercial-platform superiority.
 
 ## Environment
 
 - `WHISPER_MODEL`: `tiny`, `base`, `small`, `medium`, `large-v3`
 - `WHISPER_DEVICE`: `cpu` or `cuda`
 - `WHISPER_COMPUTE`: e.g. `int8` or `float16`
-- `MAX_UPLOAD_MB`: local file upload ceiling
-- `MAX_VIDEO_DURATION_SECONDS`: maximum source duration for YouTube import
+- `MAX_UPLOAD_MB`: local upload ceiling
+- `MAX_VIDEO_DURATION_SECONDS`: maximum YouTube import duration
 - `DOWNLOAD_TIMEOUT_SECONDS`: yt-dlp timeout
 
-## Design principle
+## Known production gate
 
-The URL is only an input transport. Once downloaded, **AI analysis remains local**. No OpenAI, Anthropic, Gemini, Groq, ElevenLabs, or other paid AI API is required for the V5 path.
-
-The score is a **heuristic ranking**, not a prediction of TikTok, Reels, Shorts, or any other platform ranking algorithm.
-
-## Engineering status
-
-Implemented: URL-first import, local transcription, heuristic ranking, Smart EDL, subject-tracking baseline, virtual-camera path, advanced caption engine, three caption presets, custom-font validation, and deterministic editorial metadata.
-
-Still required before production-grade claims: direct FFmpeg camera-path integration, robust multi-person identity tracking, stronger local semantic ranking, headline/emoji composition, automated real-media render regression, performance profiling, and benchmark-based optimization against a fixed dataset.
+A real user video plus downloaded Whisper model must still be executed on the target machine before this branch can be called production-ready. The repository currently contains deterministic code and synthetic-media render validation, but not a completed real-world benchmark corpus.
