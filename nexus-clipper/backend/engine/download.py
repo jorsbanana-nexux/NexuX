@@ -36,8 +36,8 @@ def download_youtube(url: str, job_id: str, max_height: int = 1080) -> Path:
     work_dir = OUTPUT_DIR / job_id
     work_dir.mkdir(parents=True, exist_ok=True)
     
-    # Output template
-    tmpl = str(work_dir / "%(title).100s.%(ext)s")
+    # Output template uses a fixed basename to prevent metadata-derived path traversal.
+    tmpl = str(work_dir / "source.%(ext)s")
     
     # Format selection: prefer mp4, fall back to best available
     fmt = (
@@ -54,12 +54,11 @@ def download_youtube(url: str, job_id: str, max_height: int = 1080) -> Path:
         "-o", tmpl,
         "--no-playlist",
         "--no-warnings",
-        "--no-check-certificates",
         "--socket-timeout", "30",
         "--retries", "10",
         "--fragment-retries", "10",
-        "--no-part",           # Don't use .part files
-        "--no-mtime",          # Don't set file modification time
+        "--no-part",
+        "--no-mtime",
         url,
     ]
     
@@ -71,19 +70,16 @@ def download_youtube(url: str, job_id: str, max_height: int = 1080) -> Path:
             err = r.stderr[-500:] if len(r.stderr) > 500 else r.stderr
             raise RuntimeError(f"yt-dlp download failed: {err}")
         
-        # Find downloaded file (largest video file)
         video_extensions = [".mp4", ".mkv", ".webm", ".mov", ".avi"]
         candidates = []
         for ext in video_extensions:
-            candidates.extend(work_dir.glob(f"*{ext}"))
+            candidates.extend(work_dir.glob(f"source{ext}"))
         
         if not candidates:
-            # List all files for debugging
             all_files = list(work_dir.iterdir())
             log.error(f"[Download] No video found. Files in dir: {[f.name for f in all_files]}")
             raise FileNotFoundError(f"No video file found in {work_dir}")
         
-        # Pick largest file
         candidates.sort(key=lambda p: p.stat().st_size, reverse=True)
         video_path = candidates[0]
         
@@ -95,14 +91,7 @@ def download_youtube(url: str, job_id: str, max_height: int = 1080) -> Path:
 
 
 def get_video_info(url: str) -> Dict:
-    """Get YouTube video metadata without downloading.
-    
-    Args:
-        url: YouTube video URL
-    
-    Returns:
-        Dict with title, duration, uploader, view count, formats, etc.
-    """
+    """Get YouTube video metadata without downloading."""
     cmd = [
         "yt-dlp",
         "--dump-json",
@@ -139,15 +128,7 @@ def get_video_info(url: str) -> Dict:
 
 
 def search_youtube(query: str, max_results: int = 10) -> list:
-    """Search YouTube for videos matching query.
-    
-    Args:
-        query: Search query
-        max_results: Maximum results to return
-    
-    Returns:
-        List of video info dicts
-    """
+    """Search YouTube for videos matching query."""
     cmd = [
         "yt-dlp",
         f"ytsearch{max_results}:{query}",

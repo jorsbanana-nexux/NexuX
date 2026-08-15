@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+pydantic
+python-multipart
+faster-whisper==1.2.1
+numpy
+opencv-python
+pillow
+scenedetect==0.7.1
+python-dotenv
+yt-dlp

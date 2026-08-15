@@ -9,7 +9,7 @@ Enterprise API with:
 - Structured error responses
 - Health monitoring
 """
-import os, json, time, asyncio, signal
+import os, json, time, asyncio, signal, uuid
 from pathlib import Path
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -60,7 +60,8 @@ class GenerateRequest(BaseModel):
     color_grade: str = Field("none")
     video_codec: str = Field("h264")
     audio_codec: str = Field("aac")
-    ai_scoring: bool = Field(True)
+    # Local-first: cloud AI scoring is opt-in only.
+    ai_scoring: bool = Field(False)
     normalize_audio: bool = Field(True)
     webhook_url: Optional[str] = None
 
@@ -227,7 +228,8 @@ async def generate(req: GenerateRequest, bg: BackgroundTasks):
             f"Max {MAX_CONCURRENT_JOBS} concurrent jobs. Try again shortly."
         )
     
-    jid = f"nx-{int(time.time())}"
+    # UUID prevents collisions when multiple requests arrive in the same second.
+    jid = f"nx-{uuid.uuid4().hex}"
     job = {
         "job_id": jid,
         "status": "queued",

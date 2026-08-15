@@ -60,7 +60,6 @@ async def run_pipeline(
             await progress_callback(stage, pct, **data)
 
     try:
-        # ── Stage 1: Download ──
         await _progress("downloading", 0)
         video_path = retry(download_youtube, url, job_id, max_retries=MAX_RETRIES)
         video_size = get_file_size_mb(video_path)
@@ -70,31 +69,25 @@ async def run_pipeline(
         }
         await _progress("downloading", 15, video_size_mb=round(video_size, 1))
 
-        # ── Stage 2: Vision Analysis ──
         await _progress("vision", 15)
-        
         face_data = []
         scene_data = []
         screen_data = []
-        
         if kwargs.get("face_tracking", True):
             try:
                 face_data = retry(analyze_faces, video_path, job_id, max_retries=2)
             except Exception as e:
                 log.warning(f"[Pipeline] Face tracking failed: {e}")
-        
         if kwargs.get("scene_detection", True):
             try:
                 scene_data = detect_scene_changes(video_path, job_id)
             except Exception as e:
                 log.warning(f"[Pipeline] Scene detection failed: {e}")
-        
         if kwargs.get("screen_detection", False):
             try:
                 screen_data = detect_screen_share(video_path, job_id)
             except Exception as e:
                 log.warning(f"[Pipeline] Screen detection failed: {e}")
-        
         result["stages"]["vision"] = {
             "status": "ok",
             "face_samples": len(face_data),
@@ -103,7 +96,6 @@ async def run_pipeline(
         }
         await _progress("vision", 25)
 
-        # ── Stage 3: Transcription ──
         await _progress("transcribing", 25)
         transcript = retry(
             transcribe, video_path, job_id,
@@ -121,10 +113,8 @@ async def run_pipeline(
             "speakers": len(speakers),
             "language": transcript.get("language", "?"),
         }
-        await _progress("transcribing", 55,
-                       segments=seg_count, speakers=len(speakers))
+        await _progress("transcribing", 55, segments=seg_count, speakers=len(speakers))
 
-        # ── Stage 4: Content Analysis ──
         await _progress("analyzing", 55)
         clips = analyze_content(
             transcript,
@@ -133,16 +123,13 @@ async def run_pipeline(
             scene_data=scene_data if scene_data else None,
             screen_data=screen_data if screen_data else None,
             max_clips=kwargs.get("clip_count", 10),
-            use_ai_scoring=kwargs.get("ai_scoring", True),
+            use_ai_scoring=kwargs.get("ai_scoring", False),
         )
-
         if not clips:
             raise RuntimeError(
                 "No clips found. Try a shorter target_duration "
                 "or use a longer video."
             )
-
-        # Limit clips
         clips = clips[:kwargs.get("clip_count", 3)]
         result["stages"]["analyze"] = {
             "status": "ok", "clips_found": len(clips),
@@ -150,9 +137,7 @@ async def run_pipeline(
         }
         await _progress("analyzing", 65, clips_found=len(clips))
 
-        # ── Stage 5: Rendering ──
         await _progress("rendering", 65, clips_to_render=len(clips))
-        
         rendered = []
         for i, clip in enumerate(clips):
             cp = retry(
@@ -165,22 +150,15 @@ async def run_pipeline(
                 max_retries=2,
             )
             rendered.append(cp)
-            
             pct = 65 + int((i + 1) / max(len(clips), 1) * 25)
-            await _progress("rendering", pct,
-                           clips_done=i+1, clips_total=len(clips))
-
+            await _progress("rendering", pct, clips_done=i+1, clips_total=len(clips))
         if not rendered:
             raise RuntimeError("All render attempts failed.")
 
-        # ── Stage 6: Final Assembly ──
         await _progress("finalizing", 90)
-        
         final = rendered[0]
         if len(rendered) > 1:
             final = concatenate_clips(job_id, rendered)
-
-        # Audio post-processing (optional)
         if kwargs.get("normalize_audio", True):
             try:
                 from .render import normalize_audio
@@ -198,14 +176,9 @@ async def run_pipeline(
             "final_path": final_str,
             "final_size_mb": round(get_file_size_mb(final), 1),
         }
-        
-        await _progress("completed", 100,
-                       output_path=final_str,
-                       clips=result["clips"])
-
+        await _progress("completed", 100, output_path=final_str, clips=result["clips"])
         log.info(f"[Pipeline] COMPLETE: {final_str}")
         return result
-
     except Exception as e:
         err_msg = str(e)
         result["status"] = "failed"
