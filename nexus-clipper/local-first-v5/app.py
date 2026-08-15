@@ -14,9 +14,10 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from captions import render_ass
+from editorial import to_dict, editorial_metadata
 from fonts import install_font, list_fonts
 from scoring import rank_score, score_text
-from timeline import build_timeline, ffmpeg_filter_for_timeline, remap_word
+from timeline import build_timeline, ffmpeg_filter_for_timeline
 from youtube import download_youtube, probe_youtube
 
 ROOT = Path(__file__).resolve().parent
@@ -31,7 +32,7 @@ for p in (UPLOADS, JOBS, OUTPUTS, FONTS):
 MAX_UPLOAD = int(os.getenv("MAX_UPLOAD_MB", "1024")) * 1024 * 1024
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
 
-app = FastAPI(title="NexuX Local-First V5", version="5.3.0")
+app = FastAPI(title="NexuX Local-First V5", version="5.4.0")
 
 
 class YouTubeImport(BaseModel):
@@ -42,6 +43,7 @@ class YouTubeImport(BaseModel):
 class RenderOptions(BaseModel):
     preset: str = Field("karaoke", pattern=r"^(karaoke|pop_line|deep_diver)$")
     font_name: str | None = Field(None, max_length=160)
+    emoji_enabled: bool = False
 
 
 def ffprobe(path: Path) -> dict[str, Any]:
@@ -110,6 +112,7 @@ def build_candidates(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     "viral_score": round(score.viral, 2),
                     "scores": score.__dict__,
                     "segment_ids": list(range(i, j + 1)),
+                    "editorial": to_dict(editorial_metadata(text, emoji_enabled=False)),
                 })
     result.sort(key=lambda x: x["viral_score"], reverse=True)
     selected: list[dict[str, Any]] = []
@@ -136,7 +139,7 @@ def _escape_filter_path(path: Path) -> str:
     return value.replace(":", r"\:").replace("'", r"\'")
 
 
-def render(video: Path, job: dict[str, Any], clip: dict[str, Any], output: Path, timeline: Any, preset: str, font_name: str | None) -> None:
+def render(video: Path, job: dict[str, Any], clip: dict[str, Any], output: Path, timeline: Any, preset: str, font_name: str | None, emoji_enabled: bool) -> None:
     ass = output.with_suffix(".ass")
     render_ass(job["transcript"], timeline, ass, preset=preset, font=font_name)
     graph, _ = ffmpeg_filter_for_timeline(timeline)
@@ -153,6 +156,8 @@ def render(video: Path, job: dict[str, Any], clip: dict[str, Any], output: Path,
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
     if r.returncode != 0:
         raise RuntimeError(r.stderr[-2500:] or "FFmpeg render failed")
+    # Editorial metadata is stored even though emoji/headline composition is a later compositor layer.
+    job["editorial"] = to_dict(editorial_metadata(clip["text"], emoji_enabled=emoji_enabled))
 
 
 @app.get("/health")
@@ -163,6 +168,7 @@ def health() -> dict[str, Any]:
         "ffprobe": shutil.which("ffprobe") is not None,
         "yt_dlp": shutil.which("yt-dlp") is not None,
         "whisper_model": WHISPER_MODEL,
+        "broll": False,
     }
 
 
@@ -277,7 +283,7 @@ def render_job(job_id: str, options: RenderOptions | None = None):
     try:
         timeline = build_timeline(Path(job["video_path"]), job["transcript"], candidate)
         output = OUTPUTS / f"{job_id}_{candidate['id']}.mp4"
-        render(Path(job["video_path"]), job, candidate, output, timeline, options.preset, options.font_name)
+        render(Path(job["video_path"]), job, candidate, output, timeline, options.preset, options.font_name, options.emoji_enabled)
     except Exception as exc:
         raise HTTPException(500, f"Render failed: {exc}") from exc
     job.update({"status": "completed", "output": str(output), "selected_timeline": timeline.to_dict(), "render": options.model_dump()})
