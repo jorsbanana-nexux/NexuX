@@ -6,22 +6,28 @@ import re
 import subprocess
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 YOUTUBE_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "www.youtu.be"}
+VIDEO_PATH_PREFIXES = ("/shorts/", "/live/", "/embed/")
 
 
 def validate_youtube_url(url: str) -> str:
     url = (url or "").strip()
     if len(url) > 2000 or not re.match(r"^https?://", url, re.I):
         raise ValueError("URL YouTube tidak valid")
-    from urllib.parse import urlparse
     parsed = urlparse(url)
-    if parsed.hostname not in YOUTUBE_HOSTS:
+    host = (parsed.hostname or "").lower().rstrip(".")
+    if host not in YOUTUBE_HOSTS:
         raise ValueError("Hanya URL YouTube yang didukung")
-    if parsed.hostname in {"youtu.be", "www.youtu.be"} and not parsed.path.strip("/"):
+    if parsed.username or parsed.password:
+        raise ValueError("URL YouTube dengan userinfo tidak didukung")
+    if host in {"youtu.be", "www.youtu.be"} and not parsed.path.strip("/"):
         raise ValueError("YouTube video ID kosong")
-    if parsed.hostname not in {"youtu.be", "www.youtu.be"} and parsed.path not in {"/watch", "/shorts", "/live", "/embed"} and not parsed.path.startswith(("/watch", "/shorts/", "/live/", "/embed/")):
-        raise ValueError("URL YouTube bukan URL video yang dikenali")
+    if host not in {"youtu.be", "www.youtu.be"}:
+        allowed = parsed.path == "/watch" or parsed.path.startswith(VIDEO_PATH_PREFIXES)
+        if not allowed:
+            raise ValueError("URL YouTube bukan URL video yang dikenali")
     return url
 
 

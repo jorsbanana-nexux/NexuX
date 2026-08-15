@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 
 ALLOWED = {".ttf", ".otf", ".woff", ".woff2"}
+MAX_FONT_BYTES = 20 * 1024 * 1024
 
 
 def safe_font_name(name: str) -> str:
@@ -15,8 +16,11 @@ def safe_font_name(name: str) -> str:
 def validate_font(path: Path) -> None:
     if path.suffix.lower() not in ALLOWED:
         raise ValueError(f"Unsupported font type: {path.suffix}")
-    if path.stat().st_size < 256:
+    size = path.stat().st_size
+    if size < 256:
         raise ValueError("Font file is too small to be valid")
+    if size > MAX_FONT_BYTES:
+        raise ValueError("Font file exceeds the 20 MB safety limit")
     data = path.read_bytes()[:16]
     valid = (
         data[:4] in {b"\x00\x01\x00\x00", b"OTTO", b"true", b"typ1"}
@@ -30,10 +34,11 @@ def validate_font(path: Path) -> None:
 def install_font(source: Path, fonts_dir: Path) -> dict[str, str]:
     validate_font(source)
     fonts_dir.mkdir(parents=True, exist_ok=True)
-    digest = hashlib.sha256(source.read_bytes()).hexdigest()[:12]
+    data = source.read_bytes()
+    digest = hashlib.sha256(data).hexdigest()[:12]
     name = safe_font_name(source.stem)
     target = fonts_dir / f"{name}-{digest}{source.suffix.lower()}"
-    target.write_bytes(source.read_bytes())
+    target.write_bytes(data)
     return {"name": name, "path": str(target), "sha256_12": digest}
 
 
