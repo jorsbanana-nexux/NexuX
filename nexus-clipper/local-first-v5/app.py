@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from captions import render_ass
 from compositor import CompositionSpec, build_final_filter, run_ffmpeg
 from editorial import to_dict, editorial_metadata
+from editorial_ranker import select_diverse
 from face_sampling import sample_faces
 from fonts import install_font, list_fonts
 from scoring import rank_score, score_text
@@ -36,7 +37,7 @@ for p in (UPLOADS, JOBS, OUTPUTS, FONTS):
 MAX_UPLOAD = int(os.getenv("MAX_UPLOAD_MB", "1024")) * 1024 * 1024
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
 
-app = FastAPI(title="NexuX Local-First V5", version="5.6.0")
+app = FastAPI(title="NexuX Local-First V5", version="5.7.0")
 
 
 class YouTubeImport(BaseModel):
@@ -113,14 +114,16 @@ def build_candidates(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     "editorial": to_dict(editorial_metadata(text, emoji_enabled=False)),
                 })
     result.sort(key=lambda x: x["viral_score"], reverse=True)
-    selected: list[dict[str, Any]] = []
-    for cand in result:
-        if any(not (cand["end"] <= s["start"] or cand["start"] >= s["end"]) for s in selected):
-            continue
-        selected.append(cand)
-        if len(selected) >= 10:
-            break
-    return selected
+    return result
+
+
+def rerank_candidates(candidates: list[dict[str, Any]], scene_boundaries: list[dict[str, Any]] | None = None, target_duration: float = 45.0, limit: int = 10) -> list[dict[str, Any]]:
+    return select_diverse(
+        candidates,
+        limit=limit,
+        target_duration=target_duration,
+        scene_boundaries=scene_boundaries,
+    )
 
 
 def resolve_candidate(job: dict[str, Any], candidate_id: str | None = None) -> dict[str, Any]:
@@ -167,20 +170,15 @@ def render(video: Path, job: dict[str, Any], clip: dict[str, Any], output: Path,
     spec = CompositionSpec()
     filter_complex = build_final_filter(edl_graph, camera_path, ass, source_w, source_h, spec)
     run_ffmpeg(video, output, filter_complex, spec)
-    quality = inspect_render(output, expected_width=spec.width, expected_height=spec.height, min_duration=3.0, max_duration=90.0)
+    quality = inspect_render(output, expected_width=spec.width, expected_height=spec.height, min_duration=max(3.0, timeline.duration_after * 0.98), max_duration=timeline.duration_after + 0.25)
     if quality["verdict"] != "APPROVED":
         raise RuntimeError(f"Render quality gate failed: {json.dumps(quality, ensure_ascii=False)}")
-    return {
-        "editorial": to_dict(editorial),
-        "camera": {"enabled": camera_enabled, "points": path_to_dict(camera_path), "point_count": len(camera_path)},
-        "source_dimensions": {"width": source_w, "height": source_h},
-        "quality": quality,
-    }
+    return {"editorial": to_dict(editorial), "camera": {"enabled": camera_enabled, "points": path_to_dict(camera_path), "point_count": len(camera_path)}, "source_dimensions": {"width": source_w, "height": source_h}, "quality": quality}
 
 
 @app.get("/health")
 def health() -> dict[str, Any]:
-    return {"status": "ok", **tool_state(), "whisper_model": WHISPER_MODEL, "broll": False, "vision_quality": True}
+    return {"status": "ok", **tool_state(), "whisper_model": WHISPER_MODEL, "broll": False, "vision_quality": True, "editorial_ranker": True}
 
 
 @app.post("/youtube/preview")
@@ -245,9 +243,11 @@ def analyze(job_id: str):
     if not candidates:
         raise HTTPException(422, "No 20-60s standalone candidates found")
     source = Path(job["video_path"])
-    scenes = detect_scene_changes(source, 0.0, min(float(job.get("meta", {}).get("format", {}).get("duration") or 60.0), 600.0))
-    subjects = detect_face_subjects(source, 0.0, min(float(job.get("meta", {}).get("format", {}).get("duration") or 60.0), 600.0))
-    job.update({"status": "analyzed", "transcript": transcript, "candidates": candidates, "selected_candidate_id": candidates[0]["id"], "vision": {"scene_count": len(scenes), "scenes": scenes, "subject_samples": subjects}})
+    duration = min(float(job.get("meta", {}).get("format", {}).get("duration") or 60.0), 600.0)
+    scenes = detect_scene_changes(source, 0.0, duration)
+    ranked = rerank_candidates(candidates, scenes, target_duration=45.0, limit=10)
+    subjects = detect_face_subjects(source, 0.0, duration)
+    job.update({"status": "analyzed", "transcript": transcript, "candidates": ranked, "selected_candidate_id": ranked[0]["id"], "vision": {"scene_count": len(scenes), "scenes": scenes, "subject_samples": subjects}})
     save_job(job_id, job)
     return job
 
