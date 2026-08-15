@@ -7,10 +7,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 REQUIRED = [
-    "app.py", "server.py", "canonical_api.py", "analysis_bundle.py", "captions.py", "compositor.py", "editorial.py", "editorial_ranker.py",
-    "audio_intelligence.py", "fonts.py", "scoring.py", "semantic_ranker.py", "timeline.py",
-    "virtual_camera.py", "vision_quality.py", "youtube.py", "face_sampling.py", "transcription.py",
-    "job_store.py", "process_supervisor.py", "av_sync.py", "streaming_vision.py",
+    "app.py", "server.py", "canonical_api.py", "analysis_bundle.py", "caption_runtime.py", "sequential_vision.py",
+    "captions.py", "compositor.py", "editorial.py", "editorial_ranker.py", "audio_intelligence.py",
+    "fonts.py", "scoring.py", "semantic_ranker.py", "timeline.py", "virtual_camera.py", "vision_quality.py",
+    "youtube.py", "face_sampling.py", "transcription.py", "job_store.py", "process_supervisor.py", "av_sync.py",
+    "streaming_vision.py", "stress_suite.py",
 ]
 AGENT_ROOT = ROOT.parent / "backend" / "agents"
 
@@ -60,12 +61,30 @@ def check_bundle_contract() -> list[str]:
     failures: list[str] = []
     bundle = ROOT / "analysis_bundle.py"
     app = ROOT / "app.py"
+    server = ROOT / "server.py"
+    canonical = ROOT / "canonical_api.py"
     if "SCHEMA_VERSION" not in bundle.read_text(encoding="utf-8"):
         failures.append("analysis_bundle.py has no schema version")
     app_text = app.read_text(encoding="utf-8")
+    server_text = server.read_text(encoding="utf-8")
+    canonical_text = canonical.read_text(encoding="utf-8")
     for needle in ("build_analysis_bundle", '"analysis_bundle": bundle.to_dict()'):
         if needle not in app_text:
             failures.append(f"Canonical app missing analysis bundle wiring: {needle}")
+    for needle in ("build_analysis_bundle", "analysis_bundle=bundle.to_dict()"):
+        if needle not in server_text:
+            failures.append(f"Production server missing analysis bundle wiring: {needle}")
+    if "persisted-analysis-bundle" not in canonical_text:
+        failures.append("Canonical API does not reuse persisted analysis bundle")
+    return failures
+
+
+def check_no_broll_contract() -> list[str]:
+    failures: list[str] = []
+    for filename in ("app.py", "server.py", "canonical_api.py", "analysis_bundle.py"):
+        text = (ROOT / filename).read_text(encoding="utf-8")
+        if '"broll": False' not in text and "broll=False" not in text:
+            failures.append(f"No-B-roll contract missing from {filename}")
     return failures
 
 
@@ -75,6 +94,7 @@ def main() -> int:
     missing_imports = check_imports()
     agent_failures = check_agent_integrity()
     bundle_failures = check_bundle_contract()
+    broll_failures = check_no_broll_contract()
     if syntax_failures:
         print("SYNTAX FAIL")
         print("\n".join(syntax_failures))
@@ -93,6 +113,10 @@ def main() -> int:
         print("ANALYSIS BUNDLE CONTRACT FAIL")
         print("\n".join(bundle_failures))
         return 5
+    if broll_failures:
+        print("NO-BROLL CONTRACT FAIL")
+        print("\n".join(broll_failures))
+        return 6
     print("QUALITY GATE: PASS")
     return 0
 
