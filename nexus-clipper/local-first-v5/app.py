@@ -13,6 +13,7 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from analysis_bundle import build_analysis_bundle
 from audio_intelligence import analyze_audio, audio_signals
 from captions import render_ass
 from compositor import CompositionSpec, build_final_filter, run_ffmpeg
@@ -246,7 +247,15 @@ def analyze(job_id: str):
     scenes = detect_scene_changes(source, 0.0, duration)
     ranked = rerank_candidates(candidates, scenes, target_duration=45.0, limit=10, video=source, transcript=transcript)
     subjects = detect_face_subjects(source, 0.0, duration)
-    job.update({"status": "analyzed", "transcript": transcript, "candidates": ranked, "selected_candidate_id": ranked[0]["id"], "vision": {"scene_count": len(scenes), "scenes": scenes, "subject_samples": subjects}})
+    bundle = build_analysis_bundle(transcript, ranked, scenes, subjects)
+    job.update({
+        "status": "analyzed",
+        "transcript": transcript,
+        "candidates": ranked,
+        "selected_candidate_id": ranked[0]["id"],
+        "analysis_bundle": bundle.to_dict(),
+        "vision": {"scene_count": len(scenes), "scenes": scenes, "subject_samples": subjects},
+    })
     save_job(job_id, job)
     return job
 

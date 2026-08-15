@@ -1,37 +1,119 @@
 from __future__ import annotations
 
+import json
 import os
+import subprocess
+import sys
+import tempfile
+import threading
 from pathlib import Path
 from typing import Any
 
+from process_supervisor import run as supervised_run
 
-def transcribe(video: Path, language: str | None = None) -> dict[str, Any]:
+_MODEL_CACHE: dict[tuple[str, str, str], Any] = {}
+_MODEL_LOCK = threading.Lock()
+
+
+def _model() -> Any:
     try:
         from faster_whisper import WhisperModel
     except ImportError as exc:  # pragma: no cover
         raise RuntimeError("faster-whisper belum terpasang") from exc
-
     device = os.getenv("WHISPER_DEVICE", "cpu")
     compute = os.getenv("WHISPER_COMPUTE", "int8" if device == "cpu" else "float16")
     model_name = os.getenv("WHISPER_MODEL", "small")
-    model = WhisperModel(model_name, device=device, compute_type=compute)
-    segments, info = model.transcribe(
-        str(video),
-        word_timestamps=True,
-        vad_filter=True,
-        language=language or None,
-    )
+    key = (model_name, device, compute)
+    with _MODEL_LOCK:
+        model = _MODEL_CACHE.get(key)
+        if model is None:
+            model = WhisperModel(model_name, device=device, compute_type=compute)
+            _MODEL_CACHE[key] = model
+        return model
+
+
+def _probe_duration(video: Path) -> float:
+    cmd = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(video)]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr[-1200:] or "Unable to read media duration")
+    try:
+        return max(0.0, float(result.stdout.strip()))
+    except ValueError as exc:
+        raise RuntimeError("FFprobe returned invalid media duration") from exc
+
+
+def _chunk_audio(video: Path, start: float, duration: float, target: Path) -> None:
+    cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-ss", f"{start:.3f}", "-i", str(video), "-t", f"{duration:.3f}", "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", str(target)]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=max(900, int(duration * 4)))
+    if result.returncode != 0 or not target.exists() or target.stat().st_size == 0:
+        raise RuntimeError(result.stderr[-1500:] or "Unable to extract transcription chunk")
+
+
+def _transcribe_file(model: Any, media: Path, language: str | None, offset: float, id_start: int) -> tuple[list[dict[str, Any]], str | None]:
+    segments, info = model.transcribe(str(media), word_timestamps=True, vad_filter=True, language=language or None)
     out: list[dict[str, Any]] = []
-    for idx, seg in enumerate(segments):
-        words = [
-            {"word": w.word, "start": float(w.start), "end": float(w.end)}
-            for w in (seg.words or [])
-        ]
-        out.append({
-            "id": idx,
-            "start": float(seg.start),
-            "end": float(seg.end),
-            "text": seg.text.strip(),
-            "words": words,
-        })
-    return {"language": info.language, "segments": out}
+    for idx, seg in enumerate(segments, id_start):
+        words = [{"word": w.word, "start": float(w.start) + offset, "end": float(w.end) + offset} for w in (seg.words or [])]
+        out.append({"id": idx, "start": float(seg.start) + offset, "end": float(seg.end) + offset, "text": seg.text.strip(), "words": words})
+    return out, getattr(info, "language", None)
+
+
+def _transcribe_internal(video: Path, language: str | None = None) -> dict[str, Any]:
+    duration = _probe_duration(video)
+    chunk_seconds = max(300, min(1800, int(os.getenv("WHISPER_CHUNK_SECONDS", "900"))))
+    overlap = max(0.0, min(5.0, float(os.getenv("WHISPER_CHUNK_OVERLAP_SECONDS", "1.0"))))
+    model = _model()
+    all_segments: list[dict[str, Any]] = []
+    detected_language: str | None = language
+    with tempfile.TemporaryDirectory(prefix="nexus-whisper-") as tmp:
+        tmp_root = Path(tmp)
+        logical_start = 0.0
+        next_id = 0
+        while logical_start < duration:
+            logical_end = min(duration, logical_start + float(chunk_seconds))
+            chunk_start = max(0.0, logical_start - overlap if logical_start > 0 else 0.0)
+            chunk_end = min(duration, logical_end + overlap)
+            chunk = tmp_root / f"chunk-{next_id:06d}.wav"
+            _chunk_audio(video, chunk_start, chunk_end - chunk_start, chunk)
+            segments, detected = _transcribe_file(model, chunk, language, chunk_start, next_id)
+            for segment in segments:
+                if segment["end"] <= logical_start or segment["start"] >= logical_end:
+                    continue
+                segment["start"] = max(logical_start, segment["start"])
+                segment["end"] = min(logical_end, segment["end"])
+                segment["words"] = [w for w in segment["words"] if w["end"] > logical_start and w["start"] < logical_end]
+                all_segments.append(segment)
+            if detected_language is None and detected:
+                detected_language = detected
+            next_id = len(all_segments)
+            logical_start = logical_end
+    all_segments.sort(key=lambda item: (float(item["start"]), float(item["end"]), int(item["id"])))
+    for idx, segment in enumerate(all_segments):
+        segment["id"] = idx
+    return {"language": detected_language, "segments": all_segments}
+
+
+def transcribe_external(video: Path, language: str | None = None, *, job_id: str | None = None) -> dict[str, Any]:
+    with tempfile.NamedTemporaryFile(prefix="nexus-transcript-", suffix=".json", delete=False) as handle:
+        output = Path(handle.name)
+    try:
+        worker = Path(__file__).resolve().with_name("transcription_worker.py")
+        cmd = [sys.executable, str(worker), "--input", str(video), "--output", str(output)]
+        if language:
+            cmd.extend(["--language", language])
+        key = f"transcribe:{job_id or video.parent.name}"
+        result = supervised_run(cmd, key=key, timeout=int(os.getenv("WHISPER_PROCESS_TIMEOUT_SECONDS", "21600")))
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr[-2500:] or "Whisper worker failed")
+        if not output.exists():
+            raise RuntimeError("Whisper worker produced no transcript")
+        return json.loads(output.read_text(encoding="utf-8"))
+    finally:
+        output.unlink(missing_ok=True)
+
+
+def transcribe(video: Path, language: str | None = None) -> dict[str, Any]:
+    if os.getenv("NEXUS_TRANSCRIPTION_WORKER") == "1":
+        return _transcribe_internal(video, language)
+    return transcribe_external(video, language, job_id=video.parent.name)

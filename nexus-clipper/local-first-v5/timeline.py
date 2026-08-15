@@ -8,7 +8,12 @@ from typing import Any, Iterable
 
 from audio_intelligence import analyze_audio
 
-FILLERS = {"um", "uh", "hmm", "hm", "eee", "aaa", "eh", "anu", "kayak", "like", "you know", "youknow", "actually", "basically", "maksud saya", "gitu", "jadi", "nah"}
+# Only high-confidence disfluencies are hard-cut by default. Context-sensitive
+# words such as "jadi", "nah", "like", and "actually" remain intact.
+FILLERS = {
+    "um", "uh", "hmm", "hm", "eee", "aaa", "eh", "anu",
+    "you know", "youknow", "maksud saya",
+}
 
 
 @dataclass(frozen=True)
@@ -91,7 +96,11 @@ def parse_silences(stderr: str) -> list[Cut]:
 def detect_silence(video: Path, start: float, end: float, noise_db: str = "-35dB", min_duration: float = 0.45) -> list[Cut]:
     if end <= start:
         return []
-    cmd = ["ffmpeg", "-hide_banner", "-nostats", "-ss", f"{start:.3f}", "-i", str(video), "-t", f"{end-start:.3f}", "-vn", "-af", f"silencedetect=noise={noise_db}:d={min_duration}", "-f", "null", "-"]
+    cmd = [
+        "ffmpeg", "-hide_banner", "-nostats", "-ss", f"{start:.3f}", "-i", str(video),
+        "-t", f"{end-start:.3f}", "-vn", "-af", f"silencedetect=noise={noise_db}:d={min_duration}",
+        "-f", "null", "-",
+    ]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
     if r.returncode not in (0, 1):
         return []
@@ -118,39 +127,59 @@ def detect_fillers(segments: list[dict[str, Any]], start: float, end: float) -> 
     return cuts
 
 
-def detect_repetition(segments: list[dict[str, Any]], start: float, end: float) -> list[Cut]:
-    cuts: list[Cut] = []
+def _flatten_words(segments: list[dict[str, Any]], start: float, end: float) -> list[dict[str, Any]]:
+    words: list[dict[str, Any]] = []
     for seg in segments:
-        words = seg.get("words") or []
-        if len(words) < 6:
-            continue
-        norm = [_normalise_word(w.get("word", "")) for w in words]
-        for n in (3, 4, 5):
-            for i in range(0, len(words) - (2 * n) + 1):
-                a, b = norm[i:i+n], norm[i+n:i+2*n]
-                if a != b or not all(a):
-                    continue
-                first_end = float(words[i+n-1].get("end", words[i+n-1].get("start", 0)))
-                second_start = float(words[i+n].get("start", first_end))
-                if 0 <= second_start - first_end <= 0.35:
-                    s = max(start, float(words[i].get("start", 0)))
-                    e = min(end, second_start)
-                    if e - s >= 0.12:
-                        cuts.append(Cut(s, e, "repetition"))
-                        break
-            if cuts:
-                break
+        for word in seg.get("words", []) or []:
+            try:
+                ws, we = float(word.get("start", 0)), float(word.get("end", 0))
+            except (TypeError, ValueError):
+                continue
+            if we <= start or ws >= end or we <= ws:
+                continue
+            words.append({"word": _normalise_word(str(word.get("word", ""))), "start": ws, "end": we})
+    words.sort(key=lambda item: (item["start"], item["end"]))
+    return words
+
+
+def detect_repetition(segments: list[dict[str, Any]], start: float, end: float) -> list[Cut]:
+    words = _flatten_words(segments, start, end)
+    if len(words) < 6:
+        return []
+    cuts: list[Cut] = []
+    for n in (3, 4, 5):
+        upper = len(words) - (2 * n) + 1
+        for i in range(max(0, upper)):
+            a = [w["word"] for w in words[i:i+n]]
+            b = [w["word"] for w in words[i+n:i+2*n]]
+            if not a or a != b or not all(a):
+                continue
+            first_end = words[i+n-1]["end"]
+            second_start = words[i+n]["start"]
+            if 0 <= second_start - first_end <= 0.35:
+                s = max(start, words[i]["start"])
+                e = min(end, second_start)
+                if e - s >= 0.12:
+                    cuts.append(Cut(s, e, "repetition"))
+                    break
+        if cuts:
+            break
     return cuts
+
+
+def _audio_profile_from_clip(clip: dict[str, Any], video: Path, start: float, end: float, segments: list[dict[str, Any]]) -> dict[str, Any]:
+    cached = clip.get("audio_profile")
+    if isinstance(cached, dict) and cached:
+        return dict(cached)
+    return analyze_audio(video, start, end, speech_segments=segments).to_dict()
 
 
 def build_timeline(video: Path, transcript: dict[str, Any], clip: dict[str, Any]) -> EditTimeline:
     start, end = float(clip["start"]), float(clip["end"])
     duration = max(0.0, end - start)
     segments = transcript.get("segments", [])
-    audio_profile = analyze_audio(video, start, end, speech_segments=segments).to_dict()
-    min_silence = 0.65
-    if audio_profile.get("rhythm_score", 50.0) < 40.0:
-        min_silence = 0.5
+    audio_profile = _audio_profile_from_clip(clip, video, start, end, segments)
+    min_silence = 0.65 if float(audio_profile.get("rhythm_score", 50.0)) >= 40.0 else 0.5
     silence = detect_silence(video, start, end, min_duration=0.45)
     filler = detect_fillers(segments, start, end)
     repetition = detect_repetition(segments, start, end)
@@ -179,12 +208,29 @@ def build_timeline(video: Path, transcript: dict[str, Any], clip: dict[str, Any]
     return EditTimeline(start, end, duration, output_cursor, tuple(safe_cuts), tuple(keep), audio_profile)
 
 
+def remap_word_fragments(word: dict[str, Any], timeline: EditTimeline) -> list[dict[str, Any]]:
+    try:
+        start = float(word.get("start", 0.0))
+        end = float(word.get("end", 0.0))
+    except (TypeError, ValueError):
+        return []
+    if end <= start:
+        return []
+    fragments: list[dict[str, Any]] = []
+    for keep in timeline.keep_ranges:
+        overlap_start = max(start, keep.source_start)
+        overlap_end = min(end, keep.source_end)
+        if overlap_end <= overlap_start:
+            continue
+        mapped_start = keep.output_start + (overlap_start - keep.source_start)
+        mapped_end = keep.output_start + (overlap_end - keep.source_start)
+        fragments.append({"word": word.get("word", ""), "start": mapped_start, "end": mapped_end})
+    return fragments
+
+
 def remap_word(word: dict[str, Any], timeline: EditTimeline) -> dict[str, Any] | None:
-    s = timeline.source_to_output(float(word.get("start", 0)))
-    e = timeline.source_to_output(float(word.get("end", 0)))
-    if s is None or e is None or e <= s:
-        return None
-    return {"word": word.get("word", ""), "start": s, "end": e}
+    fragments = remap_word_fragments(word, timeline)
+    return fragments[0] if len(fragments) == 1 else None
 
 
 def ffmpeg_filter_for_timeline(timeline: EditTimeline) -> tuple[str, str]:

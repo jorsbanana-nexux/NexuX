@@ -39,6 +39,13 @@ jobs:
       - name: Install local-first V5 dependencies
         working-directory: nexus-clipper/local-first-v5
         run: python -m pip install -r requirements-local.txt pytest
+      - name: Verify checked-out server source
+        working-directory: nexus-clipper/local-first-v5
+        run: |
+          echo "--- server.py lines 350-370 ---"
+          nl -ba server.py | sed -n '350,370p'
+          echo "--- server.py syntax check ---"
+          python -m py_compile server.py
       - name: Compile V5 modules
         working-directory: nexus-clipper/local-first-v5
         run: python -m compileall -q .
