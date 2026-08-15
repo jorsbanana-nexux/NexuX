@@ -27,7 +27,7 @@ def read(root: Path, job_id: str) -> dict[str, Any]:
         return json.loads(path.read_text(encoding="utf-8"))
 
 
-def write(root: Path, job: dict[str, Any]) -> None:
+def write(root: Path, job: dict[str, Any]) -> dict[str, Any]:
     job_id = str(job["job_id"])
     path = path_for(root, job_id)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -47,13 +47,28 @@ def write(root: Path, job: dict[str, Any]) -> None:
                 os.unlink(tmp_name)
             except FileNotFoundError:
                 pass
+    return payload
 
 
 def update(root: Path, job: dict[str, Any], **changes: Any) -> dict[str, Any]:
-    current = dict(job)
-    current.update(changes)
-    write(root, current)
-    return current
+    job_id = str(job["job_id"])
+    path = path_for(root, job_id)
+    with _lock(path):
+        try:
+            current = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            current = dict(job)
+        merged = dict(current)
+        merged.update(changes)
+        if not changes:
+            # A caller passing a stale snapshot must not overwrite newer state.
+            merged = dict(current)
+        if current.get("status") in {"cancelled", "completed", "failed", "interrupted"} and changes.get("status") not in {None, current.get("status")}:
+            merged["status"] = current["status"]
+            merged["stage"] = current.get("stage", merged.get("stage"))
+            if current.get("error"):
+                merged["error"] = current["error"]
+        return write(root, merged)
 
 
 def recover_interrupted(root: Path) -> int:
