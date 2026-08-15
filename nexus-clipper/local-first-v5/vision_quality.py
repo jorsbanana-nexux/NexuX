@@ -48,10 +48,15 @@ def media_stream_summary(path: Path) -> dict[str, Any]:
     }
 
 
-def detect_scene_changes(path: Path, start: float = 0.0, end: float | None = None, threshold: float = 0.34, sample_fps: float = 2.0) -> list[dict[str, Any]]:
+def _open_capture(path: Path):
     cap = cv2.VideoCapture(str(path))
     if not cap.isOpened():
         raise RuntimeError(f"Unable to open video: {path}")
+    return cap
+
+
+def detect_scene_changes(path: Path, start: float = 0.0, end: float | None = None, threshold: float = 0.34, sample_fps: float = 2.0) -> list[dict[str, Any]]:
+    cap = _open_capture(path)
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0.0
     duration = frame_count / fps if frame_count else 0.0
@@ -81,29 +86,64 @@ def detect_scene_changes(path: Path, start: float = 0.0, end: float | None = Non
         cap.release()
     if scenes:
         scenes[-1]["end"] = end
-    result = []
-    for item in scenes:
-        if "end" not in item:
+    return [
+        {
+            "start": round(float(item["start"]), 3),
+            "end": round(float(item["end"]), 3),
+            "duration": round(float(item["end"] - item["start"]), 3),
+            "change_score": float(item.get("change_score", 0.0)),
+        }
+        for item in scenes
+        if "end" in item
+    ]
+
+
+def _motion_subjects(cap, width: int, height: int, t: float, frame, previous_gray) -> list[dict[str, Any]]:
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    gray = cv2.GaussianBlur(gray, (7, 7), 0)
+    if previous_gray is None:
+        return []
+    delta = cv2.absdiff(gray, previous_gray)
+    _, mask = cv2.threshold(delta, 18, 255, cv2.THRESH_BINARY)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+    mask = cv2.dilate(mask, kernel, iterations=2)
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    items: list[dict[str, Any]] = []
+    min_area = max(100.0, width * height * 0.004)
+    for contour in sorted(contours, key=cv2.contourArea, reverse=True)[:4]:
+        area = float(cv2.contourArea(contour))
+        if area < min_area:
             continue
-        result.append({"start": round(float(item["start"]), 3), "end": round(float(item["end"]), 3), "duration": round(float(item["end"] - item["start"]), 3), "change_score": float(item.get("change_score", 0.0))})
-    return result
+        x, y, w, h = cv2.boundingRect(contour)
+        items.append({
+            "x": round(x / width, 5), "y": round(y / height, 5),
+            "w": round(w / width, 5), "h": round(h / height, 5),
+            "confidence": round(min(0.85, max(0.2, area / max(width * height * 0.25, 1.0))), 4),
+            "kind": "motion",
+        })
+    return items
 
 
 def detect_face_subjects(path: Path, start: float = 0.0, end: float | None = None, sample_fps: float = 3.0) -> list[dict[str, Any]]:
-    cap = cv2.VideoCapture(str(path))
-    if not cap.isOpened():
-        raise RuntimeError(f"Unable to open video: {path}")
+    cap = _open_capture(path)
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0.0
     duration = frame_count / fps if frame_count else 0.0
     end = duration if end is None else min(end, duration)
-    detector = cv2.CascadeClassifier(str(Path(cv2.data.haarcascades) / "haarcascade_frontalface_default.xml"))
-    if detector.empty():
-        cap.release()
-        return []
     step = max(1.0 / max(sample_fps, 0.5), 0.05)
     t = max(0.0, start)
     observations: list[dict[str, Any]] = []
+    previous_gray = None
+    detector = None
+    if hasattr(cv2, "CascadeClassifier") and hasattr(cv2, "data"):
+        cascade_path = Path(cv2.data.haarcascades) / "haarcascade_frontalface_default.xml"
+        try:
+            detector = cv2.CascadeClassifier(str(cascade_path))
+            if detector.empty():
+                detector = None
+        except (AttributeError, cv2.error):
+            detector = None
     try:
         while t < end:
             cap.set(cv2.CAP_PROP_POS_MSEC, t * 1000.0)
@@ -112,13 +152,28 @@ def detect_face_subjects(path: Path, start: float = 0.0, end: float | None = Non
                 t += step
                 continue
             height, width = frame.shape[:2]
-            gray = cv2.equalizeHist(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
-            faces = detector.detectMultiScale(gray, scaleFactor=1.08, minNeighbors=5, minSize=(max(24, width // 12), max(24, height // 12)))
-            items = []
-            for x, y, w, h in sorted(faces, key=lambda r: r[2] * r[3], reverse=True)[:6]:
-                area = (w * h) / max(float(width * height), 1.0)
-                items.append({"x": round(x / width, 5), "y": round(y / height, 5), "w": round(w / width, 5), "h": round(h / height, 5), "confidence": round(min(1.0, 0.35 + area * 12.0), 4), "kind": "face"})
-            observations.append({"timestamp": round(t, 3), "faces": items})
+            faces: list[dict[str, Any]] = []
+            if detector is not None:
+                gray = cv2.equalizeHist(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
+                try:
+                    detections = detector.detectMultiScale(
+                        gray, scaleFactor=1.08, minNeighbors=5,
+                        minSize=(max(24, width // 12), max(24, height // 12)),
+                    )
+                except cv2.error:
+                    detections = ()
+                for x, y, w, h in sorted(detections, key=lambda r: r[2] * r[3], reverse=True)[:6]:
+                    area = (w * h) / max(float(width * height), 1.0)
+                    faces.append({
+                        "x": round(x / width, 5), "y": round(y / height, 5),
+                        "w": round(w / width, 5), "h": round(h / height, 5),
+                        "confidence": round(min(1.0, 0.35 + area * 12.0), 4),
+                        "kind": "face",
+                    })
+            if not faces:
+                faces = _motion_subjects(cap, width, height, t, frame, previous_gray)
+            previous_gray = cv2.GaussianBlur(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (7, 7), 0)
+            observations.append({"timestamp": round(t, 3), "faces": faces, "detector": "haar" if detector is not None else "motion"})
             t += step
     finally:
         cap.release()
@@ -127,9 +182,7 @@ def detect_face_subjects(path: Path, start: float = 0.0, end: float | None = Non
 
 def visual_quality(path: Path, start: float = 0.0, end: float | None = None, sample_fps: float = 2.0) -> dict[str, Any]:
     media = media_stream_summary(path)
-    cap = cv2.VideoCapture(str(path))
-    if not cap.isOpened():
-        raise RuntimeError(f"Unable to open video: {path}")
+    cap = _open_capture(path)
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
     frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0.0
     duration = frame_count / fps if frame_count else 0.0
