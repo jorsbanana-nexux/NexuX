@@ -6,7 +6,7 @@ This document is intentionally conservative. An agent is not considered producti
 
 The canonical product is **Local-First V5 clipping without B-roll**. Its production path is:
 
-`YouTube -> local download -> local transcription -> semantic ranking -> Smart EDL -> subject-aware camera -> captions -> FFmpeg`
+`YouTube -> local download -> local transcription -> semantic + audio + vision analysis -> editorial ranking -> Smart EDL -> subject-aware camera -> captions -> FFmpeg -> render QA`
 
 ## Agent status
 
@@ -22,17 +22,17 @@ The canonical product is **Local-First V5 clipping without B-roll**. Its product
 | 08 Emotion Controller | Keyword-based emotion mapping | Candidate enrichment utility; not a media renderer |
 | 09 Spatial 8D Audio | Metadata-only placeholder; does not transform audio | Must not be called production audio processing |
 | 10 Breath Injector | Returns injection points only | Generation-mode planning utility |
-| 11 Scene Segmenter | Legacy implementation currently fabricated timestamps | Must be rewritten before production use |
-| 12 Subject Tracker | Legacy implementation currently returns hard-coded coordinates | Must be rewritten before production use |
-| 13 Visual Quality Checker | Legacy implementation currently returns a fixed passing score | Must be rewritten before production use |
+| 11 Scene Segmenter | Real media-backed scene detection adapter | Compatibility adapter over V5 vision; not the canonical pipeline entrypoint |
+| 12 Subject Tracker | Real media-backed subject observations | Compatibility adapter over V5 vision; not the canonical pipeline entrypoint |
+| 13 Visual Quality Checker | Real media-backed visual quality inspection | Compatibility adapter over V5 QA; watermark removal is not supported |
 | 14 Lip Sync | Explicit GPU placeholder; no lip-sync transform | Disabled in canonical clipper mode |
 | 15 B-roll Blocker | Real policy guard | Active as a guard; B-roll remains forbidden |
 | 16 Subtitle Designer | Builds text/SRT metadata only | V5 captions renderer is canonical |
 | 17 Sound Designer | Produces SFX plan only; no audio asset/render step | Disabled until connected to real local assets |
 | 18 Music Selector | Produces genre/ducking plan only | Disabled until a real local music source is provided |
 | 19 Transition AI | Produces transition labels only | Disabled until connected to real scene/timeline transforms |
-| 20 Professional Editor | Builds a filter-chain plan and contains evasion parameters | Not safe for canonical mode; evasion transforms are not part of NexuX |
-| 21 Quality Inspector | Returns fixed PASS checks | Must be rewritten to inspect real media |
+| 20 Professional Editor | Legacy compatibility wrapper; evasion transforms removed | Isolated from canonical rendering and rejects evasion parameters |
+| 21 Quality Inspector | Real media-backed post-render inspection | Compatibility adapter over V5 QA |
 | 22 Audience Predictor | Static heuristic with hard-coded weights | V5 scorer is canonical; this is not a platform prediction model |
 | 23 Auto Improver | Retry decision only; no actual improvement transform | Disabled until a concrete improvement strategy exists |
 | 24 Omni Exporter | Generates export plans only | V5 compositor/export path is canonical |
@@ -40,15 +40,19 @@ The canonical product is **Local-First V5 clipping without B-roll**. Its product
 
 ## Zero-cost rule
 
-The canonical V5 pipeline does not require paid cloud AI APIs. Network access is limited to source acquisition through yt-dlp. Local Whisper, OpenCV, FFmpeg, PySceneDetect, semantic heuristics, and deterministic render logic remain the core.
+The canonical V5 pipeline does not require paid cloud AI APIs. Network access is limited to source acquisition through yt-dlp. Local Whisper, OpenCV, FFmpeg, PySceneDetect, semantic/audio/vision heuristics, and deterministic render logic remain the core.
 
 ## No-B-roll rule
 
 No agent may fetch, generate, synthesize, or insert B-roll automatically. Agent 15 is a guard, not a feature provider.
 
-## Next hardening targets
+## Integrity rules
 
-1. Replace agents 11, 12, 13, and 21 with real media-backed implementations.
-2. Remove or isolate any legacy evasion behavior from agent 20.
-3. Add explicit adapter tests so compatibility agents cannot silently diverge from V5 contracts.
-4. Only then mark additional agents as production-integrated.
+Agent 11 must not fabricate scene timestamps. Agent 12 must not return hard-coded subject coordinates. Agent 13 must not return fixed quality scores. Agent 21 must not return fixed PASS checks. Agent 20 must not contain fingerprint-evasion transforms such as speed shifts, flips, saturation tricks, or zoom-based evasion. These invariants are enforced by the V5 quality gate.
+
+## Remaining hardening targets
+
+1. Connect only those compatibility agents that have a concrete local capability to canonical V5 contracts.
+2. Keep planning-only agents isolated until they produce real artifacts used by a stage.
+3. Add broader adapter coverage for the remaining compatibility agents without creating a second rendering pipeline.
+4. Continue real-media end-to-end validation on representative source videos.
