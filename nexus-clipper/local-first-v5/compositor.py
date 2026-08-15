@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
-import math
 import subprocess
 
 from virtual_camera import CameraPoint
@@ -14,6 +12,23 @@ class CompositionSpec:
     width: int = 1080
     height: int = 1920
     crf: int = 20
+
+    @property
+    def aspect(self) -> float:
+        return self.width / max(self.height, 1)
+
+
+def spec_for_aspect_ratio(aspect_ratio: str) -> CompositionSpec:
+    presets = {
+        "9:16": (1080, 1920),
+        "1:1": (1080, 1080),
+        "16:9": (1920, 1080),
+        "4:5": (1080, 1350),
+        "2:3": (1080, 1620),
+        "21:9": (1920, 822),
+    }
+    width, height = presets.get(aspect_ratio, presets["9:16"])
+    return CompositionSpec(width=width, height=height)
 
 
 def _piecewise_linear(points: list[tuple[float, float]], t_var: str = "t") -> str:
@@ -76,7 +91,9 @@ def build_final_filter(
     source_height: int,
     spec: CompositionSpec = CompositionSpec(),
 ) -> str:
-    crop_w, crop_h, x, y = camera_crop_expressions(camera_points, source_width, source_height)
+    crop_w, crop_h, x, y = camera_crop_expressions(
+        camera_points, source_width, source_height, spec.aspect
+    )
     ass = str(ass_path).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
     video = (
         f"[vout]crop={crop_w}:{crop_h}:x='{x}':y='{y}',"
@@ -92,6 +109,7 @@ def run_ffmpeg(
     audio_label: str = "[aout]",
     spec: CompositionSpec = CompositionSpec(),
 ) -> None:
+    output.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
         "ffmpeg", "-y", "-i", str(source),
         "-filter_complex", filter_complex,
