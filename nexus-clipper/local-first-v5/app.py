@@ -13,6 +13,7 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from audio_intelligence import analyze_audio, audio_signals
 from captions import render_ass
 from compositor import CompositionSpec, build_final_filter, run_ffmpeg
 from editorial import to_dict, editorial_metadata
@@ -21,6 +22,7 @@ from face_sampling import sample_faces
 from fonts import install_font, list_fonts
 from scoring import rank_score, score_text
 from timeline import build_timeline
+from transcription import transcribe
 from virtual_camera import SubjectObservation, build_camera_path, path_to_dict
 from vision_quality import detect_scene_changes, detect_face_subjects, inspect_render, media_stream_summary, tool_state
 from youtube import download_youtube, probe_youtube
@@ -37,7 +39,7 @@ for p in (UPLOADS, JOBS, OUTPUTS, FONTS):
 MAX_UPLOAD = int(os.getenv("MAX_UPLOAD_MB", "1024")) * 1024 * 1024
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
 
-app = FastAPI(title="NexuX Local-First V5", version="5.7.0")
+app = FastAPI(title="NexuX Local-First V5", version="5.8.0")
 
 
 class YouTubeImport(BaseModel):
@@ -76,20 +78,8 @@ def load_job(job_id: str) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def transcribe_local(video: Path) -> dict[str, Any]:
-    try:
-        from faster_whisper import WhisperModel
-    except ImportError as exc:
-        raise RuntimeError("faster-whisper belum terpasang") from exc
-    device = os.getenv("WHISPER_DEVICE", "cpu")
-    compute = os.getenv("WHISPER_COMPUTE", "int8" if device == "cpu" else "float16")
-    model = WhisperModel(WHISPER_MODEL, device=device, compute_type=compute)
-    segments, info = model.transcribe(str(video), word_timestamps=True, vad_filter=True)
-    out: list[dict[str, Any]] = []
-    for idx, seg in enumerate(segments):
-        words = [{"word": w.word, "start": float(w.start), "end": float(w.end)} for w in (seg.words or [])]
-        out.append({"id": idx, "start": float(seg.start), "end": float(seg.end), "text": seg.text.strip(), "words": words})
-    return {"language": info.language, "segments": out}
+def transcribe_local(video: Path, language: str | None = None) -> dict[str, Any]:
+    return transcribe(video, language=language)
 
 
 def build_candidates(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -117,12 +107,32 @@ def build_candidates(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return result
 
 
-def rerank_candidates(candidates: list[dict[str, Any]], scene_boundaries: list[dict[str, Any]] | None = None, target_duration: float = 45.0, limit: int = 10) -> list[dict[str, Any]]:
+def rerank_candidates(
+    candidates: list[dict[str, Any]],
+    scene_boundaries: list[dict[str, Any]] | None = None,
+    target_duration: float = 45.0,
+    limit: int = 10,
+    video: Path | None = None,
+    transcript: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    audio_profiles: dict[str, dict[str, float]] = {}
+    if video is not None:
+        segments = (transcript or {}).get("segments", [])
+        for candidate in candidates:
+            profile = analyze_audio(
+                video,
+                float(candidate["start"]),
+                float(candidate["end"]),
+                speech_segments=segments,
+            )
+            audio_profiles[candidate["id"]] = audio_signals(profile)
+            candidate["audio_profile"] = profile.to_dict()
     return select_diverse(
         candidates,
         limit=limit,
         target_duration=target_duration,
         scene_boundaries=scene_boundaries,
+        audio_profiles=audio_profiles,
     )
 
 
@@ -178,7 +188,7 @@ def render(video: Path, job: dict[str, Any], clip: dict[str, Any], output: Path,
 
 @app.get("/health")
 def health() -> dict[str, Any]:
-    return {"status": "ok", **tool_state(), "whisper_model": WHISPER_MODEL, "broll": False, "vision_quality": True, "editorial_ranker": True}
+    return {"status": "ok", **tool_state(), "whisper_model": WHISPER_MODEL, "broll": False, "vision_quality": True, "editorial_ranker": True, "audio_intelligence": True}
 
 
 @app.post("/youtube/preview")
@@ -245,7 +255,7 @@ def analyze(job_id: str):
     source = Path(job["video_path"])
     duration = min(float(job.get("meta", {}).get("format", {}).get("duration") or 60.0), 600.0)
     scenes = detect_scene_changes(source, 0.0, duration)
-    ranked = rerank_candidates(candidates, scenes, target_duration=45.0, limit=10)
+    ranked = rerank_candidates(candidates, scenes, target_duration=45.0, limit=10, video=source, transcript=transcript)
     subjects = detect_face_subjects(source, 0.0, duration)
     job.update({"status": "analyzed", "transcript": transcript, "candidates": ranked, "selected_candidate_id": ranked[0]["id"], "vision": {"scene_count": len(scenes), "scenes": scenes, "subject_samples": subjects}})
     save_job(job_id, job)
@@ -281,13 +291,20 @@ def get_fonts():
 @app.post("/fonts")
 async def post_font(file: UploadFile = File(...)):
     source = FONTS / f"upload-{uuid.uuid4().hex}{Path(file.filename or '').suffix.lower()}"
-    source.write_bytes(await file.read())
+    size = 0
     try:
+        with source.open("wb") as handle:
+            while chunk := await file.read(1024 * 1024):
+                size += len(chunk)
+                if size > 20 * 1024 * 1024:
+                    raise HTTPException(413, "Font file exceeds 20 MB safety limit")
+                handle.write(chunk)
         result = install_font(source, FONTS)
+        return result
     except ValueError as exc:
-        source.unlink(missing_ok=True); raise HTTPException(422, str(exc)) from exc
-    source.unlink(missing_ok=True)
-    return result
+        raise HTTPException(422, str(exc)) from exc
+    finally:
+        source.unlink(missing_ok=True)
 
 
 @app.get("/job/{job_id}")
