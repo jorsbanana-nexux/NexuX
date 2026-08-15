@@ -34,18 +34,7 @@ def media_stream_summary(path: Path) -> dict[str, Any]:
     except (ValueError, ZeroDivisionError):
         fps = 0.0
     duration = float(info.get("format", {}).get("duration") or video.get("duration") or 0.0)
-    return {
-        "path": str(path),
-        "width": width,
-        "height": height,
-        "fps": fps,
-        "duration": duration,
-        "video_codec": video.get("codec_name"),
-        "audio_present": audio is not None,
-        "audio_codec": audio.get("codec_name") if audio else None,
-        "audio_channels": int(audio.get("channels") or 0) if audio else 0,
-        "size_bytes": path.stat().st_size if path.exists() else 0,
-    }
+    return {"path": str(path), "width": width, "height": height, "fps": fps, "duration": duration, "video_codec": video.get("codec_name"), "audio_present": audio is not None, "audio_codec": audio.get("codec_name") if audio else None, "audio_channels": int(audio.get("channels") or 0) if audio else 0, "size_bytes": path.stat().st_size if path.exists() else 0}
 
 
 def _open_capture(path: Path):
@@ -86,16 +75,7 @@ def detect_scene_changes(path: Path, start: float = 0.0, end: float | None = Non
         cap.release()
     if scenes:
         scenes[-1]["end"] = end
-    return [
-        {
-            "start": round(float(item["start"]), 3),
-            "end": round(float(item["end"]), 3),
-            "duration": round(float(item["end"] - item["start"]), 3),
-            "change_score": float(item.get("change_score", 0.0)),
-        }
-        for item in scenes
-        if "end" in item
-    ]
+    return [{"start": round(float(item["start"]), 3), "end": round(float(item["end"]), 3), "duration": round(float(item["end"] - item["start"]), 3), "change_score": float(item.get("change_score", 0.0))} for item in scenes if "end" in item]
 
 
 def _motion_subjects(cap, width: int, height: int, t: float, frame, previous_gray) -> list[dict[str, Any]]:
@@ -116,12 +96,7 @@ def _motion_subjects(cap, width: int, height: int, t: float, frame, previous_gra
         if area < min_area:
             continue
         x, y, w, h = cv2.boundingRect(contour)
-        items.append({
-            "x": round(x / width, 5), "y": round(y / height, 5),
-            "w": round(w / width, 5), "h": round(h / height, 5),
-            "confidence": round(min(0.85, max(0.2, area / max(width * height * 0.25, 1.0))), 4),
-            "kind": "motion",
-        })
+        items.append({"x": round(x / width, 5), "y": round(y / height, 5), "w": round(w / width, 5), "h": round(h / height, 5), "confidence": round(min(0.85, max(0.2, area / max(width * height * 0.25, 1.0))), 4), "kind": "motion"})
     return items
 
 
@@ -156,20 +131,12 @@ def detect_face_subjects(path: Path, start: float = 0.0, end: float | None = Non
             if detector is not None:
                 gray = cv2.equalizeHist(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY))
                 try:
-                    detections = detector.detectMultiScale(
-                        gray, scaleFactor=1.08, minNeighbors=5,
-                        minSize=(max(24, width // 12), max(24, height // 12)),
-                    )
+                    detections = detector.detectMultiScale(gray, scaleFactor=1.08, minNeighbors=5, minSize=(max(24, width // 12), max(24, height // 12)))
                 except cv2.error:
                     detections = ()
                 for x, y, w, h in sorted(detections, key=lambda r: r[2] * r[3], reverse=True)[:6]:
                     area = (w * h) / max(float(width * height), 1.0)
-                    faces.append({
-                        "x": round(x / width, 5), "y": round(y / height, 5),
-                        "w": round(w / width, 5), "h": round(h / height, 5),
-                        "confidence": round(min(1.0, 0.35 + area * 12.0), 4),
-                        "kind": "face",
-                    })
+                    faces.append({"x": round(x / width, 5), "y": round(y / height, 5), "w": round(w / width, 5), "h": round(h / height, 5), "confidence": round(min(1.0, 0.35 + area * 12.0), 4), "kind": "face"})
             if not faces:
                 faces = _motion_subjects(cap, width, height, t, frame, previous_gray)
             previous_gray = cv2.GaussianBlur(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (7, 7), 0)
@@ -232,16 +199,7 @@ def visual_quality(path: Path, start: float = 0.0, end: float | None = None, sam
     score -= 10.0 if avg_brightness < 35 or avg_brightness > 225 else 0.0
     score -= min(15.0, max(0.0, (30.0 - avg_sharpness) * 0.5))
     score -= 10.0 if media["width"] < 720 or media["height"] < 720 else 0.0
-    return {
-        "passed": not issues,
-        "score": round(max(0.0, min(100.0, score)), 2),
-        "media": media,
-        "sampled_frames": total,
-        "avg_brightness": round(avg_brightness, 2),
-        "avg_sharpness": round(avg_sharpness, 2),
-        "dark_frame_ratio": round(black_ratio, 4),
-        "issues": issues,
-    }
+    return {"passed": not issues, "score": round(max(0.0, min(100.0, score)), 2), "media": media, "sampled_frames": total, "avg_brightness": round(avg_brightness, 2), "avg_sharpness": round(avg_sharpness, 2), "dark_frame_ratio": round(black_ratio, 4), "issues": issues}
 
 
 def inspect_render(path: Path, expected_width: int | None = None, expected_height: int | None = None, min_duration: float | None = None, max_duration: float | None = None) -> dict[str, Any]:
@@ -261,3 +219,9 @@ def inspect_render(path: Path, expected_width: int | None = None, expected_heigh
 
 def tool_state() -> dict[str, bool]:
     return {tool: shutil.which(tool) is not None for tool in ("ffmpeg", "ffprobe", "yt-dlp")}
+
+
+# Long-form scene analysis uses the sequential scanner to avoid repeated random seeks.
+from streaming_vision import detect_scene_changes as _sequential_scene_changes
+
+detect_scene_changes = _sequential_scene_changes
