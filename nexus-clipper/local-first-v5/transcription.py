@@ -58,7 +58,7 @@ def _transcribe_file(model: Any, media: Path, language: str | None, offset: floa
     return out, getattr(info, "language", None)
 
 
-def transcribe(video: Path, language: str | None = None) -> dict[str, Any]:
+def _transcribe_internal(video: Path, language: str | None = None) -> dict[str, Any]:
     duration = _probe_duration(video)
     chunk_seconds = max(300, min(1800, int(os.getenv("WHISPER_CHUNK_SECONDS", "900"))))
     model = _model()
@@ -97,3 +97,9 @@ def transcribe_external(video: Path, language: str | None = None, *, job_id: str
         return json.loads(output.read_text(encoding="utf-8"))
     finally:
         output.unlink(missing_ok=True)
+
+
+def transcribe(video: Path, language: str | None = None) -> dict[str, Any]:
+    if os.getenv("NEXUS_TRANSCRIPTION_WORKER") == "1":
+        return _transcribe_internal(video, language)
+    return transcribe_external(video, language, job_id=video.parent.name)
