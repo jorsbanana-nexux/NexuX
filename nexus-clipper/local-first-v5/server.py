@@ -31,6 +31,7 @@ from app import (
 from captions import PRESETS, render_ass
 from compositor import build_final_filter, run_ffmpeg, spec_for_aspect_ratio
 from timeline import build_timeline, ffmpeg_filter_for_timeline
+from vision_quality import inspect_render, detect_scene_changes, detect_face_subjects, visual_quality
 
 
 router = APIRouter(prefix="/api")
@@ -66,6 +67,8 @@ class CompatJob(BaseModel):
     output_path: str | None = None
     error: str | None = None
     clips: list[str] = Field(default_factory=list)
+    broll: bool = False
+    render_meta: list[dict[str, Any]] = Field(default_factory=list)
 
 
 def _job_path(job_id: str) -> Path:
@@ -153,6 +156,17 @@ def _render_with_spec(video: Path, job: dict[str, Any], clip: dict[str, Any], ou
     edl_graph = ffmpeg_filter_for_timeline(timeline)[0]
     filter_complex = build_final_filter(edl_graph, camera_points, ass, source_w, source_h, spec)
     run_ffmpeg(video, output, filter_complex, spec=spec)
+
+    quality = inspect_render(
+        output,
+        expected_width=spec.width,
+        expected_height=spec.height,
+        min_duration=max(0.1, timeline.duration_after * 0.98),
+        max_duration=timeline.duration_after + 0.25,
+    )
+    if quality["verdict"] != "APPROVED":
+        raise RuntimeError(f"Render quality gate failed: {json.dumps(quality, ensure_ascii=False)}")
+
     return {
         "editorial": to_dict(editorial),
         "caption_preset": req.subtitle_style,
@@ -160,6 +174,7 @@ def _render_with_spec(video: Path, job: dict[str, Any], clip: dict[str, Any], ou
         "camera": {"enabled": bool(req.face_tracking and req.auto_zoom), "points": path_to_dict(camera_points), "point_count": len(camera_points)},
         "source_dimensions": {"width": source_w, "height": source_h},
         "output_dimensions": {"width": spec.width, "height": spec.height},
+        "quality": quality,
         "broll": False,
     }
 
@@ -184,7 +199,6 @@ async def _run_generation(job_id: str, req: GenerateRequest) -> None:
             return
 
         candidates = build_candidates(transcript["segments"])
-        # Keep the canonical heuristic score, but bias selection toward the user's requested duration.
         target = float(req.target_duration)
         candidates.sort(key=lambda c: (float(c.get("viral_score", 0)) - abs(float(c.get("duration", target)) - target) * 0.35), reverse=True)
         candidates = candidates[: req.clip_count]
@@ -203,7 +217,7 @@ async def _run_generation(job_id: str, req: GenerateRequest) -> None:
             info = await asyncio.to_thread(_render_with_spec, video, {**job, "transcript": transcript, "meta": media}, candidate, output, timeline, req)
             rendered.append(_relative_output(output))
             render_meta.append({"candidate_id": candidate["id"], "timeline": timeline.to_dict(), "render": info})
-            _set(job, progress=70 + int(25 * (idx + 1) / len(candidates)), stage=f"rendering {idx + 1}/{len(candidates)}")
+            _set(job, progress=70 + int(25 * (idx + 1) / len(candidates)), stage=f"rendering {idx + 1}/{len(candidates)}", render_meta=render_meta)
 
         _set(job, status="completed", stage="completed", progress=100, output_path=rendered[0], clips=rendered, render_meta=render_meta, broll=False)
     except Exception as exc:
@@ -215,7 +229,7 @@ async def _run_generation(job_id: str, req: GenerateRequest) -> None:
 @router.post("/generate", response_model=CompatJob)
 async def generate(req: GenerateRequest, bg: BackgroundTasks):
     job_id = uuid.uuid4().hex
-    job = {"job_id": job_id, "status": "queued", "progress": 0.0, "stage": "queued", "output_path": None, "error": None, "clips": [], "broll": False}
+    job = {"job_id": job_id, "status": "queued", "progress": 0.0, "stage": "queued", "output_path": None, "error": None, "clips": [], "broll": False, "render_meta": []}
     _write(job)
     bg.add_task(_run_generation, job_id, req)
     return CompatJob(**job)
@@ -263,9 +277,24 @@ async def compat_health():
     }
 
 
+@router.get("/vision/{job_id}")
+async def vision(job_id: str):
+    job = _read(job_id)
+    video = Path(job.get("video_path", ""))
+    if not video.exists():
+        raise HTTPException(404, "Video artifact not found")
+    duration = float((job.get("meta") or {}).get("format", {}).get("duration") or 0.0)
+    return {
+        "job_id": job_id,
+        "duration": duration,
+        "scenes": await asyncio.to_thread(detect_scene_changes, video, 0.0, duration or None),
+        "subjects": await asyncio.to_thread(detect_face_subjects, video, 0.0, duration or None),
+        "quality": await asyncio.to_thread(visual_quality, video, 0.0, duration or None),
+    }
+
+
 @router.get("/styles")
 async def styles():
-    # Return exactly the presets the renderer accepts. This keeps UI and engine contracts aligned.
     ids = [
         "hormozi", "mrbeast", "aliabdaal", "minimalist", "gaming", "cinematic", "neon",
         "typewriter", "tiktok_viral", "documentary", "comedy", "horror", "motivational", "educational", "custom",
