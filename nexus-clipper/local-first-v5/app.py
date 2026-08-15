@@ -21,6 +21,7 @@ from fonts import install_font, list_fonts
 from scoring import rank_score, score_text
 from timeline import build_timeline
 from virtual_camera import SubjectObservation, build_camera_path, path_to_dict
+from vision_quality import detect_scene_changes, detect_face_subjects, inspect_render, media_stream_summary, tool_state
 from youtube import download_youtube, probe_youtube
 
 ROOT = Path(__file__).resolve().parent
@@ -35,7 +36,7 @@ for p in (UPLOADS, JOBS, OUTPUTS, FONTS):
 MAX_UPLOAD = int(os.getenv("MAX_UPLOAD_MB", "1024")) * 1024 * 1024
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
 
-app = FastAPI(title="NexuX Local-First V5", version="5.5.0")
+app = FastAPI(title="NexuX Local-First V5", version="5.6.0")
 
 
 class YouTubeImport(BaseModel):
@@ -163,18 +164,23 @@ def render(video: Path, job: dict[str, Any], clip: dict[str, Any], output: Path,
     if camera_enabled:
         camera_path, source_w, source_h = _output_camera_points(video, clip, timeline, media)
     edl_graph = getattr(__import__("timeline"), "ffmpeg_filter_for_timeline")(timeline)[0]
-    filter_complex = build_final_filter(edl_graph, camera_path, ass, source_w, source_h, CompositionSpec())
-    run_ffmpeg(video, output, filter_complex)
+    spec = CompositionSpec()
+    filter_complex = build_final_filter(edl_graph, camera_path, ass, source_w, source_h, spec)
+    run_ffmpeg(video, output, filter_complex, spec)
+    quality = inspect_render(output, expected_width=spec.width, expected_height=spec.height, min_duration=3.0, max_duration=90.0)
+    if quality["verdict"] != "APPROVED":
+        raise RuntimeError(f"Render quality gate failed: {json.dumps(quality, ensure_ascii=False)}")
     return {
         "editorial": to_dict(editorial),
         "camera": {"enabled": camera_enabled, "points": path_to_dict(camera_path), "point_count": len(camera_path)},
         "source_dimensions": {"width": source_w, "height": source_h},
+        "quality": quality,
     }
 
 
 @app.get("/health")
 def health() -> dict[str, Any]:
-    return {"status": "ok", "ffmpeg": shutil.which("ffmpeg") is not None, "ffprobe": shutil.which("ffprobe") is not None, "yt_dlp": shutil.which("yt-dlp") is not None, "whisper_model": WHISPER_MODEL, "broll": False}
+    return {"status": "ok", **tool_state(), "whisper_model": WHISPER_MODEL, "broll": False, "vision_quality": True}
 
 
 @app.post("/youtube/preview")
@@ -238,7 +244,10 @@ def analyze(job_id: str):
     candidates = build_candidates(transcript["segments"])
     if not candidates:
         raise HTTPException(422, "No 20-60s standalone candidates found")
-    job.update({"status": "analyzed", "transcript": transcript, "candidates": candidates, "selected_candidate_id": candidates[0]["id"]})
+    source = Path(job["video_path"])
+    scenes = detect_scene_changes(source, 0.0, min(float(job.get("meta", {}).get("format", {}).get("duration") or 60.0), 600.0))
+    subjects = detect_face_subjects(source, 0.0, min(float(job.get("meta", {}).get("format", {}).get("duration") or 60.0), 600.0))
+    job.update({"status": "analyzed", "transcript": transcript, "candidates": candidates, "selected_candidate_id": candidates[0]["id"], "vision": {"scene_count": len(scenes), "scenes": scenes, "subject_samples": subjects}})
     save_job(job_id, job)
     return job
 
@@ -253,6 +262,15 @@ def timeline_preview(job_id: str, candidate_id: str):
     except Exception as exc:
         raise HTTPException(500, f"Timeline analysis failed: {exc}") from exc
     return {"job_id": job_id, "candidate_id": candidate_id, "timeline": timeline.to_dict()}
+
+
+@app.get("/vision/{job_id}")
+def vision_preview(job_id: str):
+    job = load_job(job_id)
+    source = Path(job["video_path"])
+    media = media_stream_summary(source)
+    duration = media["duration"]
+    return {"job_id": job_id, "media": media, "scenes": detect_scene_changes(source, 0.0, duration), "subjects": detect_face_subjects(source, 0.0, duration)}
 
 
 @app.get("/fonts")
