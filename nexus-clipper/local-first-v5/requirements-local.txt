@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+pydantic
+python-multipart
+faster-whisper
+numpy
+opencv-python
+pillow
+pyscenedetect
+python-dotenv
