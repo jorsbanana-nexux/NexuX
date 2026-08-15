@@ -1,6 +1,7 @@
 """AGENT_11_SCENE_SEGMENTER - compatibility adapter over Local-First V5 vision."""
 
 from utils.logger import get_logger
+from v5_bridge import detect_scene_changes
 
 log = get_logger("agent_11")
 
@@ -8,13 +9,6 @@ log = get_logger("agent_11")
 class SceneSegmenter:
     async def segment_video(self, video_path, max_duration=None):
         log.info("Segmenting real media: %s", video_path)
-        try:
-            from local_first_v5.vision_quality import detect_scene_changes
-        except ImportError:
-            try:
-                from vision_quality import detect_scene_changes
-            except ImportError as exc:
-                return {"success": False, "video_path": video_path, "error": str(exc)}
         try:
             import cv2
 
