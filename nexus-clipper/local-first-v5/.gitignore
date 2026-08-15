@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.venv/
+data/jobs/*.json
+data/uploads/*
+outputs/*
+assets/fonts/*
