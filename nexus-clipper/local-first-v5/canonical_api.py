@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from pathlib import Path
 
@@ -12,6 +13,7 @@ import server as engine
 from caption_runtime import render_ass_safe
 from sequential_vision import detect_face_subjects, detect_scene_changes, visual_quality
 from server import CompatJob, GenerateRequest
+from transcription import _model
 from vision_quality import inspect_render, media_stream_summary, tool_state
 
 # Canonical runtime adapters. The compatibility runner remains an internal implementation detail.
@@ -54,7 +56,7 @@ async def health() -> dict:
         "vision_scanner": "sequential",
         "caption_boundary_remap": True,
         **tool_state(),
-        "whisper_model": engine.WHISPER_MODEL,
+        "whisper_model": os.getenv("WHISPER_MODEL", "small"),
     }
 
 
