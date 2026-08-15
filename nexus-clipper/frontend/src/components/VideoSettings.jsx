@@ -17,7 +17,6 @@ export default function VideoSettings({ config, updateConfig }) {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {/* Aspect Ratio */}
         <div className="glass-card p-4 col-span-2 md:col-span-1">
           <label className="text-[10px] text-gray-500 block mb-3">Aspect Ratio</label>
           <div className="grid grid-cols-2 gap-2">
@@ -41,21 +40,19 @@ export default function VideoSettings({ config, updateConfig }) {
           </div>
         </div>
 
-        {/* Clip Duration */}
         <div className="glass-card p-4">
           <label className="text-[10px] text-gray-500 block mb-2">
             Clip Duration: <span className="text-spacex-accent">{config.target_duration}s</span>
           </label>
-          <input type="range" min={15} max={180} step={5}
+          <input type="range" min={20} max={60} step={5}
             value={config.target_duration} onChange={e => updateConfig('target_duration', Number(e.target.value))}
             className="w-full"
           />
           <div className="flex justify-between text-[9px] text-gray-700 mt-1">
-            <span>15s</span><span>60s</span><span>180s</span>
+            <span>20s</span><span>40s</span><span>60s</span>
           </div>
         </div>
 
-        {/* Clips Count */}
         <div className="glass-card p-4">
           <label className="text-[10px] text-gray-500 block mb-2">
             Clips to Generate: <span className="text-spacex-accent">{config.clip_count}</span>
@@ -69,7 +66,6 @@ export default function VideoSettings({ config, updateConfig }) {
           </div>
         </div>
 
-        {/* Language */}
         <div className="glass-card p-4">
           <label className="text-[10px] text-gray-500 block mb-2">Language</label>
           <select
@@ -90,7 +86,6 @@ export default function VideoSettings({ config, updateConfig }) {
         </div>
       </div>
 
-      {/* Toggles row */}
       <div className="grid grid-cols-2 gap-3">
         <label className="glass-card p-3 flex items-center justify-between cursor-pointer">
           <div>
