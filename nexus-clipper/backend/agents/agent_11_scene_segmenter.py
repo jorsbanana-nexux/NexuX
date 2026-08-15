@@ -1,21 +1,42 @@
-"""AGENT_11_SCENE_SEGMENTER"""
+"""AGENT_11_SCENE_SEGMENTER - compatibility adapter over Local-First V5 vision."""
 
 from utils.logger import get_logger
+
 log = get_logger("agent_11")
+
 
 class SceneSegmenter:
     async def segment_video(self, video_path, max_duration=None):
-        log.info(f"Segmenting: {video_path}")
+        log.info("Segmenting real media: %s", video_path)
+        try:
+            from local_first_v5.vision_quality import detect_scene_changes
+        except ImportError:
+            try:
+                from vision_quality import detect_scene_changes
+            except ImportError as exc:
+                return {"success": False, "video_path": video_path, "error": str(exc)}
         try:
             import cv2
-            cap = cv2.VideoCapture(video_path)
-            fps = cap.get(cv2.CAP_PROP_FPS) or 30
+
+            cap = cv2.VideoCapture(str(video_path))
+            fps = float(cap.get(cv2.CAP_PROP_FPS) or 30.0)
+            frame_count = float(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0.0)
             cap.release()
-            d = 60
-            segments = [{"start": i*5, "end": (i+1)*5, "duration": 5} for i in range(12)]
-            return {"success": True, "video_path": video_path, "total_duration": d, "fps": fps, "segment_count": len(segments), "segments": segments}
-        except:
-            return {"success": True, "video_path": video_path, "total_duration": 60, "fps": 30, "segment_count": 12,
-                    "segments": [{"start":i*5,"end":(i+1)*5,"duration":5} for i in range(12)], "note": "opencv not installed"}
+            duration = frame_count / fps if fps > 0 and frame_count > 0 else 0.0
+            if max_duration is not None:
+                duration = min(duration, float(max_duration))
+            scenes = detect_scene_changes(video_path, 0.0, duration or None)
+            return {
+                "success": True,
+                "video_path": str(video_path),
+                "total_duration": duration,
+                "fps": fps,
+                "segment_count": len(scenes),
+                "segments": scenes,
+            }
+        except Exception as exc:
+            log.exception("Scene segmentation failed")
+            return {"success": False, "video_path": str(video_path), "error": str(exc)}
+
 
 scene_segmenter = SceneSegmenter()
