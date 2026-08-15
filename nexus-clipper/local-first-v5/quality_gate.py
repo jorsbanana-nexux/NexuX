@@ -10,7 +10,7 @@ REQUIRED = [
     "app.py", "server.py", "captions.py", "compositor.py", "editorial.py", "editorial_ranker.py",
     "audio_intelligence.py", "fonts.py", "scoring.py", "semantic_ranker.py", "timeline.py",
     "virtual_camera.py", "vision_quality.py", "youtube.py", "face_sampling.py", "transcription.py",
-    "job_store.py", "process_supervisor.py", "av_sync.py",
+    "job_store.py", "process_supervisor.py", "av_sync.py", "streaming_vision.py",
 ]
 AGENT_ROOT = ROOT.parent / "backend" / "agents"
 
