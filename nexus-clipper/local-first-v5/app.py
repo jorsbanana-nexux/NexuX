@@ -13,6 +13,8 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from captions import render_ass
+from fonts import install_font, list_fonts
 from scoring import rank_score, score_text
 from timeline import build_timeline, ffmpeg_filter_for_timeline, remap_word
 from youtube import download_youtube, probe_youtube
@@ -22,18 +24,24 @@ DATA = ROOT / "data"
 UPLOADS = DATA / "uploads"
 JOBS = DATA / "jobs"
 OUTPUTS = ROOT / "outputs"
-for p in (UPLOADS, JOBS, OUTPUTS):
+FONTS = ROOT / "assets" / "fonts"
+for p in (UPLOADS, JOBS, OUTPUTS, FONTS):
     p.mkdir(parents=True, exist_ok=True)
 
 MAX_UPLOAD = int(os.getenv("MAX_UPLOAD_MB", "1024")) * 1024 * 1024
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
 
-app = FastAPI(title="NexuX Local-First V5", version="5.2.0")
+app = FastAPI(title="NexuX Local-First V5", version="5.3.0")
 
 
 class YouTubeImport(BaseModel):
     url: str = Field(..., min_length=10, max_length=2000)
     max_height: int = Field(1080, ge=360, le=2160)
+
+
+class RenderOptions(BaseModel):
+    preset: str = Field("karaoke", pattern=r"^(karaoke|pop_line|deep_diver)$")
+    font_name: str | None = Field(None, max_length=160)
 
 
 def ffprobe(path: Path) -> dict[str, Any]:
@@ -123,60 +131,18 @@ def resolve_candidate(job: dict[str, Any], candidate_id: str | None = None) -> d
     return candidate
 
 
-def _ass_escape(text: str) -> str:
-    return text.replace("\\", r"\\").replace("{", r"\\{").replace("}", r"\\}").replace("\n", " ")
-
-
-def make_ass(job: dict[str, Any], clip: dict[str, Any], timeline: Any, out: Path) -> None:
-    events: list[tuple[float, float, str]] = []
-    cs, ce = clip["start"], clip["end"]
-    for seg in job["transcript"]["segments"]:
-        if seg["end"] < cs or seg["start"] > ce:
-            continue
-        words = seg.get("words") or []
-        if not words:
-            s = timeline.source_to_output(max(cs, float(seg["start"])))
-            e = timeline.source_to_output(min(ce, float(seg["end"])))
-            if s is not None and e is not None and e > s:
-                events.append((s, e, _ass_escape(seg["text"].upper())))
-            continue
-        for word in words:
-            mapped = remap_word(word, timeline)
-            if mapped is None:
-                continue
-            s, e = mapped["start"], mapped["end"]
-            if e > s:
-                events.append((s, e, _ass_escape(str(mapped["word"]).strip().upper())))
-
-    header = """[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\nWrapStyle: 0\nScaledBorderAndShadow: yes\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,72,&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,6,2,2,80,80,320,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"""
-
-    def ts(t: float) -> str:
-        h = int(t // 3600)
-        m = int((t % 3600) // 60)
-        s = t % 60
-        return f"{h}:{m:02d}:{s:05.2f}"
-
-    lines = [header]
-    for s, e, text in events:
-        if e <= s:
-            continue
-        lines.append(f"Dialogue: 0,{ts(s)},{ts(e)},Default,,0,0,0,,{text}")
-    out.write_text("\n".join(lines), encoding="utf-8")
-
-
 def _escape_filter_path(path: Path) -> str:
     value = str(path).replace("\\", "/")
-    return value.replace(":", r"\\:").replace("'", r"\\'")
+    return value.replace(":", r"\:").replace("'", r"\'")
 
 
-def render(video: Path, job: dict[str, Any], clip: dict[str, Any], output: Path, timeline: Any) -> None:
+def render(video: Path, job: dict[str, Any], clip: dict[str, Any], output: Path, timeline: Any, preset: str, font_name: str | None) -> None:
     ass = output.with_suffix(".ass")
-    make_ass(job, clip, timeline, ass)
+    render_ass(job["transcript"], timeline, ass, preset=preset, font=font_name)
     graph, _ = ffmpeg_filter_for_timeline(timeline)
     ass_path = _escape_filter_path(ass)
     scale = f"[vout]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,ass='{ass_path}'[vfinal]"
     filter_complex = f"{graph};{scale}"
-
     cmd = [
         "ffmpeg", "-y", "-i", str(video),
         "-filter_complex", filter_complex,
@@ -223,14 +189,7 @@ def youtube_import(req: YouTubeImport):
     except Exception as exc:
         shutil.rmtree(job_dir, ignore_errors=True)
         raise HTTPException(400, f"YouTube import failed: {exc}") from exc
-
-    job = {
-        "job_id": job_id,
-        "status": "imported",
-        "source": {"type": "youtube", "url": req.url, "metadata": meta},
-        "video_path": str(video_path),
-        "meta": media,
-    }
+    job = {"job_id": job_id, "status": "imported", "source": {"type": "youtube", "url": req.url, "metadata": meta}, "video_path": str(video_path), "meta": media}
     save_job(job_id, job)
     return job
 
@@ -269,12 +228,7 @@ def analyze(job_id: str):
     candidates = build_candidates(transcript["segments"])
     if not candidates:
         raise HTTPException(422, "No 20-60s standalone candidates found")
-    job.update({
-        "status": "analyzed",
-        "transcript": transcript,
-        "candidates": candidates,
-        "selected_candidate_id": candidates[0]["id"],
-    })
+    job.update({"status": "analyzed", "transcript": transcript, "candidates": candidates, "selected_candidate_id": candidates[0]["id"]})
     save_job(job_id, job)
     return job
 
@@ -292,26 +246,41 @@ def timeline_preview(job_id: str, candidate_id: str):
     return {"job_id": job_id, "candidate_id": candidate_id, "timeline": timeline.to_dict()}
 
 
+@app.get("/fonts")
+def get_fonts():
+    return {"fonts": list_fonts(FONTS)}
+
+
+@app.post("/fonts")
+async def post_font(file: UploadFile = File(...)):
+    source = FONTS / f"upload-{uuid.uuid4().hex}{Path(file.filename or '').suffix.lower()}"
+    source.write_bytes(await file.read())
+    try:
+        result = install_font(source, FONTS)
+    except ValueError as exc:
+        source.unlink(missing_ok=True)
+        raise HTTPException(422, str(exc)) from exc
+    source.unlink(missing_ok=True)
+    return result
+
+
 @app.get("/job/{job_id}")
 def get_job(job_id: str):
     return load_job(job_id)
 
 
 @app.post("/render/{job_id}")
-def render_job(job_id: str):
+def render_job(job_id: str, options: RenderOptions | None = None):
     job = load_job(job_id)
     candidate = resolve_candidate(job)
+    options = options or RenderOptions()
     try:
         timeline = build_timeline(Path(job["video_path"]), job["transcript"], candidate)
         output = OUTPUTS / f"{job_id}_{candidate['id']}.mp4"
-        render(Path(job["video_path"]), job, candidate, output, timeline)
+        render(Path(job["video_path"]), job, candidate, output, timeline, options.preset, options.font_name)
     except Exception as exc:
         raise HTTPException(500, f"Render failed: {exc}") from exc
-    job.update({
-        "status": "completed",
-        "output": str(output),
-        "selected_timeline": timeline.to_dict(),
-    })
+    job.update({"status": "completed", "output": str(output), "selected_timeline": timeline.to_dict(), "render": options.model_dump()})
     save_job(job_id, job)
     return job
 
