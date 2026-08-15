@@ -1,6 +1,7 @@
 """AGENT_21_QUALITY_INSPECTOR - compatibility adapter over Local-First V5 render QA."""
 
 from utils.logger import get_logger
+from v5_bridge import inspect_render
 
 log = get_logger("agent_21")
 
@@ -25,18 +26,8 @@ class QualityInspector:
                 "verdict": "NEEDS_FIX",
                 "error": "No rendered output path was provided",
             }
-
         try:
-            from local_first_v5.vision_quality import inspect_render
-        except ImportError:
-            try:
-                from vision_quality import inspect_render
-            except ImportError as exc:
-                return {"checks": {}, "passed": 0, "total": 0, "score": 0, "verdict": "NEEDS_FIX", "error": str(exc)}
-
-        try:
-            result = inspect_render(output_path)
-            return result
+            return inspect_render(output_path)
         except Exception as exc:
             log.exception("Post-render inspection failed")
             return {"checks": {}, "passed": 0, "total": 0, "score": 0, "verdict": "NEEDS_FIX", "error": str(exc)}
