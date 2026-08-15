@@ -23,6 +23,7 @@ REQUIRED = [
     "youtube.py",
     "face_sampling.py",
 ]
+AGENT_ROOT = ROOT.parent / "backend" / "agents"
 
 
 def compile_all() -> list[str]:
@@ -45,10 +46,32 @@ def check_imports() -> list[str]:
     return [module for module in modules if importlib.util.find_spec(module) is None]
 
 
+def check_agent_integrity() -> list[str]:
+    forbidden = {
+        "agent_11_scene_segmenter.py": ("i*5", "range(12)"),
+        "agent_12_subject_tracker.py": ('"center_x": 950', '"center_y": 500'),
+        "agent_13_quality_checker.py": ('"score": 95', '"resolution": "1920x1080"'),
+        "agent_21_quality_inspector.py": ('"passed":True', '"passed": True'),
+        "agent_20_professional_editor.py": ("setpts=", "zoompan", "hflip", "eq=saturation="),
+    }
+    failures: list[str] = []
+    for filename, needles in forbidden.items():
+        path = AGENT_ROOT / filename
+        if not path.exists():
+            failures.append(f"Missing agent file: {filename}")
+            continue
+        text = path.read_text(encoding="utf-8")
+        for needle in needles:
+            if needle in text:
+                failures.append(f"Forbidden legacy pattern in {filename}: {needle}")
+    return failures
+
+
 def main() -> int:
     syntax_failures = compile_all()
     missing_tools = check_tools()
     missing_imports = check_imports()
+    agent_failures = check_agent_integrity()
     if syntax_failures:
         print("SYNTAX FAIL")
         print("\n".join(syntax_failures))
@@ -59,6 +82,10 @@ def main() -> int:
     if missing_imports:
         print("MISSING PYTHON IMPORTS:", ", ".join(missing_imports))
         return 3
+    if agent_failures:
+        print("AGENT INTEGRITY FAIL")
+        print("\n".join(agent_failures))
+        return 4
     print("QUALITY GATE: PASS")
     return 0
 
