@@ -12,8 +12,26 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app import (app, DATA, JOBS, OUTPUTS, build_candidates, ffprobe, editorial_metadata, to_dict, sample_faces, SubjectObservation, build_camera_path, path_to_dict, download_youtube, rerank_candidates, transcribe_local)
-from captions import PRESETS, render_ass
+from analysis_bundle import build_analysis_bundle
+from app import (
+    app,
+    DATA,
+    JOBS,
+    OUTPUTS,
+    build_candidates,
+    ffprobe,
+    editorial_metadata,
+    to_dict,
+    sample_faces,
+    SubjectObservation,
+    build_camera_path,
+    path_to_dict,
+    download_youtube,
+    rerank_candidates,
+    transcribe_local,
+)
+from caption_runtime import render_ass_safe
+from captions import PRESETS
 from compositor import build_final_filter, run_ffmpeg, spec_for_aspect_ratio
 from job_store import read as atomic_read, recover_interrupted, update as atomic_update
 from process_supervisor import terminate as terminate_process
@@ -54,6 +72,7 @@ class CompatJob(BaseModel):
     clips: list[str] = Field(default_factory=list)
     broll: bool = False
     render_meta: list[dict[str, Any]] = Field(default_factory=list)
+    analysis_bundle: dict[str, Any] | None = None
 
 
 def _job_path(job_id: str) -> Path:
@@ -94,7 +113,16 @@ def _hex_to_ass(value: str, fallback: str) -> str:
 
 
 def _style_overrides(req: GenerateRequest) -> dict[str, Any]:
-    return {"font": req.font, "size": req.font_size, "primary": _hex_to_ass(req.primary_color, "#FFFFFF"), "highlight": _hex_to_ass(req.highlight_color, "#FFD700"), "outline": _hex_to_ass(req.stroke_color, "#000000"), "outline_width": req.stroke_width, "position": req.position, "animation": req.animation}
+    return {
+        "font": req.font,
+        "size": req.font_size,
+        "primary": _hex_to_ass(req.primary_color, "#FFFFFF"),
+        "highlight": _hex_to_ass(req.highlight_color, "#FFD700"),
+        "outline": _hex_to_ass(req.stroke_color, "#000000"),
+        "outline_width": req.stroke_width,
+        "position": req.position,
+        "animation": req.animation,
+    }
 
 
 def _render_with_spec(video: Path, job: dict[str, Any], clip: dict[str, Any], output: Path, timeline: Any, req: GenerateRequest) -> dict[str, Any]:
@@ -103,7 +131,18 @@ def _render_with_spec(video: Path, job: dict[str, Any], clip: dict[str, Any], ou
     editorial = editorial_metadata(clip["text"], emoji_enabled=req.emoji_enabled)
     style = PRESETS.get(req.subtitle_style, PRESETS["hormozi"])
     selected_animation = req.animation or style.get("animation", "pop")
-    render_ass(job["transcript"], timeline, ass, preset=req.subtitle_style if req.subtitle_style in PRESETS else "hormozi", font=req.font, headline=editorial.headline, emoji=editorial.emoji, canvas_w=spec.width, canvas_h=spec.height, overrides={**_style_overrides(req), "animation": selected_animation})
+    render_ass_safe(
+        job["transcript"],
+        timeline,
+        ass,
+        preset=req.subtitle_style if req.subtitle_style in PRESETS else "hormozi",
+        font=req.font,
+        headline=editorial.headline,
+        emoji=editorial.emoji,
+        canvas_w=spec.width,
+        canvas_h=spec.height,
+        overrides={**_style_overrides(req), "animation": selected_animation},
+    )
     media = job.get("meta") or ffprobe(video)
     video_stream = next((s for s in media.get("streams", []) if s.get("codec_type") == "video"), None)
     if not video_stream:
@@ -124,7 +163,17 @@ def _render_with_spec(video: Path, job: dict[str, Any], clip: dict[str, Any], ou
     quality = inspect_render(output, expected_width=spec.width, expected_height=spec.height, min_duration=max(0.1, timeline.duration_after * 0.98), max_duration=timeline.duration_after + 0.25)
     if quality["verdict"] != "APPROVED":
         raise RuntimeError(f"Render quality gate failed: {json.dumps(quality, ensure_ascii=False)}")
-    return {"editorial": to_dict(editorial), "caption_preset": req.subtitle_style, "caption_animation": selected_animation, "camera": {"enabled": bool(req.face_tracking and req.auto_zoom), "points": path_to_dict(camera_points), "point_count": len(camera_points)}, "source_dimensions": {"width": source_w, "height": source_h}, "output_dimensions": {"width": spec.width, "height": spec.height}, "quality": quality, "broll": False, "audio_normalized": req.normalize_audio}
+    return {
+        "editorial": to_dict(editorial),
+        "caption_preset": req.subtitle_style,
+        "caption_animation": selected_animation,
+        "camera": {"enabled": bool(req.face_tracking and req.auto_zoom), "points": path_to_dict(camera_points), "point_count": len(camera_points)},
+        "source_dimensions": {"width": source_w, "height": source_h},
+        "output_dimensions": {"width": spec.width, "height": spec.height},
+        "quality": quality,
+        "broll": False,
+        "audio_normalized": req.normalize_audio,
+    }
 
 
 class CancellationRegistry(dict[str, bool]):
@@ -151,33 +200,61 @@ async def _run_generation(job_id: str, req: GenerateRequest) -> None:
         media = ffprobe(video)
         _set(job, stage="transcribing", progress=25, video_path=str(video), meta=media)
         if CANCEL_FLAGS.get(job_id):
-            _set(job, status="cancelled", stage="cancelled"); return
+            _set(job, status="cancelled", stage="cancelled")
+            return
         transcript = await asyncio.to_thread(transcribe_local, video, req.language)
         _set(job, stage="analyzing", progress=45, transcript=transcript)
         if CANCEL_FLAGS.get(job_id):
-            _set(job, status="cancelled", stage="cancelled"); return
+            _set(job, status="cancelled", stage="cancelled")
+            return
         candidates = build_candidates(transcript["segments"])
         if not candidates:
             raise RuntimeError("No viable 20-60 second candidates found")
         duration = float(media.get("format", {}).get("duration") or 0.0)
         scenes = await asyncio.to_thread(detect_scene_changes, video, 0.0, duration or None)
-        candidates = rerank_candidates(candidates, scene_boundaries=scenes, target_duration=float(req.target_duration), limit=min(20, max(req.clip_count * 4, 10)), video=video, transcript=transcript)
+        subjects = await asyncio.to_thread(detect_face_subjects, video, 0.0, duration or None)
+        candidates = rerank_candidates(
+            candidates,
+            scene_boundaries=scenes,
+            target_duration=float(req.target_duration),
+            limit=min(20, max(req.clip_count * 4, 10)),
+            video=video,
+            transcript=transcript,
+        )
         candidates.sort(key=lambda c: float(c.get("editorial_rank", 0.0)), reverse=True)
         candidates = candidates[: req.clip_count]
-        _set(job, stage="rendering", progress=65, candidates=candidates, selected_candidate_id=candidates[0]["id"], vision={"scene_count": len(scenes), "scenes": scenes})
+        bundle = build_analysis_bundle(transcript, candidates, scenes, subjects)
+        _set(
+            job,
+            stage="rendering",
+            progress=65,
+            candidates=candidates,
+            selected_candidate_id=candidates[0]["id"],
+            analysis_bundle=bundle.to_dict(),
+            vision={"scene_count": len(scenes), "scenes": scenes, "subject_samples": subjects},
+        )
         rendered: list[str] = []
         render_meta: list[dict[str, Any]] = []
         for idx, candidate in enumerate(candidates):
             if CANCEL_FLAGS.get(job_id):
-                _set(job, status="cancelled", stage="cancelled"); return
+                _set(job, status="cancelled", stage="cancelled")
+                return
             timeline = await asyncio.to_thread(build_timeline, video, transcript, candidate)
             output = OUTPUTS / f"{job_id}_clip_{idx + 1:02d}.mp4"
             info = await asyncio.to_thread(_render_with_spec, video, {**job, "transcript": transcript, "meta": media}, candidate, output, timeline, req)
             rendered.append(_relative_output(output))
-            render_meta.append({"candidate_id": candidate["id"], "timeline": timeline.to_dict(), "render": info, "editorial_rank": candidate.get("editorial_rank"), "editorial_signals": candidate.get("editorial_signals"), "audio_profile": candidate.get("audio_profile")})
+            render_meta.append({
+                "candidate_id": candidate["id"],
+                "timeline": timeline.to_dict(),
+                "render": info,
+                "editorial_rank": candidate.get("editorial_rank"),
+                "editorial_signals": candidate.get("editorial_signals"),
+                "audio_profile": candidate.get("audio_profile"),
+            })
             _set(job, progress=65 + int(30 * (idx + 1) / len(candidates)), stage=f"rendering {idx + 1}/{len(candidates)}", render_meta=render_meta)
         if CANCEL_FLAGS.get(job_id):
-            _set(job, status="cancelled", stage="cancelled"); return
+            _set(job, status="cancelled", stage="cancelled")
+            return
         _set(job, status="completed", stage="completed", progress=100, output_path=rendered[0], clips=rendered, render_meta=render_meta, broll=False)
     except Exception as exc:
         if CANCEL_FLAGS.get(job_id):
@@ -191,7 +268,19 @@ async def _run_generation(job_id: str, req: GenerateRequest) -> None:
 @router.post("/generate", response_model=CompatJob)
 async def generate(req: GenerateRequest, bg: BackgroundTasks):
     job_id = uuid.uuid4().hex
-    job = {"job_id": job_id, "status": "queued", "progress": 0.0, "stage": "queued", "output_path": None, "error": None, "clips": [], "broll": False, "render_meta": [], "revision": 0}
+    job = {
+        "job_id": job_id,
+        "status": "queued",
+        "progress": 0.0,
+        "stage": "queued",
+        "output_path": None,
+        "error": None,
+        "clips": [],
+        "broll": False,
+        "render_meta": [],
+        "analysis_bundle": None,
+        "revision": 0,
+    }
     _write(job)
     CANCEL_FLAGS[job_id] = False
     bg.add_task(_run_generation, job_id, req)
@@ -230,27 +319,62 @@ async def cancel(job_id: str):
 
 @router.get("/health")
 async def compat_health():
-    return {"status": "ok", "broll": False, "canonical_engine": "local-first-v5", "ffmpeg": shutil.which("ffmpeg") is not None, "ffprobe": shutil.which("ffprobe") is not None, "yt_dlp": shutil.which("yt-dlp") is not None, "editorial_ranker": True, "audio_intelligence": True, "durable_jobs": True, "hard_cancel": True}
+    return {
+        "status": "ok",
+        "broll": False,
+        "canonical_engine": "local-first-v5",
+        "ffmpeg": shutil.which("ffmpeg") is not None,
+        "ffprobe": shutil.which("ffprobe") is not None,
+        "yt_dlp": shutil.which("yt-dlp") is not None,
+        "editorial_ranker": True,
+        "audio_intelligence": True,
+        "durable_jobs": True,
+        "hard_cancel": True,
+        "analysis_bundle": True,
+    }
 
 
 @router.get("/vision/{job_id}")
 async def vision(job_id: str):
-    job = _read(job_id); video = Path(job.get("video_path", ""))
-    if not video.exists(): raise HTTPException(404, "Video artifact not found")
+    job = _read(job_id)
+    video = Path(job.get("video_path", ""))
+    if not video.exists():
+        raise HTTPException(404, "Video artifact not found")
     duration = float((job.get("meta") or {}).get("format", {}).get("duration") or 0.0)
-    return {"job_id": job_id, "duration": duration, "scenes": await asyncio.to_thread(detect_scene_changes, video, 0.0, duration or None), "subjects": await asyncio.to_thread(detect_face_subjects, video, 0.0, duration or None), "quality": await asyncio.to_thread(visual_quality, video, 0.0, duration or None), "editorial": {"candidate_count": len(job.get("candidates", [])), "selected": job.get("selected_candidate_id")}}
+    return {
+        "job_id": job_id,
+        "duration": duration,
+        "scenes": await asyncio.to_thread(detect_scene_changes, video, 0.0, duration or None),
+        "subjects": await asyncio.to_thread(detect_face_subjects, video, 0.0, duration or None),
+        "quality": await asyncio.to_thread(visual_quality, video, 0.0, duration or None),
+        "analysis_bundle": job.get("analysis_bundle"),
+        "editorial": {"candidate_count": len(job.get("candidates", [])), "selected": job.get("selected_candidate_id")},
+    }
 
 
 @router.get("/styles")
 async def styles():
     ids = ["hormozi", "mrbeast", "aliabdaal", "minimalist", "gaming", "cinematic", "neon", "typewriter", "tiktok_viral", "documentary", "comedy", "horror", "motivational", "educational", "custom", "karaoke", "pop_line", "deep_diver"]
-    return {"subtitle_styles": [{"id": key, "name": key.replace("_", " ").title(), "preview": {"font": PRESETS[key]["font"], "font_size": PRESETS[key]["size"], "animation": PRESETS[key]["animation"]}} for key in ids], "aspect_ratios": ["9:16", "1:1", "16:9", "4:5", "2:3", "21:9"], "color_grades": ["none"], "video_codecs": ["h264"], "audio_codecs": ["aac"], "broll": False}
+    return {
+        "subtitle_styles": [
+            {"id": key, "name": key.replace("_", " ").title(), "preview": {"font": PRESETS[key]["font"], "font_size": PRESETS[key]["size"], "animation": PRESETS[key]["animation"]}
+            for key in ids
+        ],
+        "aspect_ratios": ["9:16", "1:1", "16:9", "4:5", "2:3", "21:9"],
+        "color_grades": ["none"],
+        "video_codecs": ["h264"],
+        "audio_codecs": ["aac"],
+        "broll": False,
+    }
 
 
 @router.get("/download/{job_id}")
 async def compat_download(job_id: str):
-    job = _read(job_id); output = Path(job.get("output_path", "")).name; path = OUTPUTS / output
-    if not path.exists(): raise HTTPException(404, "Output not found")
+    job = _read(job_id)
+    output = Path(job.get("output_path", "")).name
+    path = OUTPUTS / output
+    if not path.exists():
+        raise HTTPException(404, "Output not found")
     return FileResponse(path, media_type="video/mp4", filename=path.name)
 
 
