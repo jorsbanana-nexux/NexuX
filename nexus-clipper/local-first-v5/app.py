@@ -19,6 +19,7 @@ from audio_intelligence import analyze_audio, audio_signals
 from captions import render_ass
 from compositor import CompositionSpec, build_final_filter, run_ffmpeg
 from editorial import to_dict, editorial_metadata
+from editorial_intelligence import generate_candidates as generate_v6_candidates
 from editorial_ranker import select_diverse
 from face_sampling import sample_faces
 from fonts import install_font, list_fonts
@@ -42,7 +43,7 @@ for p in (UPLOADS, JOBS, OUTPUTS, FONTS):
 MAX_UPLOAD = int(os.getenv("MAX_UPLOAD_MB", "1024")) * 1024 * 1024
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
 
-app = FastAPI(title="NexuX Local-First V6", version="6.0.0")
+app = FastAPI(title="NexuX Local-First V6", version="6.1.0")
 
 
 class YouTubeImport(BaseModel):
@@ -228,7 +229,7 @@ def render(video: Path, job: dict[str, Any], clip: dict[str, Any], output: Path,
 
 @app.get("/health")
 def health() -> dict[str, Any]:
-    return {"status": "ok", **tool_state(), "whisper_model": WHISPER_MODEL, "broll": False, "vision_quality": True, "editorial_ranker": True, "audio_intelligence": True, "targeted_retrieval": True, "version": "6.0.0"}
+    return {"status": "ok", **tool_state(), "whisper_model": WHISPER_MODEL, "broll": False, "vision_quality": True, "editorial_ranker": True, "audio_intelligence": True, "targeted_retrieval": True, "editorial_intelligence": True, "version": "6.1.0"}
 
 
 @app.post("/youtube/preview")
@@ -307,15 +308,21 @@ def analyze(job_id: str):
     if job.get("transcript"):
         transcript = job["transcript"]
     elif job.get("recon_audio_path"):
-        transcript = transcribe_local(Path(job["recon_audio_path"]))
+        transcript = transcribe_local(Path(job["recon_audio_path"]), language=None)
         job["transcript"] = transcript
     elif job.get("video_path"):
-        transcript = transcribe_local(Path(job["video_path"]))
+        transcript = transcribe_local(Path(job["video_path"]), language=None)
     else:
         raise HTTPException(422, "No reconnaissance transcript or local media available")
-    candidates = build_candidates(transcript["segments"])
+
+    # V6.1 primary candidate path: deliberately over-generate across multiple
+    # editorial hypotheses before the existing multimodal ranker selects the
+    # final diverse set. The legacy generator remains available for fallback
+    # compatibility but is no longer the primary analysis path.
+    candidates = generate_v6_candidates(transcript["segments"])
     if not candidates:
-        raise HTTPException(422, "No 20-60s standalone candidates found")
+        raise HTTPException(422, "No editorial candidates found")
+
     source = Path(job["video_path"]) if job.get("video_path") else None
     scenes: list[dict[str, Any]] = []
     subjects: list[dict[str, Any]] = []
@@ -332,7 +339,7 @@ def analyze(job_id: str):
         "selected_candidate_id": ranked[0]["id"],
         "analysis_bundle": bundle.to_dict(),
         "vision": {"scene_count": len(scenes), "scenes": scenes, "subject_samples": subjects},
-        "retrieval": {**job.get("retrieval", {}), "candidate_count": len(candidates), "selected_count": len(ranked)},
+        "retrieval": {**job.get("retrieval", {}), "candidate_count": len(candidates), "selected_count": len(ranked), "generation": "v6.1_multi_strategy"},
     })
     save_job(job_id, job)
     return job
