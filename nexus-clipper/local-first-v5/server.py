@@ -26,12 +26,12 @@ from app import (
     build_camera_path,
     path_to_dict,
     download_youtube,
+    rerank_candidates,
+    transcribe_local,
 )
 from captions import PRESETS, render_ass
 from compositor import build_final_filter, run_ffmpeg, spec_for_aspect_ratio
-from editorial_ranker import select_diverse
 from timeline import build_timeline, ffmpeg_filter_for_timeline
-from transcription import transcribe
 from vision_quality import inspect_render, detect_scene_changes, detect_face_subjects, visual_quality
 
 router = APIRouter(prefix="/api")
@@ -154,7 +154,7 @@ async def _run_generation(job_id: str, req: GenerateRequest) -> None:
         _set(job, stage="transcribing", progress=25, video_path=str(video), meta=media)
         if CANCEL_FLAGS.get(job_id):
             _set(job, status="cancelled", stage="cancelled"); return
-        transcript = await asyncio.to_thread(transcribe, video, req.language)
+        transcript = await asyncio.to_thread(transcribe_local, video, req.language)
         _set(job, stage="analyzing", progress=45, transcript=transcript)
         if CANCEL_FLAGS.get(job_id):
             _set(job, status="cancelled", stage="cancelled"); return
@@ -164,7 +164,14 @@ async def _run_generation(job_id: str, req: GenerateRequest) -> None:
         duration = float(media.get("format", {}).get("duration") or 0.0)
         bounded_duration = min(duration, 600.0)
         scenes = await asyncio.to_thread(detect_scene_changes, video, 0.0, bounded_duration or None)
-        candidates = select_diverse(candidates, limit=min(20, max(req.clip_count * 4, 10)), target_duration=float(req.target_duration), scene_boundaries=scenes)
+        candidates = rerank_candidates(
+            candidates,
+            scene_boundaries=scenes,
+            target_duration=float(req.target_duration),
+            limit=min(20, max(req.clip_count * 4, 10)),
+            video=video,
+            transcript=transcript,
+        )
         candidates.sort(key=lambda c: float(c.get("editorial_rank", 0.0)), reverse=True)
         candidates = candidates[: req.clip_count]
         _set(job, stage="rendering", progress=65, candidates=candidates, selected_candidate_id=candidates[0]["id"], vision={"scene_count": len(scenes), "scenes": scenes})
@@ -177,7 +184,7 @@ async def _run_generation(job_id: str, req: GenerateRequest) -> None:
             output = OUTPUTS / f"{job_id}_clip_{idx + 1:02d}.mp4"
             info = await asyncio.to_thread(_render_with_spec, video, {**job, "transcript": transcript, "meta": media}, candidate, output, timeline, req)
             rendered.append(_relative_output(output))
-            render_meta.append({"candidate_id": candidate["id"], "timeline": timeline.to_dict(), "render": info, "editorial_rank": candidate.get("editorial_rank"), "editorial_signals": candidate.get("editorial_signals")})
+            render_meta.append({"candidate_id": candidate["id"], "timeline": timeline.to_dict(), "render": info, "editorial_rank": candidate.get("editorial_rank"), "editorial_signals": candidate.get("editorial_signals"), "audio_profile": candidate.get("audio_profile")})
             _set(job, progress=65 + int(30 * (idx + 1) / len(candidates)), stage=f"rendering {idx + 1}/{len(candidates)}", render_meta=render_meta)
         if CANCEL_FLAGS.get(job_id):
             _set(job, status="cancelled", stage="cancelled"); return
@@ -222,7 +229,7 @@ async def cancel(job_id: str):
 
 @router.get("/health")
 async def compat_health():
-    return {"status": "ok", "broll": False, "canonical_engine": "local-first-v5", "ffmpeg": shutil.which("ffmpeg") is not None, "ffprobe": shutil.which("ffprobe") is not None, "yt_dlp": shutil.which("yt-dlp") is not None, "editorial_ranker": True}
+    return {"status": "ok", "broll": False, "canonical_engine": "local-first-v5", "ffmpeg": shutil.which("ffmpeg") is not None, "ffprobe": shutil.which("ffprobe") is not None, "yt_dlp": shutil.which("yt-dlp") is not None, "editorial_ranker": True, "audio_intelligence": True}
 
 
 @router.get("/vision/{job_id}")
