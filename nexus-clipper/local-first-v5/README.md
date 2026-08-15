@@ -19,33 +19,23 @@ uvicorn app:app --host 127.0.0.1 --port 8001
 
 Swagger: `http://127.0.0.1:8001/docs`
 
-## Primary workflow
-
-```text
-YouTube URL
-  -> yt-dlp LOCAL DOWNLOAD
-  -> FFprobe validation
-  -> faster-whisper LOCAL transcription
-  -> word timestamps
-  -> candidate generation
-  -> weighted heuristic ranking
-  -> Smart EDL
-  -> subject-aware camera path
-  -> advanced ASS captions
-  -> FFmpeg H.264/AAC
-```
-
 ## Caption presets
 
-- `karaoke`: phrase-grouped captions, active-word highlight and subtle pop scaling.
-- `pop_line`: bold high-contrast treatment with stronger keyword emphasis.
-- `deep_diver`: restrained presentation with emphasis focused on important keywords.
+- `karaoke`: phrase grouping, active-word highlight and subtle pop scaling.
+- `pop_line`: bold, high-contrast emphasis for fast content.
+- `deep_diver`: restrained presentation with keyword emphasis.
 
-The caption engine consumes the canonical edited timeline when available, so removed source ranges do not cause subtitle drift.
+Captions consume the canonical edited timeline when available, so removed source ranges do not independently shift subtitle timing.
 
 ## Custom fonts
 
-`fonts.py` supports `.ttf`, `.otf`, `.woff`, and `.woff2` with signature/size validation and deterministic hashed storage. Invalid or unsupported files are rejected; renderer-level fallback should use a configured system font if a registered font cannot be resolved.
+`fonts.py` supports `.ttf`, `.otf`, `.woff`, and `.woff2` with file-signature and minimum-size validation plus deterministic hashed storage. Invalid formats are rejected. A renderer can fall back to a system font when a requested font is unavailable.
+
+## Primary workflow
+
+`POST /youtube/preview` -> `POST /youtube/import` -> `POST /analyze/{job_id}` -> `POST /render/{job_id}` -> `GET /download/{job_id}`
+
+`POST /fonts` and `GET /fonts` manage local font assets.
 
 ## Environment
 
@@ -58,12 +48,12 @@ The caption engine consumes the canonical edited timeline when available, so rem
 
 ## Design principle
 
-The URL is only an input transport. Once downloaded, **all AI analysis remains local**. No OpenAI, Anthropic, Gemini, Groq, ElevenLabs, or other paid AI API is required for the V5 baseline.
+The URL is only an input transport. Once downloaded, **AI analysis remains local**. No OpenAI, Anthropic, Gemini, Groq, ElevenLabs, or other paid AI API is required for the V5 path.
 
 The score is a **heuristic ranking**, not a prediction of TikTok, Reels, Shorts, or any other platform ranking algorithm.
 
-## Current engineering status
+## Engineering status
 
 Implemented: URL-first import, local transcription, heuristic ranking, Smart EDL, subject-tracking baseline, virtual-camera path, advanced caption engine, three caption presets, and custom-font validation.
 
-Still required before production-grade claims: direct FFmpeg camera-path integration, robust multi-person identity tracking, local semantic B-roll matching, headline/emoji engine, automated render regression with real media fixtures, performance profiling, and benchmark-based optimization against a fixed dataset.
+Still required before production-grade claims: direct FFmpeg camera-path integration, robust multi-person identity tracking, semantic local B-roll matching, headline/emoji engine, automated real-media render regression, performance profiling, and benchmark-based optimization against a fixed dataset.
