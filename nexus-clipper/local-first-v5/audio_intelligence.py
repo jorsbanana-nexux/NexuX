@@ -25,13 +25,13 @@ class AudioProfile:
     silence_ratio: float
 
     def to_dict(self) -> dict[str, float | int]:
-        return {
-            k: round(v, 4) if isinstance(v, float) else v
-            for k, v in asdict(self).items()
-        }
+        return {k: round(v, 4) if isinstance(v, float) else v for k, v in asdict(self).items()}
 
 
-FILLERS = {"um", "uh", "hmm", "hm", "eee", "aaa", "eh", "anu", "kayak", "like", "you know", "youknow", "actually", "basically", "maksud saya", "gitu", "jadi", "nah"}
+FILLERS = {
+    "um", "uh", "hmm", "hm", "eee", "aaa", "eh", "anu", "kayak", "like",
+    "you know", "youknow", "actually", "basically", "maksud saya", "gitu", "jadi", "nah",
+}
 
 
 def _db(rms: float) -> float:
@@ -99,13 +99,12 @@ def analyze_audio(
                 if we < start or ws > end:
                     continue
                 total_words += 1
-                norm = re.sub(r"[^\\w']+", "", str(word.get("word", "")).casefold())
+                norm = re.sub(r"[^\w']+", "", str(word.get("word", "")).casefold())
                 if norm in FILLERS:
                     filler_count += 1
         density = total_words / max(duration, 1e-6)
 
     filler_ratio = filler_count / max(1, int(round(density * max(speech_duration, 1e-6))))
-    # Balanced speech with moderate pauses and non-flat energy tends to edit more naturally.
     pause_balance = max(0.0, 1.0 - abs(silence_ratio - 0.18) / 0.35)
     energy_balance = max(0.0, 1.0 - abs(min(1.0, energy_variance / 250.0) - 0.45) / 0.55)
     rhythm_score = max(0.0, min(100.0, 100.0 * (0.65 * pause_balance + 0.35 * energy_balance)))
