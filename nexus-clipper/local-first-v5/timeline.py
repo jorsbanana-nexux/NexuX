@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-
 FILLERS = {
     "um", "uh", "hmm", "hm", "eee", "aaa", "eh", "anu", "kayak", "like",
     "you know", "youknow", "actually", "basically", "maksud saya", "gitu", "jadi", "nah",
@@ -84,8 +83,7 @@ def parse_silences(stderr: str) -> list[Cut]:
         m_end = re.search(r"silence_end:\s*([0-9.]+)", line)
         if m_end and starts:
             s = starts.pop(0)
-            e = float(m_end.group(1))
-            cuts.append(Cut(s, e, "silence"))
+            cuts.append(Cut(s, float(m_end.group(1)), "silence"))
     return cuts
 
 
@@ -98,7 +96,9 @@ def detect_silence(video: Path, start: float, end: float, noise_db: str = "-35dB
         "-f", "null", "-",
     ]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
-    return [Cut(c.start + start, c.end + start, c.reason) for c in parse_silences(r.stderr)] if r.returncode in (0, 1) else []
+    if r.returncode not in (0, 1):
+        return []
+    return [Cut(c.start + start, c.end + start, c.reason) for c in parse_silences(r.stderr)]
 
 
 def _normalise_word(word: str) -> str:
@@ -115,19 +115,14 @@ def detect_fillers(segments: list[dict[str, Any]], start: float, end: float) -> 
                 continue
             if we < start or ws > end:
                 continue
-            raw = str(word.get("word", "")).strip()
-            normal = _normalise_word(raw)
-            if normal in FILLERS:
-                # Tiny safety pads prevent the cut from biting phonemes at word boundaries.
+            if _normalise_word(str(word.get("word", "")).strip()) in FILLERS:
                 pad = min(0.035, max(0.0, (we - ws) * 0.15))
                 cuts.append(Cut(max(start, ws - pad), min(end, we + pad), "filler"))
     return cuts
 
 
 def detect_repetition(segments: list[dict[str, Any]], start: float, end: float) -> list[Cut]:
-    """Conservative duplicate-phrase detector. Only removes a repeated phrase when it
-    is immediately repeated and word timestamps prove both copies precisely.
-    """
+    """Conservatively remove only immediately duplicated phrases proven by word timing."""
     cuts: list[Cut] = []
     for seg in segments:
         words = seg.get("words") or []
@@ -136,14 +131,12 @@ def detect_repetition(segments: list[dict[str, Any]], start: float, end: float) 
         norm = [_normalise_word(w.get("word", "")) for w in words]
         for n in (3, 4, 5):
             for i in range(0, len(words) - (2 * n) + 1):
-                a = norm[i:i+n]
-                b = norm[i+n:i+2*n]
+                a, b = norm[i:i+n], norm[i+n:i+2*n]
                 if a != b or not all(a):
                     continue
                 first_end = float(words[i+n-1].get("end", words[i+n-1].get("start", 0)))
                 second_start = float(words[i+n].get("start", first_end))
-                gap = second_start - first_end
-                if 0 <= gap <= 0.35:
+                if 0 <= second_start - first_end <= 0.35:
                     s = max(start, float(words[i].get("start", 0)))
                     e = min(end, second_start)
                     if e - s >= 0.12:
@@ -163,13 +156,9 @@ def build_timeline(video: Path, transcript: dict[str, Any], clip: dict[str, Any]
     silence = detect_silence(video, start, end)
     filler = detect_fillers(segments, start, end)
     repetition = detect_repetition(segments, start, end)
-
-    # Do not remove short silences: micro-pauses carry prosody and conversational rhythm.
     meaningful_silence = [c for c in silence if (c.end - c.start) >= 0.65]
-    # Avoid deleting filler when it is the only available word in a tiny phrase.
     safe_cuts = _merge_cuts([*meaningful_silence, *filler, *repetition], start, end)
 
-    # Keep ranges are the canonical EDL. Everything downstream uses these same ranges.
     keep: list[KeepRange] = []
     cursor = start
     output_cursor = 0.0
@@ -189,14 +178,7 @@ def build_timeline(video: Path, transcript: dict[str, Any], clip: dict[str, Any]
         safe_cuts = []
         output_cursor = duration
 
-    return EditTimeline(
-        source_start=start,
-        source_end=end,
-        duration_before=duration,
-        duration_after=output_cursor,
-        cuts=tuple(safe_cuts),
-        keep_ranges=tuple(keep),
-    )
+    return EditTimeline(start, end, duration, output_cursor, tuple(safe_cuts), tuple(keep))
 
 
 def remap_word(word: dict[str, Any], timeline: EditTimeline) -> dict[str, Any] | None:
@@ -208,7 +190,6 @@ def remap_word(word: dict[str, Any], timeline: EditTimeline) -> dict[str, Any] |
 
 
 def ffmpeg_filter_for_timeline(timeline: EditTimeline) -> tuple[str, str]:
-    """Return video/audio filter graph fragments producing the exact EDL timeline."""
     v_parts: list[str] = []
     a_parts: list[str] = []
     for i, item in enumerate(timeline.keep_ranges):
@@ -216,8 +197,8 @@ def ffmpeg_filter_for_timeline(timeline: EditTimeline) -> tuple[str, str]:
         a_parts.append(f"[0:a]atrim=start={item.source_start:.6f}:end={item.source_end:.6f},asetpts=PTS-STARTPTS[a{i}]")
     n = len(timeline.keep_ranges)
     if n == 1:
-        return v_parts[0].split(";", 1)[0] if False else (v_parts[0], a_parts[0])
+        graph = f"{v_parts[0]};{a_parts[0]};[v0]null[vout];[a0]anull[aout]"
+        return graph, ""
     concat_inputs = "".join(f"[v{i}][a{i}]" for i in range(n))
     graph = ";".join(v_parts + a_parts) + f";{concat_inputs}concat=n={n}:v=1:a=1[vout][aout]"
-    # Single-range callers need labels without concat; multi-range callers use explicit labels.
     return graph, ""
