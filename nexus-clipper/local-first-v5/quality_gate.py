@@ -3,19 +3,23 @@ from __future__ import annotations
 import ast
 import importlib.util
 import shutil
-import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 REQUIRED = [
     "app.py",
+    "server.py",
     "captions.py",
     "compositor.py",
     "editorial.py",
+    "editorial_ranker.py",
+    "audio_intelligence.py",
     "fonts.py",
     "scoring.py",
+    "semantic_ranker.py",
     "timeline.py",
     "virtual_camera.py",
+    "vision_quality.py",
     "youtube.py",
     "face_sampling.py",
 ]
@@ -33,19 +37,12 @@ def compile_all() -> list[str]:
 
 
 def check_tools() -> list[str]:
-    missing: list[str] = []
-    for tool in ("ffmpeg", "ffprobe", "yt-dlp"):
-        if shutil.which(tool) is None:
-            missing.append(tool)
-    return missing
+    return [tool for tool in ("ffmpeg", "ffprobe", "yt-dlp") if shutil.which(tool) is None]
 
 
 def check_imports() -> list[str]:
-    missing: list[str] = []
-    for module in ("fastapi", "pydantic", "cv2", "numpy"):
-        if importlib.util.find_spec(module) is None:
-            missing.append(module)
-    return missing
+    modules = ("fastapi", "pydantic", "cv2", "numpy", "faster_whisper")
+    return [module for module in modules if importlib.util.find_spec(module) is None]
 
 
 def main() -> int:
