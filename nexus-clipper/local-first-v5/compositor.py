@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,14 +21,7 @@ class CompositionSpec:
 
 
 def spec_for_aspect_ratio(aspect_ratio: str) -> CompositionSpec:
-    presets = {
-        "9:16": (1080, 1920),
-        "1:1": (1080, 1080),
-        "16:9": (1920, 1080),
-        "4:5": (1080, 1350),
-        "2:3": (1080, 1620),
-        "21:9": (1920, 822),
-    }
+    presets = {"9:16": (1080, 1920), "1:1": (1080, 1080), "16:9": (1920, 1080), "4:5": (1080, 1350), "2:3": (1080, 1620), "21:9": (1920, 822)}
     width, height = presets.get(aspect_ratio, presets["9:16"])
     return CompositionSpec(width=width, height=height)
 
@@ -53,9 +47,7 @@ def camera_crop_expressions(camera_points: list[CameraPoint], source_width: int,
     if not camera_points:
         crop_w = min(source_width, int(source_height * output_aspect))
         crop_h = min(source_height, int(crop_w / max(output_aspect, 1e-6)))
-        x = f"(iw-{crop_w})/2"
-        y = f"(ih-{crop_h})/2"
-        return str(crop_w), str(crop_h), x, y
+        return str(crop_w), str(crop_h), f"(iw-{crop_w})/2", f"(ih-{crop_h})/2"
     crop_w_norm = min(max(p.crop_w for p in camera_points), 0.92)
     crop_w = max(2, int(source_width * crop_w_norm))
     crop_h = max(2, min(source_height, int(round(crop_w / output_aspect))))
@@ -64,9 +56,7 @@ def camera_crop_expressions(camera_points: list[CameraPoint], source_width: int,
         crop_w = max(2, int(round(crop_h * output_aspect)))
     xs = [(p.time, p.cx * source_width - crop_w / 2.0) for p in camera_points]
     ys = [(p.time, p.cy * source_height - crop_h / 2.0) for p in camera_points]
-    x = f"max(0,min(iw-{crop_w},{_piecewise_linear(xs)}))"
-    y = f"max(0,min(ih-{crop_h},{_piecewise_linear(ys)}))"
-    return str(crop_w), str(crop_h), x, y
+    return str(crop_w), str(crop_h), f"max(0,min(iw-{crop_w},{_piecewise_linear(xs)}))", f"max(0,min(ih-{crop_h},{_piecewise_linear(ys)}))"
 
 
 def build_final_filter(edl_graph: str, camera_points: list[CameraPoint], ass_path: Path, source_width: int, source_height: int, spec: CompositionSpec = CompositionSpec()) -> str:
@@ -76,20 +66,17 @@ def build_final_filter(edl_graph: str, camera_points: list[CameraPoint], ass_pat
     return f"{edl_graph};{video}"
 
 
-def run_ffmpeg(source: Path, output: Path, filter_complex: str, audio_label: str = "[aout]", spec: CompositionSpec = CompositionSpec(), *, job_id: str | None = None, normalize_audio: bool = False) -> None:
+def run_ffmpeg(source: Path, output: Path, filter_complex: str, audio_label: str = "[aout]", spec: CompositionSpec = CompositionSpec(), *, job_id: str | None = None, normalize_audio: bool = True) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
+    if job_id is None:
+        match = re.match(r"([0-9a-f]{32})_", output.name)
+        job_id = match.group(1) if match else None
     final_filter = filter_complex
     final_audio = audio_label
     if normalize_audio:
         final_filter += ";[aout]loudnorm=I=-16:TP=-1.5:LRA=11:linear=false[anorm]"
         final_audio = "[anorm]"
-    cmd = [
-        "ffmpeg", "-y", "-i", str(source),
-        "-filter_complex", final_filter,
-        "-map", "[vfinal]", "-map", final_audio,
-        "-c:v", "libx264", "-preset", "medium", "-crf", str(spec.crf),
-        "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(output),
-    ]
+    cmd = ["ffmpeg", "-y", "-i", str(source), "-filter_complex", final_filter, "-map", "[vfinal]", "-map", final_audio, "-c:v", "libx264", "-preset", "medium", "-crf", str(spec.crf), "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(output)]
     result = supervised_run(cmd, key=f"render:{job_id}" if job_id else None, timeout=1800)
     if result.returncode != 0:
         raise RuntimeError(result.stderr[-3500:] or "Final composition render failed")
