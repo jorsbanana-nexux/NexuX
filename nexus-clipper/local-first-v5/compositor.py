@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from av_sync import verify_av_sync
 from process_supervisor import run as supervised_run
 from virtual_camera import CameraPoint
 from vision_quality import inspect_render
@@ -85,3 +86,6 @@ def run_ffmpeg(source: Path, output: Path, filter_complex: str, audio_label: str
     quality = inspect_render(output, expected_width=spec.width, expected_height=spec.height, min_duration=0.10)
     if quality["verdict"] != "APPROVED":
         raise RuntimeError(f"Output quality gate failed: {quality}")
+    sync = verify_av_sync(output, tolerance=0.050)
+    if not sync["passed"]:
+        raise RuntimeError(f"Audio/video timestamp drift gate failed: {sync}")
