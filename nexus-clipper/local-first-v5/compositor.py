@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-import subprocess
 
+from process_supervisor import run as supervised_run
 from virtual_camera import CameraPoint
 from vision_quality import inspect_render
 
@@ -49,79 +49,52 @@ def _piecewise_linear(points: list[tuple[float, float]], t_var: str = "t") -> st
     return f"if(lt({t_var},{first_t:.6f}),{first_v:.6f},{expr})"
 
 
-def camera_crop_expressions(
-    camera_points: list[CameraPoint],
-    source_width: int,
-    source_height: int,
-    output_aspect: float = 9 / 16,
-) -> tuple[str, str, str, str]:
+def camera_crop_expressions(camera_points: list[CameraPoint], source_width: int, source_height: int, output_aspect: float = 9 / 16) -> tuple[str, str, str, str]:
     if not camera_points:
         crop_w = min(source_width, int(source_height * output_aspect))
         crop_h = min(source_height, int(crop_w / max(output_aspect, 1e-6)))
         x = f"(iw-{crop_w})/2"
         y = f"(ih-{crop_h})/2"
         return str(crop_w), str(crop_h), x, y
-
     crop_w_norm = min(max(p.crop_w for p in camera_points), 0.92)
     crop_w = max(2, int(source_width * crop_w_norm))
     crop_h = max(2, min(source_height, int(round(crop_w / output_aspect))))
     if crop_h > source_height:
         crop_h = source_height
         crop_w = max(2, int(round(crop_h * output_aspect)))
-
     xs = [(p.time, p.cx * source_width - crop_w / 2.0) for p in camera_points]
     ys = [(p.time, p.cy * source_height - crop_h / 2.0) for p in camera_points]
-    x = _piecewise_linear(xs)
-    y = _piecewise_linear(ys)
-    x = f"max(0,min(iw-{crop_w},{x}))"
-    y = f"max(0,min(ih-{crop_h},{y}))"
+    x = f"max(0,min(iw-{crop_w},{_piecewise_linear(xs)}))"
+    y = f"max(0,min(ih-{crop_h},{_piecewise_linear(ys)}))"
     return str(crop_w), str(crop_h), x, y
 
 
-def build_final_filter(
-    edl_graph: str,
-    camera_points: list[CameraPoint],
-    ass_path: Path,
-    source_width: int,
-    source_height: int,
-    spec: CompositionSpec = CompositionSpec(),
-) -> str:
+def build_final_filter(edl_graph: str, camera_points: list[CameraPoint], ass_path: Path, source_width: int, source_height: int, spec: CompositionSpec = CompositionSpec()) -> str:
     crop_w, crop_h, x, y = camera_crop_expressions(camera_points, source_width, source_height, spec.aspect)
     ass = str(ass_path).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
-    video = (
-        f"[vout]crop={crop_w}:{crop_h}:x='{x}':y='{y}',"
-        f"scale={spec.width}:{spec.height}:flags=lanczos,ass='{ass}'[vfinal]"
-    )
+    video = f"[vout]crop={crop_w}:{crop_h}:x='{x}':y='{y}',scale={spec.width}:{spec.height}:flags=lanczos,ass='{ass}'[vfinal]"
     return f"{edl_graph};{video}"
 
 
-def run_ffmpeg(
-    source: Path,
-    output: Path,
-    filter_complex: str,
-    audio_label: str = "[aout]",
-    spec: CompositionSpec = CompositionSpec(),
-) -> None:
+def run_ffmpeg(source: Path, output: Path, filter_complex: str, audio_label: str = "[aout]", spec: CompositionSpec = CompositionSpec(), *, job_id: str | None = None, normalize_audio: bool = False) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
+    final_filter = filter_complex
+    final_audio = audio_label
+    if normalize_audio:
+        final_filter += ";[aout]loudnorm=I=-16:TP=-1.5:LRA=11:linear=false[anorm]"
+        final_audio = "[anorm]"
     cmd = [
         "ffmpeg", "-y", "-i", str(source),
-        "-filter_complex", filter_complex,
-        "-map", "[vfinal]", "-map", audio_label,
+        "-filter_complex", final_filter,
+        "-map", "[vfinal]", "-map", final_audio,
         "-c:v", "libx264", "-preset", "medium", "-crf", str(spec.crf),
         "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(output),
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+    result = supervised_run(cmd, key=f"render:{job_id}" if job_id else None, timeout=1800)
     if result.returncode != 0:
         raise RuntimeError(result.stderr[-3500:] or "Final composition render failed")
     if not output.exists() or output.stat().st_size == 0:
         raise RuntimeError("FFmpeg produced no final output")
-
-    # Every compositor output must prove its media contract before a job can use it.
-    quality = inspect_render(
-        output,
-        expected_width=spec.width,
-        expected_height=spec.height,
-        min_duration=0.10,
-    )
+    quality = inspect_render(output, expected_width=spec.width, expected_height=spec.height, min_duration=0.10)
     if quality["verdict"] != "APPROVED":
         raise RuntimeError(f"Output quality gate failed: {quality}")
