@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from scoring import rank_score, score_text
+from timeline import build_timeline, ffmpeg_filter_for_timeline, remap_word
 from youtube import download_youtube, probe_youtube
 
 ROOT = Path(__file__).resolve().parent
@@ -27,7 +28,7 @@ for p in (UPLOADS, JOBS, OUTPUTS):
 MAX_UPLOAD = int(os.getenv("MAX_UPLOAD_MB", "1024")) * 1024 * 1024
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
 
-app = FastAPI(title="NexuX Local-First V5", version="5.1.0")
+app = FastAPI(title="NexuX Local-First V5", version="5.2.0")
 
 
 class YouTubeImport(BaseModel):
@@ -68,7 +69,7 @@ def transcribe_local(video: Path) -> dict[str, Any]:
     compute = os.getenv("WHISPER_COMPUTE", "int8" if device == "cpu" else "float16")
     model = WhisperModel(WHISPER_MODEL, device=device, compute_type=compute)
     segments, info = model.transcribe(str(video), word_timestamps=True, vad_filter=True)
-    out = []
+    out: list[dict[str, Any]] = []
     for idx, seg in enumerate(segments):
         words = []
         for w in (seg.words or []):
@@ -78,9 +79,9 @@ def transcribe_local(video: Path) -> dict[str, Any]:
 
 
 def build_candidates(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    result = []
+    result: list[dict[str, Any]] = []
     for i, start_seg in enumerate(segments):
-        text_parts = []
+        text_parts: list[str] = []
         end = start_seg["end"]
         for j in range(i, min(len(segments), i + 18)):
             text_parts.append(segments[j]["text"])
@@ -103,7 +104,7 @@ def build_candidates(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     "segment_ids": list(range(i, j + 1)),
                 })
     result.sort(key=lambda x: x["viral_score"], reverse=True)
-    selected = []
+    selected: list[dict[str, Any]] = []
     for cand in result:
         if any(not (cand["end"] <= s["start"] or cand["start"] >= s["end"]) for s in selected):
             continue
@@ -113,21 +114,41 @@ def build_candidates(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return selected
 
 
-def make_ass(job: dict[str, Any], clip: dict[str, Any], out: Path) -> None:
+def resolve_candidate(job: dict[str, Any], candidate_id: str | None = None) -> dict[str, Any]:
+    candidates = job.get("candidates") or []
+    wanted = candidate_id or job.get("selected_candidate_id")
+    candidate = next((x for x in candidates if x.get("id") == wanted), None)
+    if candidate is None:
+        raise HTTPException(422, "Selected clip is invalid or missing")
+    return candidate
+
+
+def _ass_escape(text: str) -> str:
+    return text.replace("\\", r"\\").replace("{", r"\\{").replace("}", r"\\}").replace("\n", " ")
+
+
+def make_ass(job: dict[str, Any], clip: dict[str, Any], timeline: Any, out: Path) -> None:
+    events: list[tuple[float, float, str]] = []
     cs, ce = clip["start"], clip["end"]
-    events = []
     for seg in job["transcript"]["segments"]:
         if seg["end"] < cs or seg["start"] > ce:
             continue
         words = seg.get("words") or []
         if not words:
-            events.append((max(0, seg["start"] - cs), max(0.3, min(ce - cs, seg["end"] - cs)), seg["text"].upper()))
+            s = timeline.source_to_output(max(cs, float(seg["start"])))
+            e = timeline.source_to_output(min(ce, float(seg["end"])))
+            if s is not None and e is not None and e > s:
+                events.append((s, e, _ass_escape(seg["text"].upper())))
             continue
-        for w in words:
-            if w["end"] < cs or w["start"] > ce:
+        for word in words:
+            mapped = remap_word(word, timeline)
+            if mapped is None:
                 continue
-            events.append((max(0, w["start"] - cs), min(ce - cs, w["end"] - cs), w["word"].strip().upper()))
-    header = """[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\nWrapStyle: 0\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,72,&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,6,2,2,80,80,320,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"""
+            s, e = mapped["start"], mapped["end"]
+            if e > s:
+                events.append((s, e, _ass_escape(str(mapped["word"]).strip().upper())))
+
+    header = """[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\nWrapStyle: 0\nScaledBorderAndShadow: yes\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,72,&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,6,2,2,80,80,320,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n"""
 
     def ts(t: float) -> str:
         h = int(t // 3600)
@@ -143,21 +164,29 @@ def make_ass(job: dict[str, Any], clip: dict[str, Any], out: Path) -> None:
     out.write_text("\n".join(lines), encoding="utf-8")
 
 
-def render(video: Path, job: dict[str, Any], clip: dict[str, Any], output: Path) -> None:
+def _escape_filter_path(path: Path) -> str:
+    value = str(path).replace("\\", "/")
+    return value.replace(":", r"\\:").replace("'", r"\\'")
+
+
+def render(video: Path, job: dict[str, Any], clip: dict[str, Any], output: Path, timeline: Any) -> None:
     ass = output.with_suffix(".ass")
-    make_ass(job, clip, ass)
-    duration = clip["end"] - clip["start"]
-    vf = "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,ass='{}'".format(
-        str(ass).replace("\\", "/").replace(":", "\\:")
-    )
+    make_ass(job, clip, timeline, ass)
+    graph, _ = ffmpeg_filter_for_timeline(timeline)
+    ass_path = _escape_filter_path(ass)
+    scale = f"[vout]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,ass='{ass_path}'[vfinal]"
+    filter_complex = f"{graph};{scale}"
+
     cmd = [
-        "ffmpeg", "-y", "-ss", str(max(0, clip["start"])), "-i", str(video), "-t", str(duration),
-        "-vf", vf, "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+        "ffmpeg", "-y", "-i", str(video),
+        "-filter_complex", filter_complex,
+        "-map", "[vfinal]", "-map", "[aout]",
+        "-c:v", "libx264", "-preset", "medium", "-crf", "20",
         "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(output),
     ]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
     if r.returncode != 0:
-        raise RuntimeError(r.stderr[-2000:] or "FFmpeg render failed")
+        raise RuntimeError(r.stderr[-2500:] or "FFmpeg render failed")
 
 
 @app.get("/health")
@@ -250,6 +279,19 @@ def analyze(job_id: str):
     return job
 
 
+@app.get("/timeline/{job_id}/{candidate_id}")
+def timeline_preview(job_id: str, candidate_id: str):
+    job = load_job(job_id)
+    candidate = resolve_candidate(job, candidate_id)
+    try:
+        timeline = build_timeline(Path(job["video_path"]), job["transcript"], candidate)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, f"Video not found: {exc}") from exc
+    except Exception as exc:
+        raise HTTPException(500, f"Timeline analysis failed: {exc}") from exc
+    return {"job_id": job_id, "candidate_id": candidate_id, "timeline": timeline.to_dict()}
+
+
 @app.get("/job/{job_id}")
 def get_job(job_id: str):
     return load_job(job_id)
@@ -258,14 +300,18 @@ def get_job(job_id: str):
 @app.post("/render/{job_id}")
 def render_job(job_id: str):
     job = load_job(job_id)
-    if not job.get("candidates"):
-        raise HTTPException(409, "Analyze the job first")
-    clip = next((x for x in job["candidates"] if x["id"] == job["selected_candidate_id"]), None)
-    if not clip:
-        raise HTTPException(422, "Selected clip is invalid")
-    output = OUTPUTS / f"{job_id}_{clip['id']}.mp4"
-    render(Path(job["video_path"]), job, clip, output)
-    job.update({"status": "completed", "output": str(output)})
+    candidate = resolve_candidate(job)
+    try:
+        timeline = build_timeline(Path(job["video_path"]), job["transcript"], candidate)
+        output = OUTPUTS / f"{job_id}_{candidate['id']}.mp4"
+        render(Path(job["video_path"]), job, candidate, output, timeline)
+    except Exception as exc:
+        raise HTTPException(500, f"Render failed: {exc}") from exc
+    job.update({
+        "status": "completed",
+        "output": str(output),
+        "selected_timeline": timeline.to_dict(),
+    })
     save_job(job_id, job)
     return job
 
