@@ -24,6 +24,10 @@ The EDL is the canonical timeline. Every output-time subtitle, camera point, and
 
 ## Quality contract
 
-The branch now has deterministic tests plus a real synthetic-media FFmpeg regression that verifies final composition produces a valid 1080x1920 MP4 with both audio and video streams.
+The branch has deterministic tests, a quality gate, and a real synthetic-media FFmpeg regression that generates video+audio and verifies the final compositor produces a valid 1080x1920 MP4 with both streams.
 
-A target-machine real-video run and a human-rated benchmark corpus remain mandatory before making any production-quality or commercial-superiority claim.
+The benchmark harness reports top-1 overlap, mean best overlap, duration compliance, overlap rate, and mean score against reference clips.
+
+## Remaining production gate
+
+A target-machine real user video plus a downloaded Whisper model must still be executed before this branch can be called production-ready. A representative human-rated benchmark corpus is also required before making any claim of superiority over commercial editors.
