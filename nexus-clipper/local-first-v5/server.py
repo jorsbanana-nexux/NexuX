@@ -40,7 +40,7 @@ CANCEL_FLAGS: dict[str, bool] = {}
 
 class GenerateRequest(BaseModel):
     youtube_url: str = Field(..., min_length=10, max_length=2000)
-    target_duration: int = Field(60, ge=15, le=300)
+    target_duration: int = Field(45, ge=20, le=60)
     aspect_ratio: str = Field("9:16")
     subtitle_style: str = Field("hormozi")
     font: str = Field("Arial", max_length=160)
@@ -144,7 +144,9 @@ def _render_with_spec(video: Path, job: dict[str, Any], clip: dict[str, Any], ou
 async def _run_generation(job_id: str, req: GenerateRequest) -> None:
     job = _read(job_id)
     try:
-        CANCEL_FLAGS[job_id] = False
+        CANCEL_FLAGS.setdefault(job_id, False)
+        if job.get("status") == "cancelled" or CANCEL_FLAGS.get(job_id):
+            return
         _set(job, status="processing", stage="downloading", progress=5)
         job_dir = DATA / "uploads" / job_id
         video, meta = await asyncio.to_thread(download_youtube, req.youtube_url, job_dir, 1080)
@@ -177,6 +179,8 @@ async def _run_generation(job_id: str, req: GenerateRequest) -> None:
             rendered.append(_relative_output(output))
             render_meta.append({"candidate_id": candidate["id"], "timeline": timeline.to_dict(), "render": info, "editorial_rank": candidate.get("editorial_rank"), "editorial_signals": candidate.get("editorial_signals")})
             _set(job, progress=65 + int(30 * (idx + 1) / len(candidates)), stage=f"rendering {idx + 1}/{len(candidates)}", render_meta=render_meta)
+        if CANCEL_FLAGS.get(job_id):
+            _set(job, status="cancelled", stage="cancelled"); return
         _set(job, status="completed", stage="completed", progress=100, output_path=rendered[0], clips=rendered, render_meta=render_meta, broll=False)
     except Exception as exc:
         _set(job, status="failed", stage="failed", error=str(exc))
@@ -188,7 +192,7 @@ async def _run_generation(job_id: str, req: GenerateRequest) -> None:
 async def generate(req: GenerateRequest, bg: BackgroundTasks):
     job_id = uuid.uuid4().hex
     job = {"job_id": job_id, "status": "queued", "progress": 0.0, "stage": "queued", "output_path": None, "error": None, "clips": [], "broll": False, "render_meta": []}
-    _write(job); bg.add_task(_run_generation, job_id, req); return CompatJob(**job)
+    _write(job); CANCEL_FLAGS[job_id] = False; bg.add_task(_run_generation, job_id, req); return CompatJob(**job)
 
 
 @router.get("/job/{job_id}", response_model=CompatJob)
