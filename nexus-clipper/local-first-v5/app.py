@@ -1,4 +1,4 @@
-from __future__ import annotations
+from __future__
 
 import copy
 import json
@@ -29,7 +29,9 @@ from timeline import build_timeline
 from transcription import transcribe
 from virtual_camera import SubjectObservation, build_camera_path, path_to_dict
 from vision_quality import detect_scene_changes, detect_face_subjects, inspect_render, media_stream_summary, tool_state
-from youtube import download_youtube, probe_youtube
+from youtube import probe_youtube
+from ai_provider import build_env_provider
+from ai_selection import select_with_ai
 
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
@@ -42,8 +44,9 @@ for p in (UPLOADS, JOBS, OUTPUTS, FONTS):
 
 MAX_UPLOAD = int(os.getenv("MAX_UPLOAD_MB", "1024")) * 1024 * 1024
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
+AI_EDITORIAL_ENABLED = os.getenv("NEXUX_AI_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on"}
 
-app = FastAPI(title="NexuX Local-First V6", version="6.1.0")
+app = FastAPI(title="NexuX Local-First V6", version="6.3.0")
 
 
 class YouTubeImport(BaseModel):
@@ -177,6 +180,15 @@ def rerank_candidates(
     return select_diverse(candidates, limit=limit, target_duration=target_duration, scene_boundaries=scene_boundaries, audio_profiles=audio_profiles)
 
 
+def apply_ai_selection(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not AI_EDITORIAL_ENABLED:
+        return candidates
+    provider = build_env_provider()
+    if provider is None:
+        return candidates
+    return select_with_ai(candidates, provider=provider)
+
+
 def resolve_candidate(job: dict[str, Any], candidate_id: str | None = None) -> dict[str, Any]:
     wanted = candidate_id or job.get("selected_candidate_id")
     candidate = next((x for x in job.get("candidates", []) if x.get("id") == wanted), None)
@@ -229,7 +241,7 @@ def render(video: Path, job: dict[str, Any], clip: dict[str, Any], output: Path,
 
 @app.get("/health")
 def health() -> dict[str, Any]:
-    return {"status": "ok", **tool_state(), "whisper_model": WHISPER_MODEL, "broll": False, "vision_quality": True, "editorial_ranker": True, "audio_intelligence": True, "targeted_retrieval": True, "editorial_intelligence": True, "version": "6.1.0"}
+    return {"status": "ok", **tool_state(), "whisper_model": WHISPER_MODEL, "broll": False, "vision_quality": True, "editorial_ranker": True, "audio_intelligence": True, "targeted_retrieval": True, "editorial_intelligence": True, "ai_editorial": AI_EDITORIAL_ENABLED and build_env_provider() is not None, "version": "6.3.0"}
 
 
 @app.post("/youtube/preview")
@@ -315,10 +327,6 @@ def analyze(job_id: str):
     else:
         raise HTTPException(422, "No reconnaissance transcript or local media available")
 
-    # V6.1 primary candidate path: deliberately over-generate across multiple
-    # editorial hypotheses before the existing multimodal ranker selects the
-    # final diverse set. The legacy generator remains available for fallback
-    # compatibility but is no longer the primary analysis path.
     candidates = generate_v6_candidates(transcript["segments"])
     if not candidates:
         raise HTTPException(422, "No editorial candidates found")
@@ -331,6 +339,7 @@ def analyze(job_id: str):
         scenes = detect_scene_changes(source, 0.0, duration)
         subjects = detect_face_subjects(source, 0.0, duration)
     ranked = rerank_candidates(candidates, scenes, target_duration=45.0, limit=10, video=source, transcript=transcript)
+    ranked = apply_ai_selection(ranked)
     bundle = build_analysis_bundle(transcript, ranked, scenes, subjects)
     job.update({
         "status": "analyzed",
@@ -339,7 +348,7 @@ def analyze(job_id: str):
         "selected_candidate_id": ranked[0]["id"],
         "analysis_bundle": bundle.to_dict(),
         "vision": {"scene_count": len(scenes), "scenes": scenes, "subject_samples": subjects},
-        "retrieval": {**job.get("retrieval", {}), "candidate_count": len(candidates), "selected_count": len(ranked), "generation": "v6.1_multi_strategy"},
+        "retrieval": {**job.get("retrieval", {}), "candidate_count": len(candidates), "selected_count": len(ranked), "generation": "v6.1_multi_strategy", "ai_editorial": AI_EDITORIAL_ENABLED and build_env_provider() is not None},
     })
     save_job(job_id, job)
     return job
