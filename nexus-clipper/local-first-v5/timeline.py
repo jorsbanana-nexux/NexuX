@@ -6,10 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-FILLERS = {
-    "um", "uh", "hmm", "hm", "eee", "aaa", "eh", "anu", "kayak", "like",
-    "you know", "youknow", "actually", "basically", "maksud saya", "gitu", "jadi", "nah",
-}
+FILLERS = {"um", "uh", "hmm", "hm", "eee", "aaa", "eh", "anu", "kayak", "like", "you know", "youknow", "actually", "basically", "maksud saya", "gitu", "jadi", "nah"}
 
 
 @dataclass(frozen=True)
@@ -90,11 +87,7 @@ def parse_silences(stderr: str) -> list[Cut]:
 def detect_silence(video: Path, start: float, end: float, noise_db: str = "-35dB", min_duration: float = 0.45) -> list[Cut]:
     if end <= start:
         return []
-    cmd = [
-        "ffmpeg", "-hide_banner", "-nostats", "-ss", f"{start:.3f}", "-i", str(video),
-        "-t", f"{end-start:.3f}", "-vn", "-af", f"silencedetect=noise={noise_db}:d={min_duration}",
-        "-f", "null", "-",
-    ]
+    cmd = ["ffmpeg", "-hide_banner", "-nostats", "-ss", f"{start:.3f}", "-i", str(video), "-t", f"{end-start:.3f}", "-vn", "-af", f"silencedetect=noise={noise_db}:d={min_duration}", "-f", "null", "-"]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
     if r.returncode not in (0, 1):
         return []
@@ -122,7 +115,6 @@ def detect_fillers(segments: list[dict[str, Any]], start: float, end: float) -> 
 
 
 def detect_repetition(segments: list[dict[str, Any]], start: float, end: float) -> list[Cut]:
-    """Conservatively remove only immediately duplicated phrases proven by word timing."""
     cuts: list[Cut] = []
     for seg in segments:
         words = seg.get("words") or []
@@ -148,11 +140,9 @@ def detect_repetition(segments: list[dict[str, Any]], start: float, end: float) 
 
 
 def build_timeline(video: Path, transcript: dict[str, Any], clip: dict[str, Any]) -> EditTimeline:
-    start = float(clip["start"])
-    end = float(clip["end"])
+    start, end = float(clip["start"]), float(clip["end"])
     duration = max(0.0, end - start)
     segments = transcript.get("segments", [])
-
     silence = detect_silence(video, start, end)
     filler = detect_fillers(segments, start, end)
     repetition = detect_repetition(segments, start, end)
@@ -197,8 +187,6 @@ def ffmpeg_filter_for_timeline(timeline: EditTimeline) -> tuple[str, str]:
         a_parts.append(f"[0:a]atrim=start={item.source_start:.6f}:end={item.source_end:.6f},asetpts=PTS-STARTPTS[a{i}]")
     n = len(timeline.keep_ranges)
     if n == 1:
-        graph = f"{v_parts[0]};{a_parts[0]};[v0]null[vout];[a0]anull[aout]"
-        return graph, ""
+        return f"{v_parts[0]};{a_parts[0]};[v0]null[vout];[a0]anull[aout]", ""
     concat_inputs = "".join(f"[v{i}][a{i}]" for i in range(n))
-    graph = ";".join(v_parts + a_parts) + f";{concat_inputs}concat=n={n}:v=1:a=1[vout][aout]"
-    return graph, ""
+    return ";".join(v_parts + a_parts) + f";{concat_inputs}concat=n={n}:v=1:a=1[vout][aout]", ""
