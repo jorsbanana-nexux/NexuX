@@ -4,34 +4,31 @@
 
 The existing NexuX backend has a useful FastAPI/React/engine foundation, but the legacy path is not strictly local-first: its requirements include cloud SDKs and the content analyzer can call Gemini when a key is available. The main pipeline is also YouTube-first and its job registry is process-memory based.
 
-## V5 target
+## V5 progress
 
-Upload -> FFprobe validation -> faster-whisper local transcription -> word/segment timestamps -> heuristic content analysis -> candidate generation -> weighted heuristic ranking -> local face/framing baseline -> ASS subtitles -> H.264/AAC MP4.
+- URL-first local YouTube import via yt-dlp.
+- FFprobe validation and persisted job state.
+- Local faster-whisper word timestamps.
+- Heuristic candidate ranking with explicit heuristic disclosure.
+- Canonical EDL for silence/filler/repetition cuts and source-to-output remapping.
+- Subject-tracking baseline and normalized virtual-camera path with smoothing/fallback.
+- Advanced caption engine with phrase grouping, KARAOKE/POP LINE/DEEP DIVER presets, keyword emphasis, active-word animation, face-aware vertical margin heuristics, and custom font validation.
 
-Viral Score is explicitly heuristic ranking, not a prediction of TikTok, Reels, Shorts, or any platform algorithm.
+## Weights
 
-Weights:
 - Hook 0.34
 - Engagement 0.28
 - Visual 0.16
 - Clarity 0.14
 - Duration Fit 0.08
 
-Hook signals:
-curiosity, question, controversy, emotional language, surprising statement, number/statistic, direct benefit, unusual claim, urgency, contradiction.
+## Remaining work before production claims
 
-## Hardening priorities
+1. Integrate the virtual-camera path into the final FFmpeg filter graph.
+2. Replace single-best-face sampling with persistent multi-person identity tracking.
+3. Add semantic local B-roll indexing and confidence thresholds.
+4. Add headline/emoji rules and safe-zone composition.
+5. Add real-media rendering fixtures and objective quality/performance benchmarks.
+6. Compare against a fixed commercial-editor benchmark set; do not claim superiority without measurements.
 
-1. Strict local-only dependency set.
-2. Persistent job state and artifacts.
-3. Safe upload and path validation.
-4. Deterministic fallback when local AI/vision is unavailable.
-5. Timeline edit-list engine for silence/filler removal with subtitle mapping.
-6. Multi-face identity tracking and virtual-camera smoothing.
-7. Sentence-level karaoke ASS rendering with active-word highlight.
-8. Local semantic reranker/embeddings for context and payoff scoring.
-9. Render regression tests and benchmark dataset.
-
-## Known limits
-
-This is not claimed to be a commercial-platform replacement yet. Advanced semantic repetition removal, learned ranking, lip-aware editing, and high-confidence multi-person tracking require additional local models and benchmark validation.
+Viral Score is explicitly heuristic ranking, not a prediction of TikTok, Reels, Shorts, or any platform algorithm.
