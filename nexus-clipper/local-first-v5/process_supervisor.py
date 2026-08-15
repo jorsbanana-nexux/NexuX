@@ -11,12 +11,27 @@ _PROCESSES: dict[str, subprocess.Popen[Any]] = {}
 _LOCK = threading.RLock()
 
 
-def run(cmd: Sequence[str], *, key: str | None = None, timeout: int | float | None = None, cwd: str | None = None, text: bool = True, capture_output: bool = True) -> subprocess.CompletedProcess[Any]:
-    kwargs: dict[str, Any] = {"cwd": cwd, "text": text, "capture_output": capture_output}
+def run(
+    cmd: Sequence[str],
+    *,
+    key: str | None = None,
+    timeout: int | float | None = None,
+    cwd: str | None = None,
+    text: bool = True,
+    capture_output: bool = True,
+) -> subprocess.CompletedProcess[Any]:
+    kwargs: dict[str, Any] = {"cwd": cwd, "text": text}
+    if capture_output:
+        kwargs["stdout"] = subprocess.PIPE
+        kwargs["stderr"] = subprocess.PIPE
+    else:
+        kwargs["stdout"] = None
+        kwargs["stderr"] = None
     if os.name == "nt":
         kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
     else:
         kwargs["start_new_session"] = True
+
     process = subprocess.Popen(list(cmd), **kwargs)
     if key:
         with _LOCK:
@@ -44,7 +59,13 @@ def terminate(key_or_process: str | subprocess.Popen[Any]) -> bool:
         return False
     try:
         if os.name == "nt":
-            subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], capture_output=True, text=True, timeout=10)
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=10,
+                check=False,
+            )
         else:
             os.killpg(process.pid, signal.SIGTERM)
             try:
