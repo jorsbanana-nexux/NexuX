@@ -4,7 +4,7 @@ Local-first clipping backend staged beside the legacy NexuX implementation.
 
 ## Pipeline
 
-`YouTube URL -> local yt-dlp -> FFprobe -> faster-whisper -> heuristic content analysis -> candidate ranking -> Smart EDL -> subject-aware camera path -> advanced ASS captions -> FFmpeg export`
+`YouTube URL -> local yt-dlp -> FFprobe -> faster-whisper -> heuristic content analysis -> candidate ranking -> Smart EDL -> subject-aware camera path -> advanced ASS captions -> visual intelligence -> FFmpeg export`
 
 ## Run
 
@@ -26,6 +26,18 @@ Swagger: `http://127.0.0.1:8001/docs`
 - `deep_diver`: restrained presentation with keyword emphasis.
 
 Captions consume the canonical edited timeline when available, so removed source ranges do not independently shift subtitle timing.
+
+## Visual intelligence
+
+`visual_intel.py` is local and deterministic. It provides:
+
+- keyword signals for curiosity, benefit, controversy and numbers;
+- local B-roll matching against a local B-roll folder by filename keyword;
+- optional emoji rules;
+- baseline headline extraction;
+- confidence thresholds so B-roll is not forced into a clip when there is no good match.
+
+No stock-video scraping or cloud stock API is used.
 
 ## Custom fonts
 
@@ -54,6 +66,6 @@ The score is a **heuristic ranking**, not a prediction of TikTok, Reels, Shorts,
 
 ## Engineering status
 
-Implemented: URL-first import, local transcription, heuristic ranking, Smart EDL, subject-tracking baseline, virtual-camera path, advanced caption engine, three caption presets, and custom-font validation.
+Implemented: URL-first import, local transcription, heuristic ranking, Smart EDL, subject-tracking baseline, virtual-camera path, advanced caption engine, three caption presets, custom-font validation, and local visual-intelligence planning.
 
-Still required before production-grade claims: direct FFmpeg camera-path integration, robust multi-person identity tracking, semantic local B-roll matching, headline/emoji engine, automated real-media render regression, performance profiling, and benchmark-based optimization against a fixed dataset.
+Still required before production-grade claims: direct FFmpeg camera-path integration, robust multi-person identity tracking, semantic local B-roll retrieval, deeper headline/emoji composition, automated real-media render regression, performance profiling, and benchmark-based optimization against a fixed dataset.
