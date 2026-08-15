@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from semantic_ranker import SemanticFeatures, analyze_semantics
+
 QUESTION = re.compile(r"\?|\b(apakah|kenapa|mengapa|bagaimana|what|why|how|can|could|would)\b", re.I)
 NUMBER = re.compile(r"\b\d+(?:[.,]\d+)?(?:%|k|m|juta|ribu|million|billion)?\b", re.I)
 EMOTIONAL = re.compile(r"\b(gila|luar biasa|takut|marah|sedih|bahagia|rahasia|menakutkan|amazing|crazy|shocking|terrible|love|hate)\b", re.I)
@@ -31,16 +33,20 @@ class Score:
     visual: float = 50.0
     clarity: float = 50.0
     duration_fit: float = 0.0
+    semantic_score: float = 0.0
     viral: float = 0.0
     reasons: list[str] = field(default_factory=list)
+    semantic: dict[str, float] = field(default_factory=dict)
+
 
 def _scale(hits: int, denom: float = 2.0) -> float:
     return max(0.0, min(100.0, 100.0 * hits / denom))
 
+
 def score_text(text: str, opening: str | None = None) -> Score:
     compact = " ".join(text.split())
-    lower = compact.lower()
     hook_text = (opening or compact[:240]).lower()
+    semantic: SemanticFeatures = analyze_semantics(compact, opening or compact[:240])
     s = Score(
         curiosity=_scale(len(CURIOSITY.findall(hook_text))),
         question=90.0 if QUESTION.search(hook_text) else 0.0,
@@ -52,6 +58,17 @@ def score_text(text: str, opening: str | None = None) -> Score:
         unusual=80.0 if UNUSUAL.search(hook_text) else 0.0,
         urgency=_scale(len(URGENCY.findall(hook_text))),
         contradiction=_scale(len(CONTRAST.findall(hook_text))),
+        semantic_score=round(100.0 * (
+            0.20 * semantic.topic_coherence
+            + 0.20 * semantic.opening_strength
+            + 0.18 * semantic.payoff_strength
+            + 0.10 * semantic.specificity
+            + 0.10 * semantic.novelty_proxy
+            + 0.14 * semantic.context_completeness
+            + 0.08 * semantic.standalone_quality
+            - 0.08 * semantic.retention_risk
+        ), 2),
+        semantic=semantic.to_dict(),
     )
     s.hook = (
         s.curiosity * .18 + s.question * .12 + s.controversy * .10 + s.emotional * .12
@@ -60,11 +77,20 @@ def score_text(text: str, opening: str | None = None) -> Score:
     )
     s.engagement = min(100.0, s.question*.32 + s.emotional*.22 + s.controversy*.16 + s.curiosity*.18 + s.contradiction*.12)
     words = max(1, len(compact.split()))
-    s.clarity = max(0.0, min(100.0, 100.0 - abs(words - 80) * 0.7))
+    lexical_clarity = max(0.0, min(100.0, 100.0 - abs(words - 80) * 0.7))
+    semantic_clarity = 100.0 * (0.55 * semantic.context_completeness + 0.45 * semantic.standalone_quality)
+    s.clarity = round(0.65 * lexical_clarity + 0.35 * semantic_clarity, 2)
     for name in ("curiosity", "question", "controversy", "emotional", "surprising", "number", "benefit", "unusual", "urgency", "contradiction"):
         if getattr(s, name) >= 50:
             s.reasons.append(name)
+    if semantic.payoff_strength >= 0.7:
+        s.reasons.append("payoff")
+    if semantic.context_completeness >= 0.7:
+        s.reasons.append("context")
+    if semantic.standalone_quality >= 0.7:
+        s.reasons.append("standalone")
     return s
+
 
 def duration_fit(seconds: float, minimum: float = 20.0, maximum: float = 60.0) -> float:
     if minimum <= seconds <= maximum:
@@ -75,8 +101,11 @@ def duration_fit(seconds: float, minimum: float = 20.0, maximum: float = 60.0) -
         return max(0.0, 100.0 - (minimum-seconds)*7)
     return max(0.0, 100.0 - (seconds-maximum)*8)
 
+
 def rank_score(score: Score, duration: float) -> Score:
     score.duration_fit = duration_fit(duration)
+    # Requested production formula remains authoritative. Semantic reasoning improves
+    # the clarity component and supplies transparent diagnostics instead of changing weights.
     score.viral = max(0.0, min(100.0,
         score.hook*.34 + score.engagement*.28 + score.visual*.16 + score.clarity*.14 + score.duration_fit*.08
     ))
