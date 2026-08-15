@@ -1,0 +1,106 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+import math
+import subprocess
+
+from virtual_camera import CameraPoint
+
+
+@dataclass(frozen=True)
+class CompositionSpec:
+    width: int = 1080
+    height: int = 1920
+    crf: int = 20
+
+
+def _piecewise_linear(points: list[tuple[float, float]], t_var: str = "t") -> str:
+    if not points:
+        return "0"
+    points = sorted(points)
+    if len(points) == 1:
+        return f"{points[0][1]:.6f}"
+    expr = f"{points[-1][1]:.6f}"
+    for idx in range(len(points) - 2, -1, -1):
+        t0, v0 = points[idx]
+        t1, v1 = points[idx + 1]
+        span = max(1e-6, t1 - t0)
+        interp = f"({v0:.6f}+({v1 - v0:.6f})*(({t_var}-{t0:.6f})/{span:.6f}))"
+        expr = f"if(lt({t_var},{t1:.6f}),{interp},{expr})"
+    first_t, first_v = points[0]
+    return f"if(lt({t_var},{first_t:.6f}),{first_v:.6f},{expr})"
+
+
+def camera_crop_expressions(
+    camera_points: list[CameraPoint],
+    source_width: int,
+    source_height: int,
+    output_aspect: float = 9 / 16,
+) -> tuple[str, str, str, str]:
+    """Build FFmpeg crop expressions from output-time camera points.
+
+    Returns (crop_w, crop_h, x, y). Crop dimensions are conservative and kept
+    fixed to the narrowest safe path so the subject follows without resizing the
+    crop window frame-to-frame.
+    """
+    if not camera_points:
+        crop_w = min(source_width, int(source_height * output_aspect))
+        crop_h = min(source_height, int(crop_w / max(output_aspect, 1e-6)))
+        x = f"(iw-{crop_w})/2"
+        y = f"(ih-{crop_h})/2"
+        return str(crop_w), str(crop_h), x, y
+
+    crop_w_norm = min(max(p.crop_w for p in camera_points), 0.92)
+    crop_w = max(2, int(source_width * crop_w_norm))
+    crop_h = max(2, min(source_height, int(round(crop_w / output_aspect))))
+    if crop_h > source_height:
+        crop_h = source_height
+        crop_w = max(2, int(round(crop_h * output_aspect)))
+
+    xs = [(p.time, p.cx * source_width - crop_w / 2.0) for p in camera_points]
+    ys = [(p.time, p.cy * source_height - crop_h / 2.0) for p in camera_points]
+    x = _piecewise_linear(xs)
+    y = _piecewise_linear(ys)
+    x = f"max(0,min(iw-{crop_w},{x}))"
+    y = f"max(0,min(ih-{crop_h},{y}))"
+    return str(crop_w), str(crop_h), x, y
+
+
+def build_final_filter(
+    edl_graph: str,
+    camera_points: list[CameraPoint],
+    ass_path: Path,
+    source_width: int,
+    source_height: int,
+    spec: CompositionSpec = CompositionSpec(),
+) -> str:
+    crop_w, crop_h, x, y = camera_crop_expressions(camera_points, source_width, source_height)
+    ass = str(ass_path).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
+    video = (
+        f"[vout]crop={crop_w}:{crop_h}:x='{x}':y='{y}',"
+        f"scale={spec.width}:{spec.height}:flags=lanczos,ass='{ass}'[vfinal]"
+    )
+    return f"{edl_graph};{video}"
+
+
+def run_ffmpeg(
+    source: Path,
+    output: Path,
+    filter_complex: str,
+    audio_label: str = "[aout]",
+    spec: CompositionSpec = CompositionSpec(),
+) -> None:
+    cmd = [
+        "ffmpeg", "-y", "-i", str(source),
+        "-filter_complex", filter_complex,
+        "-map", "[vfinal]", "-map", audio_label,
+        "-c:v", "libx264", "-preset", "medium", "-crf", str(spec.crf),
+        "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(output),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr[-3500:] or "Final composition render failed")
+    if not output.exists() or output.stat().st_size == 0:
+        raise RuntimeError("FFmpeg produced no final output")
