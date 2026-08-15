@@ -147,9 +147,15 @@ def build_timeline(video: Path, transcript: dict[str, Any], clip: dict[str, Any]
     start, end = float(clip["start"]), float(clip["end"])
     duration = max(0.0, end - start)
     segments = transcript.get("segments", [])
-    audio_profile = analyze_audio(video, start, end, speech_segments=segments).to_dict()
+
+    cached_profile = clip.get("audio_profile")
+    if isinstance(cached_profile, dict) and cached_profile:
+        audio_profile = dict(cached_profile)
+    else:
+        audio_profile = analyze_audio(video, start, end, speech_segments=segments).to_dict()
+
     min_silence = 0.65
-    if audio_profile.get("rhythm_score", 50.0) < 40.0:
+    if float(audio_profile.get("rhythm_score", 50.0)) < 40.0:
         min_silence = 0.5
     silence = detect_silence(video, start, end, min_duration=0.45)
     filler = detect_fillers(segments, start, end)
