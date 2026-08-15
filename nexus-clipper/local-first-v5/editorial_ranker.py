@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from math import exp
 from typing import Any
 
+from editorial_intelligence import narrative_signals
+
 
 @dataclass(frozen=True)
 class EditorialSignals:
@@ -21,10 +23,14 @@ class EditorialSignals:
     audio_rhythm: float
     speech_density: float
     audio_clarity: float
+    narrative_tension: float
+    narrative_revelation: float
+    narrative_payoff: float
+    confidence: float
     total: float
 
     def to_dict(self) -> dict[str, float]:
-        return {k: round(v, 3) for k, v in self.__dict__.items()}
+        return {k: round(float(v), 3) for k, v in self.__dict__.items()}
 
 
 def _clamp(value: float, low: float = 0.0, high: float = 100.0) -> float:
@@ -69,11 +75,25 @@ def _diversity(candidate: dict[str, Any], selected: list[dict[str, Any]]) -> flo
     return _clamp(100.0 * (1.0 - exp(-nearest / 15.0)))
 
 
+def _confidence(*, candidate: dict[str, Any], narrative: dict[str, float], audio: dict[str, float]) -> float:
+    evidence = 0.35
+    if candidate.get("text"):
+        evidence += 0.2
+    if candidate.get("scores"):
+        evidence += 0.15
+    if audio:
+        evidence += 0.15
+    narrative_strength = sum(narrative.values()) / max(1, len(narrative))
+    evidence += 0.15 * narrative_strength
+    return round(max(0.0, min(1.0, evidence)), 3)
+
+
 def rank_candidate(candidate: dict[str, Any], *, target_duration: float = 45.0, scene_boundaries: list[dict[str, Any]] | None = None, selected: list[dict[str, Any]] | None = None, audio: dict[str, float] | None = None) -> EditorialSignals:
     selected = selected or []
     scores = candidate.get("scores") or {}
     semantic = candidate.get("editorial", {}).get("semantic") or {}
     audio = audio or {}
+    narrative = narrative_signals([{ "text": candidate.get("text", ""), "start": candidate.get("start", 0.0), "end": candidate.get("end", 0.0) }]).to_dict()
 
     hook = _clamp(float(scores.get("hook", 0.0)))
     payoff = _clamp(float(semantic.get("payoff_strength", 0.0)) * 100.0)
@@ -86,23 +106,31 @@ def rank_candidate(candidate: dict[str, Any], *, target_duration: float = 45.0, 
     boundary = _boundary_alignment(candidate, scene_boundaries)
     repetition_penalty = _repetition_penalty(candidate, selected)
     diversity = _diversity(candidate, selected)
-
     audio_rhythm = _clamp(float(audio.get("rhythm", 50.0)))
     speech_density = _clamp(float(audio.get("speech_density", 50.0)))
     audio_clarity = _clamp(float(audio.get("clarity", 50.0)))
 
+    narrative_tension = _clamp(narrative.get("tension", 0.0) * 100.0)
+    narrative_revelation = _clamp(narrative.get("revelation", 0.0) * 100.0)
+    narrative_payoff = _clamp(narrative.get("payoff", 0.0) * 100.0)
+
     total = (
-        0.18 * hook + 0.14 * payoff + 0.11 * context + 0.11 * standalone
-        + 0.07 * specificity + 0.06 * novelty + 0.06 * coherence + 0.06 * pacing
-        + 0.05 * boundary + 0.05 * diversity + 0.06 * audio_rhythm
-        + 0.03 * speech_density + 0.02 * audio_clarity - 0.05 * repetition_penalty
+        0.16 * hook + 0.13 * payoff + 0.10 * context + 0.10 * standalone
+        + 0.06 * specificity + 0.05 * novelty + 0.05 * coherence + 0.05 * pacing
+        + 0.04 * boundary + 0.05 * diversity + 0.05 * audio_rhythm
+        + 0.025 * speech_density + 0.015 * audio_clarity
+        + 0.04 * narrative_tension + 0.03 * narrative_revelation
+        + 0.04 * narrative_payoff - 0.05 * repetition_penalty
     )
+    confidence = _confidence(candidate=candidate, narrative=narrative, audio=audio)
     return EditorialSignals(
         hook=hook, payoff=payoff, context=context, standalone=standalone,
         specificity=specificity, novelty=novelty, coherence=coherence,
         pacing=pacing, boundary_alignment=boundary, diversity=diversity,
         repetition_penalty=repetition_penalty, audio_rhythm=audio_rhythm,
         speech_density=speech_density, audio_clarity=audio_clarity,
+        narrative_tension=narrative_tension, narrative_revelation=narrative_revelation,
+        narrative_payoff=narrative_payoff, confidence=confidence,
         total=_clamp(total),
     )
 
@@ -116,10 +144,19 @@ def select_diverse(candidates: list[dict[str, Any]], *, limit: int = 10, target_
         for candidate in remaining:
             signals = rank_candidate(candidate, target_duration=target_duration, scene_boundaries=scene_boundaries, selected=selected, audio=audio_profiles.get(candidate.get("id", "")))
             ranked.append((signals, candidate))
-        signals, winner = max(ranked, key=lambda pair: pair[0].total)
+        signals, winner = max(ranked, key=lambda pair: pair[0].total * (0.85 + 0.15 * pair[0].confidence))
         chosen = dict(winner)
         chosen["editorial_rank"] = round(signals.total, 2)
         chosen["editorial_signals"] = signals.to_dict()
+        chosen["editorial_evidence"] = {
+            "narrative": {
+                "tension": round(signals.narrative_tension / 100.0, 3),
+                "revelation": round(signals.narrative_revelation / 100.0, 3),
+                "payoff": round(signals.narrative_payoff / 100.0, 3),
+            },
+            "confidence": signals.confidence,
+            "generation_strategy": chosen.get("generation_strategy", "legacy_temporal"),
+        }
         selected.append(chosen)
         remaining.remove(winner)
     return selected
