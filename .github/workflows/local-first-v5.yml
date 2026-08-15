@@ -10,16 +10,25 @@ on:
       - ".github/workflows/local-first-v5.yml"
 
 jobs:
-  syntax-and-timeline:
+  quality-gate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Compile local-first V5 Python
+          cache: "pip"
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Install local-first V5 dependencies
         working-directory: nexus-clipper/local-first-v5
-        run: python -m py_compile app.py scoring.py timeline.py youtube.py test_timeline.py
-      - name: Run deterministic timeline tests
+        run: python -m pip install -r requirements-local.txt pytest
+      - name: Compile all V5 modules
         working-directory: nexus-clipper/local-first-v5
-        run: python -m pytest -q test_timeline.py
+        run: python -m compileall -q .
+      - name: Run deterministic tests
+        working-directory: nexus-clipper/local-first-v5
+        run: python -m pytest -q
+      - name: Run local quality gate
+        working-directory: nexus-clipper/local-first-v5
+        run: python quality_gate.py
