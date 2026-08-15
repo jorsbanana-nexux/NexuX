@@ -7,6 +7,10 @@ if [[ ! -x "$PY" ]]; then
   exit 1
 fi
 
-"$PY" -c 'import fastapi, faster_whisper, cv2; print("V5 dependencies OK")'
+if ! "$PY" -c 'import fastapi, faster_whisper, cv2' >/dev/null 2>&1; then
+  echo "[NexuX] Installing Local-First V5 dependencies..."
+  "$PY" -m pip install -r local-first-v5/requirements-local.txt
+fi
+
 cd local-first-v5
 exec "../$PY" -m uvicorn server:app --host 0.0.0.0 --port 8000
