@@ -119,21 +119,10 @@ def rerank_candidates(
     if video is not None:
         segments = (transcript or {}).get("segments", [])
         for candidate in candidates:
-            profile = analyze_audio(
-                video,
-                float(candidate["start"]),
-                float(candidate["end"]),
-                speech_segments=segments,
-            )
+            profile = analyze_audio(video, float(candidate["start"]), float(candidate["end"]), speech_segments=segments)
             audio_profiles[candidate["id"]] = audio_signals(profile)
             candidate["audio_profile"] = profile.to_dict()
-    return select_diverse(
-        candidates,
-        limit=limit,
-        target_duration=target_duration,
-        scene_boundaries=scene_boundaries,
-        audio_profiles=audio_profiles,
-    )
+    return select_diverse(candidates, limit=limit, target_duration=target_duration, scene_boundaries=scene_boundaries, audio_profiles=audio_profiles)
 
 
 def resolve_candidate(job: dict[str, Any], candidate_id: str | None = None) -> dict[str, Any]:
@@ -179,7 +168,7 @@ def render(video: Path, job: dict[str, Any], clip: dict[str, Any], output: Path,
     edl_graph = getattr(__import__("timeline"), "ffmpeg_filter_for_timeline")(timeline)[0]
     spec = CompositionSpec()
     filter_complex = build_final_filter(edl_graph, camera_path, ass, source_w, source_h, spec)
-    run_ffmpeg(video, output, filter_complex, spec)
+    run_ffmpeg(video, output, filter_complex, spec=spec)
     quality = inspect_render(output, expected_width=spec.width, expected_height=spec.height, min_duration=max(3.0, timeline.duration_after * 0.98), max_duration=timeline.duration_after + 0.25)
     if quality["verdict"] != "APPROVED":
         raise RuntimeError(f"Render quality gate failed: {json.dumps(quality, ensure_ascii=False)}")
