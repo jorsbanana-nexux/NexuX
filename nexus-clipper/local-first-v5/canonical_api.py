@@ -15,6 +15,7 @@ from canonical_v6_pipeline import run_generation as run_v6_generation
 from caption_runtime import render_ass_safe
 from sequential_vision import detect_face_subjects, detect_scene_changes, visual_quality
 from server import CompatJob, GenerateRequest
+from ui_contract import ASPECT_RATIOS, ANIMATIONS, POSITIONS, canonicalize_fronted_values
 from ui_contract_validation import validate_generate_request
 from vision_quality import inspect_render, media_stream_summary, tool_state
 
@@ -71,6 +72,7 @@ async def root() -> dict:
         "broll": False,
         "editorial_engine": "v6.1",
         "retrieval": "caption-first-targeted",
+        "ui_contract": "strict",
     }
 
 
@@ -86,6 +88,7 @@ async def health() -> dict:
         "editorial_engine": "v6.1",
         "retrieval_strategy": "caption-first-targeted",
         "ui_contract": "strict",
+        "fronted_alias_mapping": True,
         **tool_state(),
         "whisper_model": os.getenv("WHISPER_MODEL", "small"),
     }
@@ -98,13 +101,16 @@ async def styles() -> dict:
             {"id": key, "name": key.replace("_", " ").title(), "preview": {"font": value.get("font"), "font_size": value.get("size"), "animation": value.get("animation")}}
             for key, value in engine.PRESETS.items()
         ],
-        "aspect_ratios": ["9:16", "1:1", "16:9", "4:5", "2:3", "21:9"],
+        "aspect_ratios": list(ASPECT_RATIOS),
+        "animations": list(ANIMATIONS),
+        "positions": list(POSITIONS),
         "broll": False,
     }
 
 
 @app.post("/api/generate", response_model=CompatJob)
 async def generate(req: GenerateRequest, bg: BackgroundTasks) -> CompatJob:
+    req.subtitle_style, req.animation = canonicalize_fronted_values(req.subtitle_style, req.animation)
     validate_generate_request(req)
     job_id = uuid.uuid4().hex
     job = {
