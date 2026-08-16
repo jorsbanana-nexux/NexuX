@@ -9,15 +9,8 @@ from analysis_world_service import build_and_persist_world
 from contracts import GenerateRequest
 from editorial_intelligence import generate_candidates
 from editorial_intent import EditorialIntent
-from editorial_ranker import select_diverse_from_world
-from multimodal_editorial import (
-    apply_cleanup_to_candidate,
-    apply_editorial_intelligence,
-    critic,
-    dynamic_layout_plan,
-    detect_filler_segments,
-    revision_actions,
-)
+from intent_aware_selection import select_diverse_from_world_with_intent
+from multimodal_editorial import apply_cleanup_to_candidate, apply_editorial_intelligence, critic, dynamic_layout_plan, detect_filler_segments, revision_actions
 from publishing_analytics import build_publish_plan
 from runtime_adapter import CanonicalRuntime, default_runtime
 from targeted_retrieval import download_segment, fetch_recon_audio, fetch_youtube_captions
@@ -30,10 +23,7 @@ def _shift_transcript(transcript: dict[str, Any], offset: float) -> dict[str, An
         item = dict(segment)
         item["start"] = max(0.0, float(segment.get("start", 0.0)) - offset)
         item["end"] = max(0.0, float(segment.get("end", 0.0)) - offset)
-        item["words"] = [
-            {**dict(word), "start": max(0.0, float(word.get("start", 0.0)) - offset), "end": max(0.0, float(word.get("end", 0.0)) - offset)}
-            for word in segment.get("words", []) or []
-        ]
+        item["words"] = [{**dict(word), "start": max(0.0, float(word.get("start", 0.0)) - offset), "end": max(0.0, float(word.get("end", 0.0)) - offset)} for word in segment.get("words", []) or []]
         result["segments"].append(item)
     result["duration"] = max(0.0, float(transcript.get("duration", 0.0)) - offset)
     result["source"] = f"{transcript.get('source', 'unknown')}:shifted"
@@ -69,26 +59,11 @@ def _world_confidence(candidates: list[dict[str, Any]], audio_profiles: dict[str
     transcript_confidence = 0.9 if transcript.get("segments") else 0.0
     candidate_confidence = min(1.0, 0.55 + min(len(candidates), 20) / 100.0)
     audio_confidence = 0.85 if audio_profiles else 0.0
-    return {
-        "transcript": transcript_confidence,
-        "candidates": candidate_confidence,
-        "audio": audio_confidence,
-        "world": round((transcript_confidence + candidate_confidence + audio_confidence) / 3.0, 3),
-    }
+    return {"transcript": transcript_confidence, "candidates": candidate_confidence, "audio": audio_confidence, "world": round((transcript_confidence + candidate_confidence + audio_confidence) / 3.0, 3)}
 
 
 def _editorial_intent(req: GenerateRequest) -> EditorialIntent:
-    return EditorialIntent(
-        objective=req.editorial_objective,
-        audience=req.audience,
-        platform=(req.publish_platforms or ["generic"])[0],
-        tone=req.editorial_tone,
-        style=req.editorial_style,
-        target_duration=float(req.target_duration),
-        limit=int(req.clip_count),
-        required_topics=tuple(req.required_topics),
-        excluded_topics=tuple(req.excluded_topics),
-    )
+    return EditorialIntent(objective=req.editorial_objective, audience=req.audience, platform=(req.publish_platforms or ["generic"])[0], tone=req.editorial_tone, style=req.editorial_style, target_duration=float(req.target_duration), limit=int(req.clip_count), required_topics=tuple(req.required_topics), excluded_topics=tuple(req.excluded_topics))
 
 
 async def run_generation(job_id: str, req: GenerateRequest, runtime: CanonicalRuntime | None = None) -> None:
@@ -103,25 +78,21 @@ async def run_generation(job_id: str, req: GenerateRequest, runtime: CanonicalRu
         job_dir.mkdir(parents=True, exist_ok=True)
         source_probe = runtime.probe_youtube(req.youtube_url)
         runtime.set_job(job, status="processing", stage="reconnaissance", progress=5, source={"type":"youtube","url":req.youtube_url,"max_height":1080,"metadata":source_probe.metadata}, job_dir=str(job_dir), retrieval={"strategy":"caption-first-targeted"}, editorial_intent=intent.to_dict())
-
         transcript, recon_source = await asyncio.to_thread(_reconnaissance, runtime, job_dir, req.youtube_url, req.language, job_id)
         runtime.set_job(job, stage="candidate_generation", progress=24, transcript=transcript, retrieval={"strategy":"caption-first-targeted","recon_source":recon_source}, editorial_intent=intent.to_dict())
         if runtime.cancel_flags.get(job_id):
             runtime.set_job(job, status="cancelled", stage="cancelled")
             return
-
         candidates = generate_candidates(transcript.get("segments", []), max_candidates=1200)
         if not candidates:
             raise RuntimeError("No viable editorial candidates found")
         candidates = [{**candidate,"editorial_context":{"prompt":getattr(req,"clip_prompt",None),"genre":getattr(req,"genre","auto"),"target_duration":req.target_duration,"intent":intent.to_dict()}} for candidate in candidates]
         candidates, decision = apply_editorial_intelligence(candidates, prompt=getattr(req,"clip_prompt",None), genre=getattr(req,"genre","auto"))
-
         editorial_state={"intent":intent.to_dict(),"prompt":getattr(req,"clip_prompt",None),"genre":getattr(req,"genre","auto"),"target_duration":req.target_duration,"decision":decision.to_dict(),"stage":"pre_retrieval"}
         initial_world, initial_world_path = build_and_persist_world(runtime.jobs_dir, job_id=job_id, media=source_probe.metadata, transcript=transcript, candidates=candidates[:min(80,max(req.clip_count*12,40))], editorial=editorial_state, provenance={"world":"analysis_world:v2","transcript":transcript.get("source","unknown")}, confidence=_world_confidence(candidates,{},transcript))
-        narrowed = select_diverse_from_world(initial_world, limit=min(_max_candidates(req),max(req.clip_count*4,12)), target_duration=float(req.target_duration))
+        narrowed = select_diverse_from_world_with_intent(initial_world, limit=min(_max_candidates(req),max(req.clip_count*4,12)), target_duration=float(req.target_duration))
         if not narrowed:
             raise RuntimeError("Initial editorial narrowing produced no candidates")
-
         prefetched: dict[str,dict[str,Any]] = {}
         audio_profiles: dict[str,dict[str,Any]] = {}
         world_scenes: list[dict[str,Any]] = []
@@ -148,19 +119,16 @@ async def run_generation(job_id: str, req: GenerateRequest, runtime: CanonicalRu
             audio_profiles[str(candidate["id"])]=audio_profile.to_dict()
             world_scenes.extend([{**scene,"candidate_id":candidate["id"]} for scene in scenes])
             world_subjects.extend([{**subject,"candidate_id":candidate["id"]} for subject in subject_samples])
-
         editorial_state={"intent":intent.to_dict(),"prompt":getattr(req,"clip_prompt",None),"genre":getattr(req,"genre","auto"),"target_duration":req.target_duration,"decision":decision.to_dict(),"stage":"multimodal_editorial"}
         world,world_path=build_and_persist_world(runtime.jobs_dir,job_id=job_id,media=source_probe.metadata,transcript=transcript,audio_profiles=audio_profiles,scenes=world_scenes,subjects=world_subjects,candidates=enriched_candidates,editorial=editorial_state,provenance={"world":"analysis_world:v2","transcript":transcript.get("source","unknown"),"audio":"audio_intelligence","vision":"vision_service","intent":"editorial_intent:v1"},confidence=_world_confidence(enriched_candidates,audio_profiles,transcript))
-        final_candidates=select_diverse_from_world(world,limit=req.clip_count,target_duration=float(req.target_duration))
+        final_candidates=select_diverse_from_world_with_intent(world,limit=req.clip_count,target_duration=float(req.target_duration))
         if not final_candidates:
             raise RuntimeError("AnalysisWorld editorial selection produced no candidates")
-
         filler_cuts=detect_filler_segments(transcript.get("segments",[]),min_pause=float(getattr(req,"pause_threshold",0.42))) if getattr(req,"remove_fillers_pauses",True) else []
         render_meta: list[dict[str,Any]]=[]
         rendered: list[str]=[]
         all_subject_samples: list[dict[str,Any]]=[]
         audio_evidence: list[dict[str,Any]]=[]
-
         for idx,candidate in enumerate(final_candidates):
             if runtime.cancel_flags.get(job_id):
                 runtime.set_job(job,status="cancelled",stage="cancelled")
@@ -180,9 +148,8 @@ async def run_generation(job_id: str, req: GenerateRequest, runtime: CanonicalRu
             output=runtime.outputs_dir/f"{job_id}_clip_{idx+1:02d}.mp4"
             info=await asyncio.to_thread(runtime.render_with_spec,video,{**job,"job_id":job_id,"transcript":local_transcript,"meta":media},local_candidate,output,timeline,req,voiceover_path)
             rendered.append(f"/output/{output.name}")
-            render_meta.append({"candidate_id":local_candidate["id"],"timeline":timeline.to_dict(),"render":info,"editorial_rank":candidate.get("editorial_rank"),"editorial_signals":candidate.get("editorial_signals"),"editorial_evidence":candidate.get("editorial_evidence"),"intent_reasoning":candidate.get("intent_reasoning"),"analysis_world":candidate.get("analysis_world"),"virality":local_candidate.get("virality_score"),"prompt_relevance":local_candidate.get("prompt_relevance"),"genre":local_candidate.get("genre",decision.genre),"dynamic_layout":dynamic_layout_plan(aspect_ratio=req.aspect_ratio,genre=decision.genre,face_tracking=req.face_tracking,auto_zoom=req.auto_zoom),"retrieval":retrieval,"audio_profile":audio_profile,"audio_signals":audio_features,"voiceover":str(voiceover_path) if voiceover_path else None})
+            render_meta.append({"candidate_id":local_candidate["id"],"timeline":timeline.to_dict(),"render":info,"editorial_rank":candidate.get("editorial_rank"),"editorial_signals":candidate.get("editorial_signals"),"editorial_evidence":candidate.get("editorial_evidence"),"intent_reasoning":candidate.get("intent_reasoning"),"analysis_world":candidate.get("analysis_world"),"intent":candidate.get("intent"),"virality":local_candidate.get("virality_score"),"prompt_relevance":local_candidate.get("prompt_relevance"),"genre":local_candidate.get("genre",decision.genre),"dynamic_layout":dynamic_layout_plan(aspect_ratio=req.aspect_ratio,genre=decision.genre,face_tracking=req.face_tracking,auto_zoom=req.auto_zoom),"retrieval":retrieval,"audio_profile":audio_profile,"audio_signals":audio_features,"voiceover":str(voiceover_path) if voiceover_path else None})
             runtime.set_job(job,progress=50+int(40*(idx+1)/len(final_candidates)),render_meta=render_meta,audio_evidence=audio_evidence)
-
         analysis_bundle=build_analysis_bundle(transcript,final_candidates,world_scenes,all_subject_samples)
         critique_report=critic(render_meta,requested_duration=float(req.target_duration),expected_aspect=req.aspect_ratio)
         revision={"requested":critique_report.get("revision_required",False),"actions":revision_actions(critique_report),"attempt":int(job.get("revision",0))}
