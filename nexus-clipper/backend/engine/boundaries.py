@@ -1,5 +1,5 @@
 """
-Nexus-Clipper V6.4 — Natural Speech Boundary Detection
+Nexus-Clipper V7.0 — Natural Speech Boundary Detection
 =======================================================
 Clips should cut at natural speech boundaries (sentence endings, pauses,
 topic shifts), NOT at arbitrary window boundaries.

@@ -1,5 +1,5 @@
 """
-Nexus-Clipper V6.4 — Subtitle Quality Engine
+Nexus-Clipper V7.0 — Subtitle Quality Engine
 =============================================
 Professional subtitle rendering with readability guarantees.
 

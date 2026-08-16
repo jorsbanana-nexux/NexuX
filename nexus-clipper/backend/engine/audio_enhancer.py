@@ -1,5 +1,5 @@
 """
-Nexus-Clipper V6.4 — Audio Enhancement Engine
+Nexus-Clipper V7.0 — Audio Enhancement Engine
 ===============================================
 Professional audio processing for gold-standard output.
 

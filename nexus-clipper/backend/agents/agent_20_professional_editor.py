@@ -1,4 +1,4 @@
-"""AGENT_20_PROFESSIONAL_EDITOR - V6.4 Editorial Consciousness
+"""AGENT_20_PROFESSIONAL_EDITOR - V7.0 Editorial Consciousness
 ================================================================
 The editor that actually edits. No longer a stub that refuses to work.
 
@@ -20,7 +20,7 @@ log = get_logger("agent_20")
 
 class ProfessionalEditor:
     """
-    V6.4: The editor that owns the craft decision loop.
+    V7.0: The editor that owns the craft decision loop.
     
     This is no longer a delegation stub. It actively:
     - Evaluates clips using the critic engine

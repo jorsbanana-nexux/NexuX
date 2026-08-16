@@ -1,9 +1,9 @@
 """
 NexuX V7.0 — FastAPI Backend (Production-Ready)
 ==================================================
-Canonical API matching the frontend V6.4+ contract.
+Canonical API matching the frontend V7.0 contract.
 
-V7.0 upgrades from V6.4:
+V7.0 upgrades from V6.4 (legacy):
 - SQLite persistent job storage (survives restarts)
 - API key authentication (optional, env-based)
 - Job history with pagination
@@ -593,7 +593,7 @@ async def cancel_job(job_id: str, _=Depends(_require_auth)):
     await ws.broadcast({"type": "job_cancelled", "job_id": job_id})
     return {"job_id": job_id, "status": "cancelled"}
 
-# ── V6.4+ Advanced Endpoints ──
+# ── V7.0 Advanced Endpoints ──
 
 @app.get("/api/vision/{job_id}")
 async def get_vision(job_id: str, _=Depends(_require_auth)):

@@ -1,11 +1,11 @@
 """
-Nexus-Clipper V6.4 — Pipeline Orchestrator
+Nexus-Clipper V7.0 — Pipeline Orchestrator
 ============================================
 End-to-end pipeline with editorial consciousness:
 1. Download → 2. Vision Analysis → 3. Transcription → 
 4. Editorial Analysis → 5. Render → 6. Critic Revision → 7. Final Assembly
 
-V6.4 fixes:
+V7.0 fixes:
 - All blocking sync operations now run via asyncio.to_thread()
   to prevent blocking the FastAPI event loop (WebSocket, other requests)
 - Critic revision loop preserved
@@ -41,15 +41,15 @@ async def run_pipeline(
     progress_callback: Optional[Callable] = None,
     **kwargs,
 ) -> Dict:
-    """Run the complete Nexus-Clipper V6.4 pipeline.
+    """Run the complete Nexus-Clipper V7.0 pipeline.
     
     Stages:
     1. Download (0-15%)
     2. Face/Scene/Screen Analysis (15-25%)
     3. Transcription (25-55%)
-    4. Editorial Analysis (55-70%) — V6.4: now includes editorial consciousness
-    5. Rendering (70-85%) — V6.4: smart zoom based on face data
-    6. Critic Revision (85-95%) — V6.4: NEW — quality gate with revision loop
+    4. Editorial Analysis (55-70%) — V7.0: now includes editorial consciousness
+    5. Rendering (70-85%) — V7.0: smart zoom based on face data
+    6. Critic Revision (85-95%) — V7.0: NEW — quality gate with revision loop
     7. Final Assembly (95-100%)
     
     All heavy sync operations (download, transcription, vision, rendering)
@@ -147,7 +147,7 @@ async def run_pipeline(
         }
         await _progress("transcribing", 55, segments=seg_count, speakers=len(speakers))
 
-        # ── 4. Editorial Analysis (V6.4) ──
+        # ── 4. Editorial Analysis (V7.0) ──
         await _progress("analyzing", 55)
         clips = await _run_sync(
             analyze_content,
@@ -173,7 +173,7 @@ async def run_pipeline(
         }
         await _progress("analyzing", 70, clips_found=len(clips))
 
-        # ── 4.5. Subtitle Quality Validation (V6.4: NEW) ──
+        # ── 4.5. Subtitle Quality Validation (V7.0: NEW) ──
         await _progress("subtitle_qa", 68)
         for clip in clips:
             groups, sub_report = await _run_sync(
@@ -190,7 +190,7 @@ async def run_pipeline(
         }
         await _progress("subtitle_qa", 70)
 
-        # ── 5. Rendering (V6.4: Smart Zoom) ──
+        # ── 5. Rendering (V7.0: Smart Zoom) ──
         await _progress("rendering", 70, clips_to_render=len(clips))
         rendered = []
         for i, clip in enumerate(clips):
@@ -209,7 +209,7 @@ async def run_pipeline(
         if not rendered:
             raise RuntimeError("All render attempts failed.")
 
-        # ── 6. Critic Revision Loop (V6.4: NEW) ──
+        # ── 6. Critic Revision Loop (V7.0: NEW) ──
         await _progress("critique", 85, clips_to_critique=len(rendered))
         
         full_segments = transcript.get("segments", [])
@@ -324,7 +324,7 @@ async def run_pipeline(
         if len(final_clips) > 1:
             final = await _run_sync(concatenate_clips, job_id, final_clips)
         
-        # ── Audio Enhancement (V6.4: Professional audio chain) ──
+        # ── Audio Enhancement (V7.0: Professional audio chain) ──
         if kwargs.get("normalize_audio", True):
             try:
                 enhanced_path = OUTPUT_DIR / job_id / f"{job_id}_enhanced.mp4"

@@ -1,6 +1,6 @@
-"""Runtime truth for the 25-agent matrix (V6.4).
+"""Runtime truth for the 25-agent matrix (V7.0).
 
-V6.4 Update: Key agents have been upgraded from stubs to real implementations.
+V7.0 Update: Key agents have been upgraded from stubs to real implementations.
 The matrix now reflects actual capabilities, not aspirations.
 
 Upgraded agents:

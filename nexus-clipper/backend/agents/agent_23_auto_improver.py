@@ -1,4 +1,4 @@
-"""AGENT_23_AUTO_IMPROVER - V6.4 Editorial Consciousness
+"""AGENT_23_AUTO_IMPROVER - V7.0 Editorial Consciousness
 ===========================================================
 Real self-healing improvement loop. No longer just a counter.
 
@@ -17,7 +17,7 @@ log = get_logger("agent_23")
 
 class AutoImprover:
     """
-    V6.4: Real improvement loop with diagnosis and learning.
+    V7.0: Real improvement loop with diagnosis and learning.
 
     Instead of blindly retrying, this improver:
     - Reads the critic's specific issues

@@ -1,5 +1,5 @@
 """
-Nexus-Clipper V6.4 — Rendering Engine
+Nexus-Clipper V7.0 — Rendering Engine
 ===============================================
 FFmpeg-powered clip rendering with:
 - ASS/SSA dynamic subtitles (per-word styling)
@@ -90,7 +90,7 @@ def render_clip(
         f"crop={w}:{h}",
     ]
 
-    # Smart zoom — V6.4: uses face tracking data instead of random
+    # Smart zoom — V7.0: uses face tracking data instead of random
     if auto_zoom and clip_dur > 3:
         zoom_filter = _build_smart_zoom(clip, face_data, w, h)
         vf_parts.append(zoom_filter)
@@ -144,7 +144,7 @@ def _build_smart_zoom(
 ) -> str:
     """Build FFmpeg zoompan filter using face tracking data.
     
-    V6.4: Instead of random zoom, this tracks the speaker's face
+    V7.0: Instead of random zoom, this tracks the speaker's face
     and smoothly follows them. If no face data, falls back to
     a gentle, deterministic Ken Burns effect.
     """
@@ -246,7 +246,7 @@ def _build_ass(
     # ── ASS Header ──
     lines = [
         "[Script Info]",
-        "Title: Nexus-Clipper V6.4",
+        "Title: Nexus-Clipper V7.0",
         "ScriptType: v4.00+",
         "WrapStyle: 0",
         "ScaledBorderAndShadow: yes",

@@ -1,5 +1,5 @@
 """
-Nexus-Clipper V6.4 — Editorial Critic & Revision Loop
+Nexus-Clipper V7.0 — Editorial Critic & Revision Loop
 =======================================================
 The quality gate that makes NexuX a discerning professional editor.
 
