@@ -1,7 +1,7 @@
-"""AGENT_12_SUBJECT_TRACKER - compatibility adapter over Local-First V5 vision."""
+"""AGENT_12_SUBJECT_TRACKER - compatibility adapter over V7.0 engine vision."""
 
 from utils.logger import get_logger
-from v5_bridge import detect_face_subjects
+from engine_bridge import detect_face_subjects
 
 log = get_logger("agent_12")
 

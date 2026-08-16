@@ -1,7 +1,7 @@
-"""AGENT_11_SCENE_SEGMENTER - compatibility adapter over Local-First V5 vision."""
+"""AGENT_11_SCENE_SEGMENTER - compatibility adapter over V7.0 engine vision."""
 
 from utils.logger import get_logger
-from v5_bridge import detect_scene_changes
+from engine_bridge import detect_scene_changes
 
 log = get_logger("agent_11")
 

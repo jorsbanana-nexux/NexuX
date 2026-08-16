@@ -1,7 +1,7 @@
-"""AGENT_13_VISUAL_QUALITY_CHECKER - compatibility adapter over Local-First V5 QA."""
+"""AGENT_13_VISUAL_QUALITY_CHECKER - compatibility adapter over V7.0 engine QA."""
 
 from utils.logger import get_logger
-from v5_bridge import visual_quality
+from engine_bridge import visual_quality
 
 log = get_logger("agent_13")
 

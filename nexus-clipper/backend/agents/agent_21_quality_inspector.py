@@ -1,7 +1,7 @@
-"""AGENT_21_QUALITY_INSPECTOR - compatibility adapter over Local-First V5 render QA."""
+"""AGENT_21_QUALITY_INSPECTOR - compatibility adapter over V7.0 engine render QA."""
 
 from utils.logger import get_logger
-from v5_bridge import inspect_render
+from engine_bridge import inspect_render
 
 log = get_logger("agent_21")
 

@@ -7,7 +7,7 @@ cls
 echo.
 echo ╔══════════════════════════════════════════════════════════════╗
 echo ║     NEXUS-CLIPPER AI ULTRA - AUTO INSTALLER (WINDOWS)        ║
-echo ║              Versi: 1.0.0 | Zero-Cost Build                  ║
+echo ║              Versi: 7.0.0 | Zero-Cost Build                  ║
 echo ╚══════════════════════════════════════════════════════════════╝
 echo.
 
