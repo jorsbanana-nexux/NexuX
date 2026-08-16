@@ -7,6 +7,7 @@ from typing import Any
 
 from analysis_world import AnalysisWorld
 from editorial_intelligence import narrative_signals
+from editorial_reasoning import normalize_intent, reason_candidates
 from ai_editorial import build_candidate_packet
 from ai_provider import evaluate_ai
 
@@ -213,17 +214,31 @@ def select_diverse(candidates: list[dict[str, Any]], *, limit: int = 10, target_
 
 
 def select_diverse_from_world(world: AnalysisWorld, *, limit: int = 10, target_duration: float = 45.0) -> list[dict[str, Any]]:
-    """Authoritative editorial selection driven by one AnalysisWorld."""
+    """Authoritative editorial selection driven by one AnalysisWorld and its explicit intent."""
     world.validate()
-    candidates = [dict(item) for item in world.candidates]
+    raw_candidates = [dict(item) for item in world.candidates]
+    intent_payload = dict(world.editorial.get("intent", {}) or {})
+    if not intent_payload:
+        intent_payload = {
+            "objective": str(world.editorial.get("genre", "find_best_clips") or "find_best_clips"),
+            "target_duration": float(world.editorial.get("target_duration", target_duration) or target_duration),
+            "limit": limit,
+        }
+    intent = normalize_intent(intent_payload)
+    reasoned = reason_candidates(raw_candidates, intent=intent)
+    # Intent is a first-class narrowing signal: keep a bounded evidence set before
+    # multimodal ranking/AI rejudge, while preserving all evidence in the World.
+    shortlist_size = max(limit * 4, min(40, len(reasoned)))
+    candidates = reasoned[:shortlist_size]
+    effective_duration = float(intent.target_duration or target_duration)
     audio_profiles = dict(world.audio.get("profiles", {}) or {})
     scenes = list(world.vision.get("scenes", []) or [])
     transcript = world.transcript
     vision = dict(world.vision)
     selected = select_diverse(
         candidates,
-        limit=limit,
-        target_duration=target_duration,
+        limit=min(limit, intent.limit),
+        target_duration=effective_duration,
         scene_boundaries=scenes,
         audio_profiles={key: dict(value) for key, value in audio_profiles.items()},
         transcript=transcript,
@@ -237,4 +252,6 @@ def select_diverse_from_world(world: AnalysisWorld, *, limit: int = 10, target_d
             "confidence": dict(world.confidence),
             "provenance": dict(world.provenance),
         }
+        item["editorial_intent"] = intent.to_dict()
+        item["editorial_reasoning"] = item.get("intent_reasoning", {})
     return selected
