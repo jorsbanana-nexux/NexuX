@@ -2,10 +2,26 @@ from __future__ import annotations
 
 from fastapi import HTTPException
 
-from ui_contract import ANIMATIONS, ASPECT_RATIOS, POSITIONS, SUBTITLE_STYLES, require_choice, require_color
+from ui_contract import (
+    ANIMATIONS,
+    ASPECT_RATIOS,
+    POSITIONS,
+    SUBTITLE_STYLES,
+    canonicalize_fronted_values,
+    require_choice,
+    require_color,
+)
+
+
+def normalize_generate_request(req):
+    style, animation = canonicalize_fronted_values(req.subtitle_style, req.animation)
+    req.subtitle_style = style
+    req.animation = animation
+    return req
 
 
 def validate_generate_request(req) -> None:
+    normalize_generate_request(req)
     try:
         require_choice(req.aspect_ratio, ASPECT_RATIOS, "aspect_ratio")
         require_choice(req.subtitle_style, SUBTITLE_STYLES, "subtitle_style")
