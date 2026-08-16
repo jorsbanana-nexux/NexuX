@@ -33,6 +33,14 @@ class GenerateRequest(BaseModel):
     voice_style: str = Field(default="male_narrator", max_length=40)
     publish_platforms: list[str] | None = None
 
+    # Phase 2C: explicit editorial intent. These are decision inputs, not presentation-only hints.
+    editorial_objective: str = Field(default="find_best_clips", max_length=40)
+    audience: str = Field(default="general", max_length=80)
+    editorial_tone: str = Field(default="natural", max_length=40)
+    editorial_style: str = Field(default="balanced", max_length=40)
+    required_topics: list[str] = Field(default_factory=list, max_length=20)
+    excluded_topics: list[str] = Field(default_factory=list, max_length=20)
+
 
 class CompatJob(BaseModel):
     job_id: str
