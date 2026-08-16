@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import exp
+import os
 from typing import Any
 
 from editorial_intelligence import narrative_signals
+from ai_editorial import build_candidate_packet
+from ai_provider import evaluate_ai
 
 
 @dataclass(frozen=True)
@@ -93,7 +96,7 @@ def rank_candidate(candidate: dict[str, Any], *, target_duration: float = 45.0, 
     scores = candidate.get("scores") or {}
     semantic = candidate.get("editorial", {}).get("semantic") or {}
     audio = audio or {}
-    narrative = narrative_signals([{ "text": candidate.get("text", ""), "start": candidate.get("start", 0.0), "end": candidate.get("end", 0.0) }]).to_dict()
+    narrative = narrative_signals([{"text": candidate.get("text", ""), "start": candidate.get("start", 0.0), "end": candidate.get("end", 0.0)}]).to_dict()
 
     hook = _clamp(float(scores.get("hook", 0.0)))
     payoff = _clamp(float(semantic.get("payoff_strength", 0.0)) * 100.0)
@@ -135,17 +138,29 @@ def rank_candidate(candidate: dict[str, Any], *, target_duration: float = 45.0, 
     )
 
 
+def _ai_rejudge(candidate: dict[str, Any], *, transcript: Any = None, audio: Any = None, vision: Any = None) -> dict[str, Any]:
+    """Use the configured AI brain as a bounded editorial critic.
+
+    No provider configured => deterministic local behavior is preserved.
+    Provider errors are converted into REVIEW rather than failing rendering.
+    """
+    decision = evaluate_ai(build_candidate_packet(candidate, transcript=transcript, audio=audio, vision=vision))
+    item = dict(candidate)
+    item["ai_editorial"] = decision.to_dict()
+    scores = decision.scores
+    useful = [float(scores.get(key, 0.0)) for key in ("hook", "context", "tension", "payoff", "retention", "novelty", "shareability") if key in scores]
+    ai_score = (sum(useful) / len(useful)) if useful else 0.0
+    item["ai_editorial_score"] = round(ai_score, 6)
+    item["ai_rejudge_active"] = decision.confidence > 0.0 and bool(useful)
+    return item
+
+
 def rank_candidates(candidates: list[dict[str, Any]], *, target_duration: float = 45.0, scene_boundaries: list[dict[str, Any]] | None = None, audio_profiles: dict[str, dict[str, float]] | None = None) -> list[dict[str, Any]]:
     """Compatibility API used by the editorial re-judge loop."""
     audio_profiles = audio_profiles or {}
     ranked: list[dict[str, Any]] = []
     for candidate in candidates:
-        signals = rank_candidate(
-            candidate,
-            target_duration=target_duration,
-            scene_boundaries=scene_boundaries,
-            audio=audio_profiles.get(candidate.get("id", "")),
-        )
+        signals = rank_candidate(candidate, target_duration=target_duration, scene_boundaries=scene_boundaries, audio=audio_profiles.get(candidate.get("id", "")))
         item = dict(candidate)
         item["score"] = round(signals.total / 100.0, 6)
         item["editorial_score"] = round(signals.total / 100.0, 6)
@@ -155,16 +170,35 @@ def rank_candidates(candidates: list[dict[str, Any]], *, target_duration: float 
     return sorted(ranked, key=lambda item: float(item.get("editorial_score", 0.0)), reverse=True)
 
 
-def select_diverse(candidates: list[dict[str, Any]], *, limit: int = 10, target_duration: float = 45.0, scene_boundaries: list[dict[str, Any]] | None = None, audio_profiles: dict[str, dict[str, float]] | None = None) -> list[dict[str, Any]]:
+def select_diverse(candidates: list[dict[str, Any]], *, limit: int = 10, target_duration: float = 45.0, scene_boundaries: list[dict[str, Any]] | None = None, audio_profiles: dict[str, dict[str, float]] | None = None, transcript: Any = None, vision: Any = None) -> list[dict[str, Any]]:
     remaining = [dict(item) for item in candidates]
     selected: list[dict[str, Any]] = []
     audio_profiles = audio_profiles or {}
+    ai_top_k = max(0, min(20, int(os.getenv("NEXUX_AI_REVIEW_TOPK", "8"))))
     while remaining and len(selected) < limit:
         ranked = []
         for candidate in remaining:
             signals = rank_candidate(candidate, target_duration=target_duration, scene_boundaries=scene_boundaries, selected=selected, audio=audio_profiles.get(candidate.get("id", "")))
-            ranked.append((signals, candidate))
-        signals, winner = max(ranked, key=lambda pair: pair[0].total * (0.85 + 0.15 * pair[0].confidence))
+            local_score = signals.total
+            ranked.append((local_score, signals, candidate))
+        ranked.sort(key=lambda item: item[0] * (0.85 + 0.15 * item[1].confidence), reverse=True)
+        shortlist = ranked[:ai_top_k] if ai_top_k else ranked[:1]
+        ai_items: list[tuple[float, EditorialSignals, dict[str, Any]]] = []
+        for local_score, signals, candidate in shortlist:
+            judged = _ai_rejudge(candidate, transcript=transcript, audio=audio_profiles.get(candidate.get("id", "")), vision=vision)
+            ai_score = float(judged.get("ai_editorial_score", 0.0)) * 100.0
+            verdict = judged.get("ai_editorial", {}).get("verdict")
+            combined = local_score
+            if judged.get("ai_rejudge_active"):
+                combined = 0.72 * local_score + 0.28 * ai_score
+                if verdict == "REJECT":
+                    combined -= 12.0
+                elif verdict == "KEEP":
+                    combined += 4.0
+                elif verdict == "REFINE":
+                    combined += 1.5
+            ai_items.append((combined, signals, judged))
+        _, signals, winner = max(ai_items, key=lambda item: item[0] * (0.85 + 0.15 * item[1].confidence))
         chosen = dict(winner)
         chosen["editorial_rank"] = round(signals.total, 2)
         chosen["editorial_signals"] = signals.to_dict()
@@ -176,8 +210,11 @@ def select_diverse(candidates: list[dict[str, Any]], *, limit: int = 10, target_
             },
             "confidence": signals.confidence,
             "generation_strategy": chosen.get("generation_strategy", "legacy_temporal"),
+            "ai_rejudge_active": bool(chosen.get("ai_rejudge_active")),
         }
         selected.append(chosen)
-        remaining.remove(winner)
+        remaining.remove(next(item[2] for item in ai_items if item[2].get("id") == chosen.get("id")))
     return selected
+
+
 # compatibility sync marker
