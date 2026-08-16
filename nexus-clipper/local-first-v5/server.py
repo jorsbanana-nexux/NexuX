@@ -4,6 +4,7 @@ import asyncio
 import json
 import shutil
 import uuid
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -125,6 +126,24 @@ def _style_overrides(req: GenerateRequest) -> dict[str, Any]:
     }
 
 
+def _camera_path_for_request(video: Path, clip: dict[str, Any], timeline: Any, req: GenerateRequest) -> list[Any]:
+    if not req.face_tracking:
+        return []
+    observations = sample_faces(video, float(clip["start"]), float(clip["end"]), sample_fps=3.0)
+    mapped: list[SubjectObservation] = []
+    for obs in observations:
+        output_time = timeline.source_to_output(obs.time)
+        if output_time is not None:
+            mapped.append(SubjectObservation(output_time, obs.x, obs.y, obs.w, obs.h, obs.confidence, obs.kind))
+    points = build_camera_path(mapped)
+    if req.auto_zoom or not points:
+        return points
+    # Tracking remains active, but auto-zoom is explicitly disabled: keep a wide crop
+    # while retaining the tracked subject's center path.
+    wide_crop = 0.92
+    return [replace(point, crop_w=wide_crop) for point in points]
+
+
 def _render_with_spec(video: Path, job: dict[str, Any], clip: dict[str, Any], output: Path, timeline: Any, req: GenerateRequest) -> dict[str, Any]:
     spec = spec_for_aspect_ratio(req.aspect_ratio)
     ass = output.with_suffix(".ass")
@@ -143,15 +162,7 @@ def _render_with_spec(video: Path, job: dict[str, Any], clip: dict[str, Any], ou
     if not video_stream:
         raise RuntimeError("Video stream dimensions unavailable")
     source_w, source_h = int(video_stream["width"]), int(video_stream["height"])
-    camera_points: list[Any] = []
-    if req.face_tracking and req.auto_zoom:
-        observations = sample_faces(video, float(clip["start"]), float(clip["end"]), sample_fps=3.0)
-        mapped: list[SubjectObservation] = []
-        for obs in observations:
-            output_time = timeline.source_to_output(obs.time)
-            if output_time is not None:
-                mapped.append(SubjectObservation(output_time, obs.x, obs.y, obs.w, obs.h, obs.confidence, obs.kind))
-        camera_points = build_camera_path(mapped)
+    camera_points = _camera_path_for_request(video, clip, timeline, req)
     edl_graph = ffmpeg_filter_for_timeline(timeline)[0]
     filter_complex = build_final_filter(edl_graph, camera_points, ass, source_w, source_h, spec)
     run_ffmpeg(video, output, filter_complex, spec=spec, job_id=job.get("job_id"), normalize_audio=req.normalize_audio)
@@ -162,7 +173,7 @@ def _render_with_spec(video: Path, job: dict[str, Any], clip: dict[str, Any], ou
         "editorial": to_dict(editorial),
         "caption_preset": req.subtitle_style,
         "caption_animation": selected_animation,
-        "camera": {"enabled": bool(req.face_tracking and req.auto_zoom), "points": path_to_dict(camera_points), "point_count": len(camera_points)},
+        "camera": {"face_tracking": req.face_tracking, "auto_zoom": req.auto_zoom, "points": path_to_dict(camera_points), "point_count": len(camera_points)},
         "source_dimensions": {"width": source_w, "height": source_h},
         "output_dimensions": {"width": spec.width, "height": spec.height},
         "quality": quality,
@@ -258,142 +269,15 @@ async def _run_generation(job_id: str, req: GenerateRequest) -> None:
                 req,
             )
             rendered.append(_relative_output(output))
-            render_meta.append({
-                "candidate_id": candidate["id"],
-                "timeline": timeline.to_dict(),
-                "render": info,
-                "editorial_rank": candidate.get("editorial_rank"),
-                "editorial_signals": candidate.get("editorial_signals"),
-                "audio_profile": candidate.get("audio_profile"),
-            })
-            _set(job, progress=65 + int(30 * (idx + 1) / len(candidates)), stage=f"rendering {idx + 1}/{len(candidates)}", render_meta=render_meta)
-        if CANCEL_FLAGS.get(job_id):
-            _set(job, status="cancelled", stage="cancelled")
-            return
-        _set(job, status="completed", stage="completed", progress=100, output_path=rendered[0], clips=rendered, render_meta=render_meta, broll=False)
+            render_meta.append({"clip_id": candidate["id"], "output": _relative_output(output), **info})
+            _set(job, progress=65 + ((idx + 1) / max(1, len(candidates))) * 30, clips=rendered, render_meta=render_meta)
+        _set(job, status="completed", stage="complete", progress=100, output_path=rendered[0] if rendered else None, clips=rendered, render_meta=render_meta)
     except Exception as exc:
-        if CANCEL_FLAGS.get(job_id):
-            _set(job, status="cancelled", stage="cancelled", error="Job cancelled")
-        else:
-            _set(job, status="failed", stage="failed", error=str(exc))
+        _set(job, status="failed", stage="failed", error=str(exc))
     finally:
         CANCEL_FLAGS.pop(job_id, None)
 
 
-@router.post("/generate", response_model=CompatJob)
-async def generate(req: GenerateRequest, bg: BackgroundTasks) -> CompatJob:
-    job_id = uuid.uuid4().hex
-    job = {
-        "job_id": job_id, "status": "queued", "progress": 0.0, "stage": "queued",
-        "output_path": None, "error": None, "clips": [], "broll": False,
-        "render_meta": [], "analysis_bundle": None, "revision": 0,
-    }
-    _write(job)
-    CANCEL_FLAGS[job_id] = False
-    bg.add_task(_run_generation, job_id, req)
-    return CompatJob(**job)
+recover_interrupted(JOBS)
 
-
-@router.get("/job/{job_id}", response_model=CompatJob)
-async def job_status(job_id: str) -> CompatJob:
-    return CompatJob(**_read(job_id))
-
-
-@router.get("/jobs")
-async def jobs(status: str | None = None) -> dict[str, Any]:
-    items: list[dict[str, Any]] = []
-    for path in JOBS.glob("*.json"):
-        try:
-            item = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        if status and item.get("status") != status:
-            continue
-        items.append(CompatJob(**item).model_dump())
-    items.sort(key=lambda item: item.get("job_id", ""), reverse=True)
-    return {"total": len(items), "jobs": items}
-
-
-@router.delete("/job/{job_id}")
-async def cancel(job_id: str) -> dict[str, str]:
-    job = _read(job_id)
-    if job.get("status") in {"completed", "failed", "cancelled"}:
-        raise HTTPException(400, f"Job already {job['status']}")
-    CANCEL_FLAGS[job_id] = True
-    _set(job, status="cancelled", stage="cancelled", error="Job cancelled by user")
-    return {"job_id": job_id, "status": "cancelled"}
-
-
-@router.get("/health")
-async def compat_health() -> dict[str, Any]:
-    return {
-        "status": "ok", "broll": False, "canonical_engine": "local-first-v5",
-        "ffmpeg": shutil.which("ffmpeg") is not None, "ffprobe": shutil.which("ffprobe") is not None,
-        "yt_dlp": shutil.which("yt-dlp") is not None, "editorial_ranker": True,
-        "audio_intelligence": True, "durable_jobs": True, "hard_cancel": True,
-        "analysis_bundle": True,
-    }
-
-
-@router.get("/vision/{job_id}")
-async def vision(job_id: str) -> dict[str, Any]:
-    job = _read(job_id)
-    video = Path(job.get("video_path", ""))
-    if not video.exists():
-        raise HTTPException(404, "Video artifact not found")
-    duration = float((job.get("meta") or {}).get("format", {}).get("duration") or 0.0)
-    return {
-        "job_id": job_id,
-        "duration": duration,
-        "scenes": await asyncio.to_thread(detect_scene_changes, video, 0.0, min(duration, 3600.0) if duration else None),
-        "subjects": job.get("analysis_bundle", {}).get("subjects", []),
-        "quality": await asyncio.to_thread(visual_quality, video, 0.0, min(duration, 600.0) if duration else None),
-        "analysis_bundle": job.get("analysis_bundle"),
-        "editorial": {"candidate_count": len(job.get("candidates", [])), "selected": job.get("selected_candidate_id")},
-    }
-
-
-@router.get("/styles")
-async def styles() -> dict[str, Any]:
-    ids = ["hormozi", "mrbeast", "aliabdaal", "minimalist", "gaming", "cinematic", "neon", "typewriter", "tiktok_viral", "documentary", "comedy", "horror", "motivational", "educational", "custom", "karaoke", "pop_line", "deep_diver"]
-    subtitle_styles: list[dict[str, Any]] = []
-    for key in ids:
-        preset = PRESETS[key]
-        subtitle_styles.append({
-            "id": key,
-            "name": key.replace("_", " ").title(),
-            "preview": {
-                "font": preset["font"],
-                "font_size": preset["size"],
-                "animation": preset["animation"],
-            },
-        })
-    return {
-        "subtitle_styles": subtitle_styles,
-        "aspect_ratios": ["9:16", "1:1", "16:9", "4:5", "2:3", "21:9"],
-        "color_grades": ["none"],
-        "video_codecs": ["h264"],
-        "audio_codecs": ["aac"],
-        "broll": False,
-    }
-
-
-@router.get("/download/{job_id}")
-async def compat_download(job_id: str) -> FileResponse:
-    job = _read(job_id)
-    output = Path(job.get("output_path", "")).name
-    path = OUTPUTS / output
-    if not path.exists():
-        raise HTTPException(404, "Output not found")
-    return FileResponse(path, media_type="video/mp4", filename=path.name)
-
-
-app.mount("/output", StaticFiles(directory=str(OUTPUTS)), name="canonical-output")
 app.include_router(router)
-
-
-@app.on_event("startup")
-def _recover_jobs() -> None:
-    recovered = recover_interrupted(JOBS)
-    if recovered:
-        print(f"NexuX recovery: marked {recovered} interrupted job(s) after process restart")
