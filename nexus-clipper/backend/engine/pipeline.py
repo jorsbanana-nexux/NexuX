@@ -5,10 +5,14 @@ End-to-end pipeline with editorial consciousness:
 1. Download → 2. Vision Analysis → 3. Transcription → 
 4. Editorial Analysis → 5. Render → 6. Critic Revision → 7. Final Assembly
 
-The critic revision loop (step 6) is what makes NexuX a conscious editor:
-each clip is evaluated, and weak clips are automatically revised.
+V6.4 fixes:
+- All blocking sync operations now run via asyncio.to_thread()
+  to prevent blocking the FastAPI event loop (WebSocket, other requests)
+- Critic revision loop preserved
+- Audio enhancement with fallback chain
 """
-import time, json
+import asyncio
+import json
 from pathlib import Path
 from typing import Dict, Optional, Callable, List
 import logging
@@ -28,6 +32,11 @@ from .audio_enhancer import enhance_audio
 log = logging.getLogger("nexus.pipeline")
 
 
+async def _run_sync(func, *args, **kwargs):
+    """Run a synchronous function in a thread to avoid blocking the event loop."""
+    return await asyncio.to_thread(func, *args, **kwargs)
+
+
 async def run_pipeline(
     url: str,
     job_id: str,
@@ -44,6 +53,10 @@ async def run_pipeline(
     5. Rendering (70-85%) — V6.4: smart zoom based on face data
     6. Critic Revision (85-95%) — V6.4: NEW — quality gate with revision loop
     7. Final Assembly (95-100%)
+    
+    All heavy sync operations (download, transcription, vision, rendering)
+    are dispatched to threads via asyncio.to_thread() so the event loop
+    stays responsive for WebSocket progress and concurrent API requests.
     
     Args:
         url: YouTube video URL
@@ -62,7 +75,7 @@ async def run_pipeline(
         "clips": [],
         "output_path": None,
         "error": None,
-        "critiques": [],  # V6.4: critic evaluations
+        "critiques": [],
     }
 
     async def _progress(stage: str, pct: float, **data):
@@ -72,7 +85,9 @@ async def run_pipeline(
     try:
         # ── 1. Download ──
         await _progress("downloading", 0)
-        video_path = retry(download_youtube, url, job_id, max_retries=MAX_RETRIES)
+        video_path = await _run_sync(
+            retry, download_youtube, url, job_id, max_retries=MAX_RETRIES
+        )
         video_size = get_file_size_mb(video_path)
         result["stages"]["download"] = {
             "status": "ok", "path": str(video_path),
@@ -87,17 +102,23 @@ async def run_pipeline(
         screen_data = []
         if kwargs.get("face_tracking", True):
             try:
-                face_data = retry(analyze_faces, video_path, job_id, max_retries=2)
+                face_data = await _run_sync(
+                    retry, analyze_faces, video_path, job_id, max_retries=2
+                )
             except Exception as e:
                 log.warning(f"[Pipeline] Face tracking failed: {e}")
         if kwargs.get("scene_detection", True):
             try:
-                scene_data = detect_scene_changes(video_path, job_id)
+                scene_data = await _run_sync(
+                    detect_scene_changes, video_path, job_id
+                )
             except Exception as e:
                 log.warning(f"[Pipeline] Scene detection failed: {e}")
         if kwargs.get("screen_detection", False):
             try:
-                screen_data = detect_screen_share(video_path, job_id)
+                screen_data = await _run_sync(
+                    detect_screen_share, video_path, job_id
+                )
             except Exception as e:
                 log.warning(f"[Pipeline] Screen detection failed: {e}")
         result["stages"]["vision"] = {
@@ -110,8 +131,8 @@ async def run_pipeline(
 
         # ── 3. Transcription ──
         await _progress("transcribing", 25)
-        transcript = retry(
-            transcribe, video_path, job_id,
+        transcript = await _run_sync(
+            retry, transcribe, video_path, job_id,
             kwargs.get("language"),
             kwargs.get("diarization", True),
             max_retries=2,
@@ -130,15 +151,16 @@ async def run_pipeline(
 
         # ── 4. Editorial Analysis (V6.4) ──
         await _progress("analyzing", 55)
-        clips = analyze_content(
+        clips = await _run_sync(
+            analyze_content,
             transcript,
-            target_duration=kwargs.get("target_duration", 60),
+            target_duration=kwargs.get("target_duration", 45),
             face_data=face_data if face_data else None,
             scene_data=scene_data if scene_data else None,
             screen_data=screen_data if screen_data else None,
             max_clips=kwargs.get("clip_count", 10),
             use_ai_scoring=kwargs.get("ai_scoring", False),
-            editorial_enrichment=True,  # V6.4: Always on
+            editorial_enrichment=True,
         )
         if not clips:
             raise RuntimeError(
@@ -156,7 +178,9 @@ async def run_pipeline(
         # ── 4.5. Subtitle Quality Validation (V6.4: NEW) ──
         await _progress("subtitle_qa", 68)
         for clip in clips:
-            groups, sub_report = process_subtitle_quality(transcript, clip, kwargs)
+            groups, sub_report = await _run_sync(
+                process_subtitle_quality, transcript, clip, kwargs
+            )
             clip["subtitle_quality"] = sub_report
             if not sub_report["readable"]:
                 log.warning(f"[Pipeline] Subtitle quality issues for clip at {clip['start']:.0f}s")
@@ -172,8 +196,8 @@ async def run_pipeline(
         await _progress("rendering", 70, clips_to_render=len(clips))
         rendered = []
         for i, clip in enumerate(clips):
-            cp = retry(
-                render_clip, video_path, job_id, clip, transcript,
+            cp = await _run_sync(
+                retry, render_clip, video_path, job_id, clip, transcript,
                 kwargs, i, face_data if face_data else None,
                 kwargs.get("color_grade", "none"),
                 kwargs.get("auto_zoom", True),
@@ -197,7 +221,8 @@ async def run_pipeline(
         critiques = []
         
         for i, (clip, out_path) in enumerate(zip(clips, rendered)):
-            critique = evaluate_clip(
+            critique = await _run_sync(
+                evaluate_clip,
                 clip, i, full_segments, total_duration, full_segments,
                 out_path, revision_count=0
             )
@@ -213,16 +238,16 @@ async def run_pipeline(
                 })
                 log.info(f"[Pipeline] Clip {i}: {critique.verdict} ✅")
             elif critique.verdict == "NEEDS_REVISION" and critique.should_retry:
-                # Try to revise
                 log.info(f"[Pipeline] Clip {i}: Revising...")
-                revised_clip = apply_revision_directives(
+                revised_clip = await _run_sync(
+                    apply_revision_directives,
                     clip, critique.revision_directives,
                     clips, full_segments, total_duration
                 )
                 if revised_clip:
                     try:
-                        revised_render = retry(
-                            render_clip, video_path, job_id, revised_clip, transcript,
+                        revised_render = await _run_sync(
+                            retry, render_clip, video_path, job_id, revised_clip, transcript,
                             kwargs, i, face_data if face_data else None,
                             kwargs.get("color_grade", "none"),
                             kwargs.get("auto_zoom", True),
@@ -230,8 +255,8 @@ async def run_pipeline(
                             kwargs.get("audio_codec", "aac"),
                             max_retries=2,
                         )
-                        # Re-evaluate the revised clip
-                        revised_critique = evaluate_clip(
+                        revised_critique = await _run_sync(
+                            evaluate_clip,
                             revised_clip, i, full_segments, total_duration, full_segments,
                             revised_render, revision_count=1
                         )
@@ -248,7 +273,6 @@ async def run_pipeline(
                             })
                             log.info(f"[Pipeline] Clip {i}: Revised to {revised_critique.verdict} ✅")
                         else:
-                            # Even revised version is weak — use original
                             final_clips.append(out_path)
                             critiques.append({
                                 "clip_index": i,
@@ -267,7 +291,6 @@ async def run_pipeline(
                             "issues": critique.issues,
                         })
                 else:
-                    # Can't improve — use original
                     final_clips.append(out_path)
                     critiques.append({
                         "clip_index": i,
@@ -276,7 +299,6 @@ async def run_pipeline(
                         "issues": critique.issues,
                     })
             else:
-                # REJECT but we still need clips — use the best we have
                 final_clips.append(out_path)
                 critiques.append({
                     "clip_index": i,
@@ -302,17 +324,18 @@ async def run_pipeline(
         await _progress("finalizing", 95)
         final = final_clips[0]
         if len(final_clips) > 1:
-            final = concatenate_clips(job_id, final_clips)
+            final = await _run_sync(concatenate_clips, job_id, final_clips)
+        
         # ── Audio Enhancement (V6.4: Professional audio chain) ──
         if kwargs.get("normalize_audio", True):
             try:
                 enhanced_path = OUTPUT_DIR / job_id / f"{job_id}_enhanced.mp4"
-                # Get speech segments for ducking
                 speech_segs = [
                     {"start": s.get("start", 0), "end": s.get("end", 0)}
                     for s in full_segments
                 ]
-                final, audio_report = enhance_audio(
+                final, audio_report = await _run_sync(
+                    enhance_audio,
                     final, enhanced_path,
                     has_bgm=False,
                     speech_segments=speech_segs,
@@ -326,11 +349,10 @@ async def run_pipeline(
                 log.info(f"[Pipeline] Audio enhanced: {len(audio_report.get('filters_applied', []))} filters applied")
             except Exception as e:
                 log.warning(f"[Pipeline] Audio enhancement failed: {e}")
-                # Fallback to basic normalize
                 try:
                     from .render import normalize_audio
                     norm_path = OUTPUT_DIR / job_id / f"{job_id}_normalized.mp4"
-                    final = normalize_audio(final, norm_path)
+                    final = await _run_sync(normalize_audio, final, norm_path)
                 except Exception as e2:
                     log.warning(f"[Pipeline] Fallback normalization also failed: {e2}")
 
