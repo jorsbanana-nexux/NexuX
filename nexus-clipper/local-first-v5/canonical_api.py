@@ -17,7 +17,6 @@ from sequential_vision import detect_face_subjects, detect_scene_changes, visual
 from server import CompatJob, GenerateRequest
 from vision_quality import inspect_render, media_stream_summary, tool_state
 
-# Canonical runtime adapters. The compatibility runner remains an internal implementation detail.
 engine.detect_scene_changes = detect_scene_changes
 engine.detect_face_subjects = detect_face_subjects
 engine.visual_quality = visual_quality
@@ -30,9 +29,15 @@ app = FastAPI(
     description="Canonical local-first clipping API with V6.1 editorial intelligence and targeted retrieval. No B-roll.",
 )
 
+DEFAULT_ORIGINS = (
+    "http://localhost:3000,"
+    "http://127.0.0.1:3000,"
+    "http://localhost:5173,"
+    "http://127.0.0.1:5173"
+)
 allowed_origins = [
     item.strip()
-    for item in os.getenv("NEXUX_ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
+    for item in os.getenv("NEXUX_ALLOWED_ORIGINS", DEFAULT_ORIGINS).split(",")
     if item.strip()
 ]
 app.add_middleware(
