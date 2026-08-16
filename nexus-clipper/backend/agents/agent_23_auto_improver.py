@@ -18,7 +18,7 @@ log = get_logger("agent_23")
 class AutoImprover:
     """
     V6.4: Real improvement loop with diagnosis and learning.
-    
+
     Instead of blindly retrying, this improver:
     - Reads the critic's specific issues
     - Maps issues to targeted actions
@@ -49,11 +49,11 @@ class AutoImprover:
     ) -> Dict[str, Any]:
         """
         Analyze critique and generate targeted improvement plan.
-        
+
         Args:
             critique: Critique result from the critic engine
             retry_count: Current retry iteration
-        
+
         Returns:
             Dict with should_retry, specific actions, and diagnosis
         """
@@ -126,6 +126,125 @@ class AutoImprover:
             "target_score": min(1.0, score + expected_delta),
             "expected_improvement": expected_delta,
         }
+
+    # ------------------------------------------------------------------ #
+    # Core feedback loop: quality results → improvement suggestions.
+    # ------------------------------------------------------------------ #
+    async def process(
+        self,
+        quality_results: Dict[str, Any],
+        retry_count: int = 0,
+    ) -> Dict[str, Any]:
+        """
+        Feedback loop: take quality/critique results and generate concrete
+        improvement suggestions.
+
+        Args:
+            quality_results: dict from the quality checker / critic, e.g. with
+                ``score`` (0..1), ``verdict``, ``issues`` (list[str]), and
+                optional ``clip_index``.
+            retry_count: current retry iteration (used to bound the loop).
+
+        Returns:
+            Dict with ``status`` and ``improvement_actions`` (list of dicts,
+            each describing a targeted action, the triggering issue, and the
+            expected score delta).
+        """
+        clip_idx = quality_results.get("clip_index", 0)
+        verdict = str(quality_results.get("verdict", "")).upper()
+        score = float(quality_results.get("score", 0) or 0)
+        issues = quality_results.get("issues", []) or []
+
+        # Already acceptable — no improvement needed.
+        if verdict in ("GOLD", "ACCEPTABLE") or score >= 1.0:
+            return {
+                "status": "completed",
+                "agent": "agent_23_auto_improver",
+                "clip_index": clip_idx,
+                "improvement_actions": [],
+                "note": f"Quality already acceptable (verdict={verdict}, score={score:.3f}).",
+            }
+
+        # Exhausted retries — stop the loop honestly.
+        if retry_count >= self.MAX_RETRIES:
+            return {
+                "status": "exhausted",
+                "agent": "agent_23_auto_improver",
+                "clip_index": clip_idx,
+                "improvement_actions": [],
+                "retry_count": retry_count,
+                "note": f"Max retries ({self.MAX_RETRIES}) reached; no further actions generated.",
+            }
+
+        # If the quality results include a score below threshold but no issues
+        # were reported, synthesise a generic "low score" issue so the loop can
+        # still propose something.
+        if not issues and score < 0.6:
+            issues = [f"low score ({score:.2f})"]
+
+        tried = self._attempted_fixes.get(clip_idx, [])
+        improvement_actions: List[Dict[str, Any]] = []
+
+        for issue in issues:
+            issue_lower = str(issue).lower()
+            for pattern, action in self.ACTION_MAP.items():
+                if pattern in issue_lower:
+                    if action not in tried:
+                        delta = self._action_delta(action)
+                        improvement_actions.append({
+                            "action": action,
+                            "trigger_issue": issue,
+                            "expected_delta": delta,
+                            "target_score": round(min(1.0, score + delta), 4),
+                        })
+                        if clip_idx not in self._attempted_fixes:
+                            self._attempted_fixes[clip_idx] = []
+                        self._attempted_fixes[clip_idx].append(action)
+                    break
+
+        # Fallback: nothing matched but quality is low — propose a re-render as
+        # a last-resort technical action.
+        if not improvement_actions and "RE_RENDER" not in tried:
+            delta = self._action_delta("RE_RENDER")
+            improvement_actions.append({
+                "action": "RE_RENDER",
+                "trigger_issue": "unclassified quality degradation",
+                "expected_delta": delta,
+                "target_score": round(min(1.0, score + delta), 4),
+            })
+            self._attempted_fixes.setdefault(clip_idx, []).append("RE_RENDER")
+
+        if not improvement_actions:
+            return {
+                "status": "completed",
+                "agent": "agent_23_auto_improver",
+                "clip_index": clip_idx,
+                "improvement_actions": [],
+                "attempted_fixes": tried,
+                "note": "All known fixes already attempted; no new actions available.",
+            }
+
+        total_delta = sum(a["expected_delta"] for a in improvement_actions)
+
+        log.info(
+            "[Improver] process(): clip %s → %d action(s), expected +%.3f",
+            clip_idx, len(improvement_actions), total_delta,
+        )
+
+        return {
+            "status": "completed",
+            "agent": "agent_23_auto_improver",
+            "clip_index": clip_idx,
+            "retry_count": retry_count + 1,
+            "current_score": round(score, 4),
+            "target_score": round(min(1.0, score + total_delta), 4),
+            "expected_improvement": round(total_delta, 4),
+            "improvement_actions": improvement_actions,
+        }
+
+    def _action_delta(self, action: str) -> float:
+        """Expected score delta for a single action."""
+        return self._estimate_improvement([action])
 
     def _estimate_improvement(self, actions: List[str]) -> float:
         """Estimate how much improvement each action might bring."""

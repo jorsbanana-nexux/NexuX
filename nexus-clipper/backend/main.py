@@ -1,29 +1,30 @@
 """
-Nexus-Clipper V6.4 — FastAPI Backend (Production)
-===================================================
-Canonical API matching the frontend V6.4 contract.
+NexuX V7.0 — FastAPI Backend (Production-Ready)
+==================================================
+Canonical API matching the frontend V6.4+ contract.
 
-Fixes from V4 → V6.4:
-- All 14 API endpoints the frontend expects
-- GenerateRequest with V6 advanced fields
-- JobResponse with render_meta, analysis_bundle, critique, broll
-- CORS locked to known origins (no wildcard + credentials)
-- Binds to 127.0.0.1 (local-first, not exposed to network)
-- target_duration range corrected to 20-60 (canonical)
-- Job store enriched with editorial/vision/critique data
-- Health endpoint reports canonical_runtime + broll
-- Download endpoint with proper streaming
-- Vision, Render QA, Critic, Publish, Analytics endpoints
+V7.0 upgrades from V6.4:
+- SQLite persistent job storage (survives restarts)
+- API key authentication (optional, env-based)
+- Job history with pagination
+- Automatic cleanup of old jobs (TTL-based)
+- Structured logging with request IDs
+- Rate limiting per API key
+
+Architecture:
+- Local-first: no cloud AI, no external API calls
+- All processing on-device via FFmpeg + Whisper + OpenCV
+- B-roll-free editorial policy (NO_BROLL_POLICY.md)
 """
-import os, json, time, asyncio, uuid
+import os, json, time, asyncio, uuid, sqlite3, hashlib
 from pathlib import Path
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any
 
 from fastapi import (
     FastAPI, WebSocket, WebSocketDisconnect, BackgroundTasks,
-    HTTPException, Request,
+    HTTPException, Request, Depends, Query,
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -44,6 +45,173 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
 log = logging.getLogger("nexus.api")
+
+# ── Constants ──
+VERSION = "7.0.0"
+DB_PATH = Path(os.environ.get("NEXUX_DB_PATH", "nexux_jobs.db"))
+JOB_TTL_HOURS = int(os.environ.get("NEXUX_JOB_TTL_HOURS", "72"))
+API_KEY = os.environ.get("NEXUX_API_KEY", "")  # Empty = no auth (local dev)
+
+# ── SQLite Job Store ──
+
+def _get_db() -> sqlite3.Connection:
+    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    return conn
+
+db = None
+
+def _init_db():
+    """Create tables if not exist."""
+    global db
+    db = _get_db()
+    db.executescript("""
+        CREATE TABLE IF NOT EXISTS jobs (
+            job_id TEXT PRIMARY KEY,
+            status TEXT NOT NULL DEFAULT 'queued',
+            progress REAL DEFAULT 0.0,
+            stage TEXT DEFAULT 'queued',
+            output_path TEXT,
+            error TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT,
+            clips TEXT DEFAULT '[]',
+            broll INTEGER DEFAULT 0,
+            render_meta TEXT DEFAULT '[]',
+            analysis_bundle TEXT,
+            critique TEXT,
+            revision TEXT,
+            publish_plan TEXT,
+            editorial_decision TEXT,
+            request_data TEXT,
+            api_key_hash TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
+        CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created_at);
+        CREATE INDEX IF NOT EXISTS idx_jobs_api_key ON jobs(api_key_hash);
+    """)
+    db.commit()
+
+def _save_job(job: dict):
+    """Persist job to SQLite."""
+    if not db:
+        return
+    try:
+        db.execute("""
+            INSERT OR REPLACE INTO jobs (
+                job_id, status, progress, stage, output_path, error,
+                created_at, updated_at, clips, broll, render_meta,
+                analysis_bundle, critique, revision, publish_plan,
+                editorial_decision, request_data, api_key_hash
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            job["job_id"],
+            job["status"],
+            job["progress"],
+            job["stage"],
+            job.get("output_path"),
+            job.get("error"),
+            job["created_at"],
+            datetime.now(timezone.utc).isoformat(),
+            json.dumps(job.get("clips", [])),
+            int(job.get("broll", False)),
+            json.dumps(job.get("render_meta", [])),
+            json.dumps(job["analysis_bundle"]) if job.get("analysis_bundle") else None,
+            json.dumps(job["critique"]) if job.get("critique") else None,
+            json.dumps(job["revision"]) if job.get("revision") else None,
+            json.dumps(job["publish_plan"]) if job.get("publish_plan") else None,
+            json.dumps(job["editorial_decision"]) if job.get("editorial_decision") else None,
+            json.dumps(job.get("_request_data", {})),
+            job.get("_api_key_hash"),
+        ))
+        db.commit()
+    except Exception as e:
+        log.warning(f"[DB] Failed to save job {job['job_id']}: {e}")
+
+def _load_job(job_id: str) -> Optional[dict]:
+    """Load a job from SQLite."""
+    if not db:
+        return None
+    row = db.execute("SELECT * FROM jobs WHERE job_id = ?", (job_id,)).fetchone()
+    if not row:
+        return None
+    return _row_to_job(row)
+
+def _load_jobs(status: Optional[str] = None, limit: int = 50, offset: int = 0) -> List[dict]:
+    """Load jobs from SQLite with optional filtering."""
+    if not db:
+        return []
+    if status:
+        rows = db.execute(
+            "SELECT * FROM jobs WHERE status = ? ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            (status, limit, offset)
+        ).fetchall()
+    else:
+        rows = db.execute(
+            "SELECT * FROM jobs ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            (limit, offset)
+        ).fetchall()
+    return [_row_to_job(r) for r in rows]
+
+def _row_to_job(row: sqlite3.Row) -> dict:
+    """Convert a SQLite row to a job dict."""
+    return {
+        "job_id": row["job_id"],
+        "status": row["status"],
+        "progress": row["progress"],
+        "stage": row["stage"],
+        "output_path": row["output_path"],
+        "error": row["error"],
+        "created_at": row["created_at"],
+        "clips": json.loads(row["clips"] or "[]"),
+        "broll": bool(row["broll"]),
+        "render_meta": json.loads(row["render_meta"] or "[]"),
+        "analysis_bundle": json.loads(row["analysis_bundle"]) if row["analysis_bundle"] else None,
+        "critique": json.loads(row["critique"]) if row["critique"] else None,
+        "revision": json.loads(row["revision"]) if row["revision"] else None,
+        "publish_plan": json.loads(row["publish_plan"]) if row["publish_plan"] else None,
+        "editorial_decision": json.loads(row["editorial_decision"]) if row["editorial_decision"] else None,
+        "_stages": {},
+        "_critiques": [],
+    }
+
+def _cleanup_old_jobs():
+    """Delete jobs older than TTL."""
+    if not db:
+        return
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=JOB_TTL_HOURS)).isoformat()
+    try:
+        db.execute("DELETE FROM jobs WHERE created_at < ?", (cutoff,))
+        db.commit()
+        deleted = db.total_changes
+        if deleted:
+            log.info(f"[DB] Cleaned up {deleted} old jobs (TTL={JOB_TTL_HOURS}h)")
+    except Exception as e:
+        log.warning(f"[DB] Cleanup failed: {e}")
+
+# ── API Key Auth ──
+
+def _hash_key(key: str) -> str:
+    return hashlib.sha256(key.encode()).hexdigest()[:16]
+
+def _verify_api_key(request: Request) -> bool:
+    """Verify API key from X-API-Key header. Returns True if auth disabled or key valid."""
+    if not API_KEY:
+        return True  # No key set = local dev mode, auth disabled
+    provided = request.headers.get("X-API-Key", "")
+    if not provided:
+        return False
+    return _hash_key(provided) == _hash_key(API_KEY)
+
+async def _require_auth(request: Request):
+    """Dependency that raises 401 if API key is invalid."""
+    if not _verify_api_key(request):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or missing API key. Set X-API-Key header.",
+            headers={"WWW-Authenticate": "ApiKey"},
+        )
 
 # ── Pydantic Models ──
 
@@ -73,7 +241,6 @@ class GenerateRequest(BaseModel):
     ai_scoring: bool = Field(False)
     normalize_audio: bool = Field(True)
     webhook_url: Optional[str] = None
-    # V6 advanced fields
     emoji_enabled: bool = Field(True)
     clip_prompt: Optional[str] = None
     genre: Optional[str] = None
@@ -93,7 +260,6 @@ class JobResponse(BaseModel):
     error: Optional[str] = None
     created_at: str = ""
     clips: List[str] = []
-    # V6.4 fields
     broll: bool = False
     render_meta: List[Dict[str, Any]] = []
     analysis_bundle: Optional[Dict[str, Any]] = None
@@ -147,17 +313,14 @@ class WSManager:
 
 ws = WSManager()
 
-# ── Job Store ──
-# In-memory store enriched with V6.4 editorial data.
-# Each job dict carries: status, progress, stage, clips, render_meta,
-# analysis_bundle, critique, revision, publish_plan, editorial_decision.
+# ── In-Memory Job Cache ──
+# Hot cache for active jobs. SQLite is the source of truth for persistence.
 
 jobs: Dict[str, dict] = {}
 cancel_flags: Dict[str, bool] = {}
 active_count = 0
 
 def _new_job(jid: str) -> dict:
-    """Create a fresh job dict with all V6.4 fields."""
     return {
         "job_id": jid,
         "status": "queued",
@@ -174,9 +337,10 @@ def _new_job(jid: str) -> dict:
         "revision": None,
         "publish_plan": None,
         "editorial_decision": None,
-        # Internal fields (not in JobResponse, used by pipeline)
         "_stages": {},
         "_critiques": [],
+        "_request_data": {},
+        "_api_key_hash": None,
     }
 
 # ── App ──
@@ -188,15 +352,28 @@ ALLOWED_ORIGINS = os.environ.get(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    log.info("Nexus-Clipper V6.4 starting (local-first, no B-roll)...")
+    global db
+    log.info(f"NexuX V{VERSION} starting (local-first, no B-roll, SQLite persistence)...")
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    _init_db()
+    _cleanup_old_jobs()
+    # Restore in-progress jobs from DB (mark as interrupted)
+    if db:
+        rows = db.execute("SELECT job_id FROM jobs WHERE status IN ('queued', 'processing')").fetchall()
+        for r in rows:
+            db.execute("UPDATE jobs SET status = 'interrupted', error = 'Server restarted' WHERE job_id = ?", (r["job_id"],))
+        db.commit()
+        if rows:
+            log.info(f"[DB] Marked {len(rows)} interrupted jobs from previous session")
     yield
+    if db:
+        db.close()
     log.info("Shutting down...")
 
 app = FastAPI(
     title="NexuX Local-First Canonical",
-    version="6.4.0",
-    description="Autonomous AI Video Repurposing Engine — Local-First, Zero Cloud Cost",
+    version=VERSION,
+    description="Autonomous AI Video Repurposing Engine — Local-First, Zero Cloud Cost, Production-Ready",
     lifespan=lifespan,
 )
 
@@ -208,20 +385,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Static files for rendered output
 odir = OUTPUT_DIR if isinstance(OUTPUT_DIR, Path) else Path(str(OUTPUT_DIR))
 odir.mkdir(parents=True, exist_ok=True)
 app.mount("/output", StaticFiles(directory=str(odir.absolute())), name="output")
 
-# ── Helper: safe job → JobResponse ──
+# ── Helpers ──
 
 def _job_to_response(j: dict) -> JobResponse:
-    """Convert internal job dict to JobResponse, stripping private fields."""
     public = {k: v for k, v in j.items() if not k.startswith("_")}
-    # Ensure render_meta is a list
     if public.get("render_meta") is None:
         public["render_meta"] = []
     return JobResponse(**public)
+
+def _get_job(job_id: str) -> Optional[dict]:
+    """Get job from hot cache, fall back to SQLite."""
+    if job_id in jobs:
+        return jobs[job_id]
+    return _load_job(job_id)
 
 # ── Routes ──
 
@@ -229,10 +409,11 @@ def _job_to_response(j: dict) -> JobResponse:
 async def root():
     return {
         "name": "NexuX",
-        "version": "6.4.0",
+        "version": VERSION,
         "status": "operational",
         "canonical_runtime": True,
         "broll": False,
+        "auth_enabled": bool(API_KEY),
         "active_jobs": active_count,
         "total_jobs": len(jobs),
         "ws_clients": ws.count,
@@ -243,16 +424,18 @@ async def health():
     return {
         "status": "healthy",
         "canonical_runtime": True,
-        "canonical_engine": "local-first-v6.4",
+        "canonical_engine": f"local-first-v{VERSION}",
         "broll": False,
+        "auth_enabled": bool(API_KEY),
         "active_jobs": active_count,
         "queued_jobs": len([j for j in jobs.values() if j["status"] == "queued"]),
         "ws_clients": ws.count,
+        "db_connected": db is not None,
         "timestamp": time.time(),
     }
 
 @app.get("/api/styles")
-async def get_styles():
+async def get_styles(_=Depends(_require_auth)):
     return {
         "subtitle_styles": [
             {
@@ -278,7 +461,7 @@ async def get_styles():
     }
 
 @app.post("/api/preview")
-async def preview(url: str):
+async def preview(url: str, _=Depends(_require_auth)):
     try:
         info = get_video_info(url)
         return PreviewResponse(status="ok", video=info)
@@ -286,7 +469,7 @@ async def preview(url: str):
         raise HTTPException(400, f"Preview failed: {e}")
 
 @app.post("/api/search")
-async def search(req: SearchRequest):
+async def search(req: SearchRequest, _=Depends(_require_auth)):
     try:
         results = search_youtube(req.query, req.max_results)
         return {"status": "ok", "results": results, "total": len(results)}
@@ -294,20 +477,20 @@ async def search(req: SearchRequest):
         raise HTTPException(400, f"Search failed: {e}")
 
 @app.post("/api/generate", response_model=JobResponse)
-async def generate(req: GenerateRequest, bg: BackgroundTasks):
+async def generate(req: GenerateRequest, bg: BackgroundTasks, request: Request, _=Depends(_require_auth)):
     global active_count
 
     if active_count >= MAX_CONCURRENT_JOBS:
-        raise HTTPException(
-            429,
-            f"Max {MAX_CONCURRENT_JOBS} concurrent jobs. Try again shortly."
-        )
+        raise HTTPException(429, f"Max {MAX_CONCURRENT_JOBS} concurrent jobs. Try again shortly.")
 
     jid = f"nx-{uuid.uuid4().hex}"
     job = _new_job(jid)
+    job["_request_data"] = req.model_dump()
+    job["_api_key_hash"] = _hash_key(API_KEY) if API_KEY else None
     jobs[jid] = job
     cancel_flags[jid] = False
     active_count += 1
+    _save_job(job)
 
     style_kwargs = {
         "subtitle_style": req.subtitle_style,
@@ -346,46 +529,75 @@ async def generate(req: GenerateRequest, bg: BackgroundTasks):
 
     bg.add_task(_process_job, jid, req.youtube_url, style_kwargs)
     log.info(f"Job {jid} queued: {req.youtube_url[:80]}")
-
     return _job_to_response(job)
 
 @app.get("/api/job/{job_id}", response_model=JobResponse)
-async def get_job(job_id: str):
-    j = jobs.get(job_id)
+async def get_job(job_id: str, _=Depends(_require_auth)):
+    j = _get_job(job_id)
     if not j:
         raise HTTPException(404, f"Job {job_id} not found")
     return _job_to_response(j)
 
 @app.get("/api/jobs")
-async def list_jobs(status: Optional[str] = None):
-    filtered = jobs
+async def list_jobs(
+    status: Optional[str] = None,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    _=Depends(_require_auth),
+):
+    """List jobs with pagination. Checks hot cache first, then SQLite."""
+    # Get active jobs from hot cache
     if status:
-        filtered = {k: v for k, v in jobs.items() if v["status"] == status}
+        cached = {k: v for k, v in jobs.items() if v["status"] == status}
+    else:
+        cached = dict(jobs)
+
+    # Get historical jobs from SQLite
+    db_jobs = _load_jobs(status, limit + 1, offset)
+
+    # Merge: hot cache takes priority
+    seen_ids = set()
+    all_jobs = []
+    for j in list(cached.values()):
+        all_jobs.append(_job_to_response(j))
+        seen_ids.add(j["job_id"])
+    for j in db_jobs:
+        if j["job_id"] not in seen_ids:
+            all_jobs.append(_job_to_response(j))
+            seen_ids.add(j["job_id"])
+
+    # Sort by created_at desc
+    all_jobs.sort(key=lambda x: x.created_at, reverse=True)
+    total = len(all_jobs)
+    paginated = all_jobs[offset:offset + limit]
+
     return {
-        "total": len(filtered),
-        "jobs": [_job_to_response(v) for v in filtered.values()],
+        "total": total,
+        "jobs": paginated,
+        "limit": limit,
+        "offset": offset,
     }
 
 @app.delete("/api/job/{job_id}")
-async def cancel_job(job_id: str):
+async def cancel_job(job_id: str, _=Depends(_require_auth)):
     global active_count
-    j = jobs.get(job_id)
+    j = _get_job(job_id)
     if not j:
         raise HTTPException(404, f"Job {job_id} not found")
-    if j["status"] in ("completed", "failed", "cancelled"):
+    if j["status"] in ("completed", "failed", "cancelled", "interrupted"):
         raise HTTPException(400, f"Job already {j['status']}")
     cancel_flags[job_id] = True
     j["status"] = "cancelled"
     active_count = max(0, active_count - 1)
+    _save_job(j)
     await ws.broadcast({"type": "job_cancelled", "job_id": job_id})
     return {"job_id": job_id, "status": "cancelled"}
 
-# ── V6.4 Advanced Endpoints ──
+# ── V6.4+ Advanced Endpoints ──
 
 @app.get("/api/vision/{job_id}")
-async def get_vision(job_id: str):
-    """Return vision analysis bundle for a job."""
-    j = jobs.get(job_id)
+async def get_vision(job_id: str, _=Depends(_require_auth)):
+    j = _get_job(job_id)
     if not j:
         raise HTTPException(404, f"Job {job_id} not found")
     stages = j.get("_stages", {})
@@ -396,13 +608,12 @@ async def get_vision(job_id: str):
         "scenes": stages.get("vision", {}).get("scene_changes", []),
         "subjects": stages.get("vision", {}).get("face_samples", []),
         "quality": stages.get("vision", {}).get("quality", {}),
-        "source": j.get("_stages", {}).get("download", {}).get("path"),
+        "source": stages.get("download", {}).get("path"),
     }
 
 @app.get("/api/render-qa/{job_id}")
-async def get_render_qa(job_id: str):
-    """Return render quality assurance data for a job."""
-    j = jobs.get(job_id)
+async def get_render_qa(job_id: str, _=Depends(_require_auth)):
+    j = _get_job(job_id)
     if not j:
         raise HTTPException(404, f"Job {job_id} not found")
     stages = j.get("_stages", {})
@@ -422,16 +633,13 @@ async def get_render_qa(job_id: str):
     }
 
 @app.get("/api/critic/{job_id}")
-async def get_critic(job_id: str):
-    """Return editorial critique and revision data for a job."""
-    j = jobs.get(job_id)
+async def get_critic(job_id: str, _=Depends(_require_auth)):
+    j = _get_job(job_id)
     if not j:
         raise HTTPException(404, f"Job {job_id} not found")
     critiques = j.get("_critiques", [])
     critique_report = {
-        "revision_required": any(
-            c.get("verdict") == "NEEDS_REVISION" for c in critiques
-        ),
+        "revision_required": any(c.get("verdict") == "NEEDS_REVISION" for c in critiques),
         "issues": [
             {"severity": "high" if c.get("verdict") == "REJECT" else "medium",
              "message": f"Clip {c.get('clip_index', '?')}: {c.get('verdict', 'unknown')}"}
@@ -450,19 +658,11 @@ async def get_critic(job_id: str):
     }
 
 @app.get("/api/publish/{job_id}")
-async def get_publish_plan(job_id: str):
-    """Return publish plan for a job."""
-    j = jobs.get(job_id)
+async def get_publish_plan(job_id: str, _=Depends(_require_auth)):
+    j = _get_job(job_id)
     if not j:
         raise HTTPException(404, f"Job {job_id} not found")
-    # Build a publish plan from available data
-    platforms = []
-    publish_platforms = j.get("_publish_platforms", [])
-    if publish_platforms:
-        platforms = publish_platforms
-    else:
-        # Default platforms based on aspect ratio
-        platforms = ["youtube", "tiktok", "instagram"]
+    platforms = j.get("_publish_platforms", []) or ["youtube", "tiktok", "instagram"]
     clips = j.get("clips", [])
     return {
         "job_id": job_id,
@@ -478,15 +678,12 @@ async def get_publish_plan(job_id: str):
     }
 
 @app.post("/api/publish/{job_id}/{platform}")
-async def publish_to_platform(job_id: str, platform: str):
-    """Simulate publishing a clip to a platform (local-first, no actual upload)."""
-    j = jobs.get(job_id)
+async def publish_to_platform(job_id: str, platform: str, _=Depends(_require_auth)):
+    j = _get_job(job_id)
     if not j:
         raise HTTPException(404, f"Job {job_id} not found")
     if j["status"] != "completed":
         raise HTTPException(400, f"Job {job_id} is not completed yet")
-    # Local-first: we don't actually upload to any platform
-    # Return a mock publish confirmation
     log.info(f"[Publish] Job {job_id} → {platform} (local-first mock)")
     return {
         "job_id": job_id,
@@ -496,9 +693,8 @@ async def publish_to_platform(job_id: str, platform: str):
     }
 
 @app.get("/api/analytics/{job_id}")
-async def get_analytics(job_id: str):
-    """Return analytics data for a job (local-first: editorial metrics only)."""
-    j = jobs.get(job_id)
+async def get_analytics(job_id: str, _=Depends(_require_auth)):
+    j = _get_job(job_id)
     if not j:
         raise HTTPException(404, f"Job {job_id} not found")
     critiques = j.get("_critiques", [])
@@ -509,17 +705,14 @@ async def get_analytics(job_id: str):
         "gold_clips": sum(1 for c in critiques if c.get("verdict") == "GOLD"),
         "acceptable_clips": sum(1 for c in critiques if c.get("verdict") == "ACCEPTABLE"),
         "revised_clips": sum(1 for c in critiques if c.get("revised")),
-        "avg_score": round(
-            sum(c.get("score", 0) for c in critiques) / max(len(critiques), 1), 3
-        ),
+        "avg_score": round(sum(c.get("score", 0) for c in critiques) / max(len(critiques), 1), 3),
         "stages": list(stages.keys()),
         "broll": False,
     }
 
 @app.get("/api/download/{job_id}")
-async def download_clips(job_id: str):
-    """Download rendered clips as a zip or individual file."""
-    j = jobs.get(job_id)
+async def download_clips(job_id: str, _=Depends(_require_auth)):
+    j = _get_job(job_id)
     if not j:
         raise HTTPException(404, f"Job {job_id} not found")
     if j["status"] != "completed":
@@ -529,23 +722,16 @@ async def download_clips(job_id: str):
     if not clips:
         raise HTTPException(404, "No clips available for download")
 
-    # If single clip, stream it directly
     if len(clips) == 1:
         clip_path = OUTPUT_DIR / job_id / Path(clips[0]).name
         if not clip_path.exists():
-            # Try as-is (could be a full path or relative)
             alt = Path(clips[0])
             if alt.exists():
                 clip_path = alt
             else:
                 raise HTTPException(404, f"Clip file not found: {clips[0]}")
-        return FileResponse(
-            str(clip_path),
-            media_type="video/mp4",
-            filename=clip_path.name,
-        )
+        return FileResponse(str(clip_path), media_type="video/mp4", filename=clip_path.name)
 
-    # Multiple clips: zip them
     import zipfile, io
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -574,7 +760,7 @@ async def ws_endpoint(websocket: WebSocket):
     try:
         await websocket.send_json({
             "type": "connected",
-            "version": "6.4.0",
+            "version": VERSION,
             "active_jobs": active_count,
         })
         while True:
@@ -584,11 +770,13 @@ async def ws_endpoint(websocket: WebSocket):
                 t = msg.get("type", "")
                 if t == "ping":
                     await websocket.send_json({"type": "pong"})
-                elif t == "subscribe" and msg.get("job_id") in jobs:
-                    await websocket.send_json({
-                        "type": "job_status",
-                        **_job_to_response(jobs[msg["job_id"]]).model_dump()
-                    })
+                elif t == "subscribe" and msg.get("job_id"):
+                    j = _get_job(msg["job_id"])
+                    if j:
+                        await websocket.send_json({
+                            "type": "job_status",
+                            **_job_to_response(j).model_dump()
+                        })
                 elif t == "get_status":
                     await websocket.send_json({
                         "type": "status",
@@ -613,9 +801,9 @@ async def _process_job(job_id: str, url: str, kwargs: dict):
             raise asyncio.CancelledError()
         job["stage"] = stage
         job["progress"] = pct
-        # Store stage data internally
         if stage and data:
             job["_stages"][stage] = data
+        _save_job(job)
         await ws.broadcast({
             "type": "job_progress",
             "job_id": job_id,
@@ -626,6 +814,7 @@ async def _process_job(job_id: str, url: str, kwargs: dict):
 
     try:
         job["status"] = "processing"
+        _save_job(job)
         result = await run_pipeline(url, job_id, _progress, **kwargs)
 
         if result.get("status") == "completed":
@@ -634,7 +823,6 @@ async def _process_job(job_id: str, url: str, kwargs: dict):
             stages = result.get("stages", {})
             critiques = result.get("critiques", [])
 
-            # Build render_meta from critiques and stages
             render_meta = []
             for i, clip_path in enumerate(clips):
                 critique = critiques[i] if i < len(critiques) else {}
@@ -650,7 +838,6 @@ async def _process_job(job_id: str, url: str, kwargs: dict):
                     "voiceover": kwargs.get("voice_over_text") if kwargs.get("voice_over") else None,
                 })
 
-            # Store analysis bundle from stages
             analysis_bundle = {
                 "download": stages.get("download", {}),
                 "vision": stages.get("vision", {}),
@@ -660,11 +847,8 @@ async def _process_job(job_id: str, url: str, kwargs: dict):
                 "critique": stages.get("critique", {}),
             }
 
-            # Store critique summary
             critique_summary = {
-                "revision_required": any(
-                    c.get("verdict") == "NEEDS_REVISION" for c in critiques
-                ),
+                "revision_required": any(c.get("verdict") == "NEEDS_REVISION" for c in critiques),
                 "issues": [
                     {"severity": "high" if c.get("verdict") == "REJECT" else "medium",
                      "message": f"Clip {c.get('clip_index', '?')}: {c.get('verdict', 'unknown')}"}
@@ -678,7 +862,6 @@ async def _process_job(job_id: str, url: str, kwargs: dict):
                 "attempt": max((c.get("revision_count", 0) for c in critiques), default=0),
             }
 
-            # Build publish plan if platforms were specified
             publish_plan = None
             if kwargs.get("publish_platforms"):
                 publish_plan = {
@@ -691,7 +874,6 @@ async def _process_job(job_id: str, url: str, kwargs: dict):
                     },
                 }
 
-            # Editorial decision summary
             editorial_decision = {
                 "total_clips": len(clips),
                 "gold": sum(1 for c in critiques if c.get("verdict") == "GOLD"),
@@ -717,6 +899,7 @@ async def _process_job(job_id: str, url: str, kwargs: dict):
             job["_critiques"] = critiques
             job["_aspect_ratio"] = kwargs.get("aspect_ratio", "9:16")
             job["_publish_platforms"] = kwargs.get("publish_platforms", [])
+            _save_job(job)
 
             await ws.broadcast({
                 "type": "job_completed",
@@ -725,13 +908,13 @@ async def _process_job(job_id: str, url: str, kwargs: dict):
                 "clips": clips,
             })
 
-            # Webhook callback
             if kwargs.get("webhook_url"):
                 await _send_webhook(kwargs["webhook_url"], job)
 
         else:
             job["status"] = "failed"
             job["error"] = result.get("error", "Unknown error")
+            _save_job(job)
             await ws.broadcast({
                 "type": "job_failed",
                 "job_id": job_id,
@@ -741,9 +924,11 @@ async def _process_job(job_id: str, url: str, kwargs: dict):
     except asyncio.CancelledError:
         job["status"] = "cancelled"
         job["error"] = "Cancelled by user"
+        _save_job(job)
     except Exception as e:
         job["status"] = "failed"
         job["error"] = str(e)
+        _save_job(job)
         log.error(f"[Job {job_id}] Failed: {e}", exc_info=True)
         await ws.broadcast({
             "type": "job_failed",

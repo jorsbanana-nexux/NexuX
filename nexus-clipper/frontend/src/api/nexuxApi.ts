@@ -25,7 +25,7 @@ export interface GenerateRequest {
   language?: string | null;
   normalize_audio: boolean;
   emoji_enabled: boolean;
-  // Advanced V6 fields
+  // Advanced V6+ fields
   clip_prompt?: string | null;
   genre?: string;
   remove_fillers_pauses?: boolean;
@@ -83,6 +83,8 @@ export interface NexuXHealth {
   canonical_runtime?: boolean;
   canonical_engine?: string;
   broll?: boolean;
+  auth_enabled?: boolean;
+  db_connected?: boolean;
   [key: string]: unknown;
 }
 
@@ -118,14 +120,22 @@ const API_BASE = String(
   import.meta.env.VITE_NEXUX_API_URL ?? 'http://127.0.0.1:8000',
 ).replace(/\/$/, '');
 
+const API_KEY = String(import.meta.env.VITE_NEXUX_API_KEY ?? '');
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+    ...(init?.headers as Record<string, string> | undefined),
+  };
+
+  if (API_KEY) {
+    headers['X-API-Key'] = API_KEY;
+  }
+
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
-    headers: {
-      Accept: 'application/json',
-      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
-      ...(init?.headers ?? {}),
-    },
+    headers,
   });
 
   if (!response.ok) {
@@ -153,10 +163,16 @@ export const nexuxApi = {
     }),
   job: (jobId: string) =>
     request<NexuXJob>(`/api/job/${encodeURIComponent(jobId)}`),
-  jobs: (status?: string) =>
-    request<{ total: number; jobs: NexuXJob[] }>(
-      `/api/jobs${status ? `?status=${encodeURIComponent(status)}` : ''}`,
-    ),
+  jobs: (status?: string, limit?: number, offset?: number) => {
+    const params = new URLSearchParams();
+    if (status) params.set('status', status);
+    if (limit) params.set('limit', String(limit));
+    if (offset) params.set('offset', String(offset));
+    const qs = params.toString();
+    return request<{ total: number; jobs: NexuXJob[] }>(
+      `/api/jobs${qs ? `?${qs}` : ''}`,
+    );
+  },
   cancel: (jobId: string) =>
     request<{ job_id: string; status: string }>(
       `/api/job/${encodeURIComponent(jobId)}`,
