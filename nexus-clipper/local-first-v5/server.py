@@ -1,36 +1,24 @@
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import FileResponse
 
-from app import (
-    app,
-    DATA,
-    JOBS,
-    OUTPUTS,
-    build_candidates,
-    download_youtube,
-    rerank_candidates,
-    transcribe_local,
-)
+from app import app, DATA, JOBS, OUTPUTS
+from application_service import CanonicalApplicationService
 from contracts import CompatJob, GenerateRequest
 from engine_media import ffprobe
 from job_service import JobStateService
 from publishing_analytics import aggregate_analytics, record_analytics_event
 from render_service import render_with_spec
 from runtime_adapter import CanonicalRuntime, default_runtime
-from timeline import build_timeline
 from vision_quality import visual_quality
 from vision_service import vision_service
-from fastapi import BackgroundTasks
-
 
 router = APIRouter(prefix="/api")
 runtime: CanonicalRuntime = default_runtime()
-service = __import__("application_service").application_service.CanonicalApplicationService(runtime)
+service = CanonicalApplicationService(runtime)
 job_state = JobStateService(JOBS)
 
 # Compatibility exports. Canonical code should import the owning service instead.
