@@ -12,8 +12,6 @@ V6.4 fixes:
 - Audio enhancement with fallback chain
 """
 import asyncio
-import json
-from pathlib import Path
 from typing import Dict, Optional, Callable, List
 import logging
 
@@ -24,8 +22,8 @@ from .transcribe import transcribe
 from .vision import analyze_faces, detect_scene_changes, detect_screen_share
 from .analyze import analyze_content, batch_analyze_with_ai
 from .render import render_clip, concatenate_clips
-from .editorial import batch_editorial_analysis
-from .critic import evaluate_clip, apply_revision_directives, revision_loop
+
+from .critic import evaluate_clip, apply_revision_directives
 from .subtitle_quality import process_subtitle_quality
 from .audio_enhancer import enhance_audio
 

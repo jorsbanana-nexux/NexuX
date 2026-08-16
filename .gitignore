@@ -1,5 +1,37 @@
-venv/ 
-.venv/ 
-**/venv/ 
-**/output/ 
-*.mp4 
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+.venv/
+**/venv/
+**/.venv/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Node
+node_modules/
+dist/
+
+# NexuX runtime
+**/output/
+*.mp4
+nexux_jobs.db
+*.db
+logs/
+models/*.pt
+models/*.bin
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

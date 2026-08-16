@@ -4,7 +4,7 @@ import os, sys, shutil, time, base64
 from pathlib import Path
 
 PROJECT_NAME = "Nexus-Clipper AI Ultra"
-PROJECT_VERSION = "1.0.0"
+PROJECT_VERSION = "7.0.0"
 PROJECT_SLUG = "nexus-clipper"
 BASE_DIR = Path.cwd() / PROJECT_SLUG
 

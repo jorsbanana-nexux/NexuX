@@ -7,6 +7,7 @@ export type NexuXStatus =
   | 'interrupted';
 
 export interface GenerateRequest {
+  // Core fields (required)
   youtube_url: string;
   target_duration: number;
   aspect_ratio: string;
@@ -25,6 +26,17 @@ export interface GenerateRequest {
   language?: string | null;
   normalize_audio: boolean;
   emoji_enabled: boolean;
+
+  // Backend-managed fields (optional, defaults applied server-side)
+  scene_detection?: boolean;
+  screen_detection?: boolean;
+  diarization?: boolean;
+  color_grade?: string;
+  video_codec?: string;
+  audio_codec?: string;
+  ai_scoring?: boolean;
+  webhook_url?: string | null;
+
   // Advanced V6+ fields
   clip_prompt?: string | null;
   genre?: string;
@@ -68,6 +80,7 @@ export interface NexuXJob {
   stage: string;
   output_path: string | null;
   error: string | null;
+  created_at: string;
   clips: string[];
   broll: false;
   render_meta: RenderMeta[];
@@ -97,6 +110,9 @@ export interface NexuXStyles {
   aspect_ratios: string[];
   animations?: string[];
   positions?: string[];
+  color_grades?: string[];
+  video_codecs?: string[];
+  audio_codecs?: string[];
   broll?: boolean;
   [key: string]: unknown;
 }
@@ -238,6 +254,7 @@ export function startJobPolling(
         stage: 'network_error',
         output_path: null,
         error: error instanceof Error ? error.message : String(error),
+        created_at: new Date().toISOString(),
         clips: [],
         broll: false,
         render_meta: [],

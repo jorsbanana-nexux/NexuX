@@ -30,7 +30,7 @@ import { VideoModal } from './VideoModal';
 import { nexuxApi, buildOutputUrl, startJobPolling, type NexuXJob, type GenerateRequest } from '../api/nexuxApi';
 
 interface SpaceshipConsoleProps {
-  onProcessComplete?: (data: any) => void;
+  onProcessComplete?: (data: NexuXJob) => void;
 }
 
 const HOOK_CATEGORIES = [

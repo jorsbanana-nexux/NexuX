@@ -1,5 +1,5 @@
 """
-Nexus-Clipper Premium v4.0 — Engine Package
+NexuX V7.0 — Engine Package
 ============================================
 Modular architecture:
 - constants.py: All configurations & presets
