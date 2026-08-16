@@ -5,6 +5,7 @@ from math import exp
 import os
 from typing import Any
 
+from analysis_world import AnalysisWorld
 from editorial_intelligence import narrative_signals
 from ai_editorial import build_candidate_packet
 from ai_provider import evaluate_ai
@@ -139,11 +140,6 @@ def rank_candidate(candidate: dict[str, Any], *, target_duration: float = 45.0, 
 
 
 def _ai_rejudge(candidate: dict[str, Any], *, transcript: Any = None, audio: Any = None, vision: Any = None) -> dict[str, Any]:
-    """Use the configured AI brain as a bounded editorial critic.
-
-    No provider configured => deterministic local behavior is preserved.
-    Provider errors are converted into REVIEW rather than failing rendering.
-    """
     decision = evaluate_ai(build_candidate_packet(candidate, transcript=transcript, audio=audio, vision=vision))
     item = dict(candidate)
     item["ai_editorial"] = decision.to_dict()
@@ -156,7 +152,6 @@ def _ai_rejudge(candidate: dict[str, Any], *, transcript: Any = None, audio: Any
 
 
 def rank_candidates(candidates: list[dict[str, Any]], *, target_duration: float = 45.0, scene_boundaries: list[dict[str, Any]] | None = None, audio_profiles: dict[str, dict[str, float]] | None = None) -> list[dict[str, Any]]:
-    """Compatibility API used by the editorial re-judge loop."""
     audio_profiles = audio_profiles or {}
     ranked: list[dict[str, Any]] = []
     for candidate in candidates:
@@ -217,4 +212,29 @@ def select_diverse(candidates: list[dict[str, Any]], *, limit: int = 10, target_
     return selected
 
 
-# compatibility sync marker
+def select_diverse_from_world(world: AnalysisWorld, *, limit: int = 10, target_duration: float = 45.0) -> list[dict[str, Any]]:
+    """Authoritative editorial selection driven by one AnalysisWorld."""
+    world.validate()
+    candidates = [dict(item) for item in world.candidates]
+    audio_profiles = dict(world.audio.get("profiles", {}) or {})
+    scenes = list(world.vision.get("scenes", []) or [])
+    transcript = world.transcript
+    vision = dict(world.vision)
+    selected = select_diverse(
+        candidates,
+        limit=limit,
+        target_duration=target_duration,
+        scene_boundaries=scenes,
+        audio_profiles={key: dict(value) for key, value in audio_profiles.items()},
+        transcript=transcript,
+        vision=vision,
+    )
+    for item in selected:
+        item["analysis_world"] = {
+            "schema_version": world.schema_version,
+            "job_id": world.job_id,
+            "modalities": sorted(world.modalities),
+            "confidence": dict(world.confidence),
+            "provenance": dict(world.provenance),
+        }
+    return selected
