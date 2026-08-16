@@ -135,6 +135,26 @@ def rank_candidate(candidate: dict[str, Any], *, target_duration: float = 45.0, 
     )
 
 
+def rank_candidates(candidates: list[dict[str, Any]], *, target_duration: float = 45.0, scene_boundaries: list[dict[str, Any]] | None = None, audio_profiles: dict[str, dict[str, float]] | None = None) -> list[dict[str, Any]]:
+    """Compatibility API used by the editorial re-judge loop."""
+    audio_profiles = audio_profiles or {}
+    ranked: list[dict[str, Any]] = []
+    for candidate in candidates:
+        signals = rank_candidate(
+            candidate,
+            target_duration=target_duration,
+            scene_boundaries=scene_boundaries,
+            audio=audio_profiles.get(candidate.get("id", "")),
+        )
+        item = dict(candidate)
+        item["score"] = round(signals.total / 100.0, 6)
+        item["editorial_score"] = round(signals.total / 100.0, 6)
+        item["editorial_rank"] = round(signals.total, 2)
+        item["editorial_signals"] = signals.to_dict()
+        ranked.append(item)
+    return sorted(ranked, key=lambda item: float(item.get("editorial_score", 0.0)), reverse=True)
+
+
 def select_diverse(candidates: list[dict[str, Any]], *, limit: int = 10, target_duration: float = 45.0, scene_boundaries: list[dict[str, Any]] | None = None, audio_profiles: dict[str, dict[str, float]] | None = None) -> list[dict[str, Any]]:
     remaining = [dict(item) for item in candidates]
     selected: list[dict[str, Any]] = []
@@ -160,3 +180,4 @@ def select_diverse(candidates: list[dict[str, Any]], *, limit: int = 10, target_
         selected.append(chosen)
         remaining.remove(winner)
     return selected
+# compatibility sync marker
