@@ -14,6 +14,31 @@ ANIMATIONS: Final[tuple[str, ...]] = (
 )
 POSITIONS: Final[tuple[str, ...]] = ("top", "center", "bottom")
 
+FRONTED_PRESET_ALIASES: Final[dict[str, str]] = {
+    "minimal-aesthetic": "minimalist",
+    "gamer-comic": "gaming",
+    "neon-cyberpunk": "neon",
+    "iman-gadzhi": "motivational",
+    "anime-impact": "mrbeast",
+}
+
+FRONTED_ANIMATION_ALIASES: Final[dict[str, str]] = {
+    "word-by-word": "pop",
+    "line-by-line": "pop_fast",
+    "bounce-zoom": "bounce",
+    "typewriter-glitch": "typewriter",
+    "kinetic-slide": "pop_fast",
+    "pulse-glow": "flicker",
+    "flip-rotate": "bounce",
+    "fade-drift": "fade_slow",
+}
+
+
+def canonicalize_fronted_values(subtitle_style: str, animation: str) -> tuple[str, str]:
+    style = FRONTED_PRESET_ALIASES.get(str(subtitle_style).strip(), str(subtitle_style).strip())
+    effect = FRONTED_ANIMATION_ALIASES.get(str(animation).strip(), str(animation).strip())
+    return style, effect
+
 
 def require_choice(value: str, allowed: tuple[str, ...], field: str) -> str:
     normalized = str(value).strip()
