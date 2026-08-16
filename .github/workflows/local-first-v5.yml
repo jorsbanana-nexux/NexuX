@@ -7,6 +7,7 @@ on:
       - "nexus-clipper/local-first-v5/**"
       - "nexus-clipper/backend/**"
       - "nexus-clipper/frontend/**"
+      - "nexus-clipper/frontend-contract/**"
       - "nexus-clipper/run_nexus.*"
       - ".github/workflows/local-first-v5.yml"
   pull_request:
@@ -14,6 +15,7 @@ on:
       - "nexus-clipper/local-first-v5/**"
       - "nexus-clipper/backend/**"
       - "nexus-clipper/frontend/**"
+      - "nexus-clipper/frontend-contract/**"
       - "nexus-clipper/run_nexus.*"
       - ".github/workflows/local-first-v5.yml"
   workflow_dispatch:
@@ -39,18 +41,19 @@ jobs:
       - name: Install local-first V5 dependencies
         working-directory: nexus-clipper/local-first-v5
         run: python -m pip install -r requirements-local.txt pytest
-      - name: Verify checked-out server source
+      - name: Verify canonical API source
         working-directory: nexus-clipper/local-first-v5
         run: |
-          echo "--- server.py lines 350-370 ---"
-          nl -ba server.py | sed -n '350,370p'
-          echo "--- server.py syntax check ---"
-          python -m py_compile server.py
+          python -m py_compile canonical_api.py server.py
+          python -c "from canonical_api import app; assert app.title == 'NexuX Local-First Canonical'"
       - name: Compile V5 modules
         working-directory: nexus-clipper/local-first-v5
         run: python -m compileall -q .
       - name: Compile legacy backend and root builder
         run: python -m compileall -q nexus-clipper/backend && python -m py_compile build_nexus.py
+      - name: Validate TypeScript contract syntax
+        working-directory: nexus-clipper/frontend-contract
+        run: node --check < nexuxApi.ts
       - name: Run deterministic V5 tests
         working-directory: nexus-clipper/local-first-v5
         run: python -m pytest -q
