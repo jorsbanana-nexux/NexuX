@@ -76,8 +76,12 @@ async def run_generation(job_id: str, req: engine.GenerateRequest) -> None:
         candidates = generate_candidates(transcript.get("segments", []), max_candidates=1200)
         if not candidates:
             raise RuntimeError("No viable editorial candidates found")
+        candidates = [
+            {**candidate, "editorial_context": {"prompt": getattr(req, "clip_prompt", None), "genre": getattr(req, "genre", "auto"), "target_duration": req.target_duration}}
+            for candidate in candidates
+        ]
         candidates, decision = apply_editorial_intelligence(candidates, prompt=getattr(req, "clip_prompt", None), genre=getattr(req, "genre", "auto"))
-        ranked = select_diverse(candidates, limit=_max_candidates(req), target_duration=float(req.target_duration), scene_boundaries=None, audio_profiles={})
+        ranked = select_diverse(candidates, limit=_max_candidates(req), target_duration=float(req.target_duration), scene_boundaries=None, audio_profiles={}, transcript=transcript, vision={"genre": getattr(req, "genre", "auto"), "prompt": getattr(req, "clip_prompt", None)})
         if not ranked:
             raise RuntimeError("Editorial ranking produced no candidates")
         ranked, decision = apply_editorial_intelligence(ranked, prompt=getattr(req, "clip_prompt", None), genre=decision.genre)
