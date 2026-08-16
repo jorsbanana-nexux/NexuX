@@ -1,248 +1,133 @@
-import React, { useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import Header from './components/Header.jsx'
-import URLInput from './components/URLInput.jsx'
-import StyleSelector from './components/StyleSelector.jsx'
-import ColorCustomizer from './components/ColorCustomizer.jsx'
-import TextSettings from './components/TextSettings.jsx'
-import VideoSettings from './components/VideoSettings.jsx'
-import ProgressPanel from './components/ProgressPanel.jsx'
-import OutputPreview from './components/OutputPreview.jsx'
-import EditorWizard from './components/EditorWizard.jsx'
-import ClipsDashboard from './components/ClipsDashboard.jsx'
+import { useEffect, useMemo, useState } from 'react'
+import { motion } from 'framer-motion'
+
+const API = (import.meta.env.VITE_NEXUX_API_URL || 'http://127.0.0.1:8000').replace(/\/$/, '')
+
+async function request(path, init) {
+  const res = await fetch(`${API}${path}`, {
+    ...init,
+    headers: { Accept: 'application/json', ...(init?.body ? { 'Content-Type': 'application/json' } : {}), ...(init?.headers || {}) },
+  })
+  if (!res.ok) {
+    let message = res.statusText || `HTTP ${res.status}`
+    try { message = (await res.json())?.detail || message } catch {}
+    throw new Error(message)
+  }
+  return res.json()
+}
+
+const presets = [
+  ['hormozi', 'HORMOZI'],
+  ['minimal', 'MINIMAL'],
+  ['gamer', 'GAMER'],
+  ['karaoke', 'KARAOKE'],
+]
 
 export default function App() {
-  const [youtubeUrl, setYoutubeUrl] = useState('')
-  const [jobStatus, setJobStatus] = useState(null)
-  const [activeSection, setActiveSection] = useState('style')
-  const [showEditor, setShowEditor] = useState(false)
-  const [showDashboard, setShowDashboard] = useState(false)
-  const [editorClip, setEditorClip] = useState(null)
+  const [url, setUrl] = useState('')
+  const [duration, setDuration] = useState(45)
+  const [preset, setPreset] = useState('hormozi')
+  const [ratio, setRatio] = useState('9:16')
+  const [clipCount, setClipCount] = useState(3)
+  const [autoZoom, setAutoZoom] = useState(true)
+  const [faceTracking, setFaceTracking] = useState(true)
+  const [emoji, setEmoji] = useState(false)
+  const [health, setHealth] = useState(null)
+  const [job, setJob] = useState(null)
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
 
-  // Style config state — semua parameter yang dikirim ke backend
-  const [styleConfig, setStyleConfig] = useState({
-    subtitle_style: 'hormozi',
-    font: '',
-    font_size: 48,
-    primary_color: '',
-    highlight_color: '',
-    stroke_color: '',
-    stroke_width: 3,
-    position: '',
-    animation: '',
-    highlight_active_word: true,
-    auto_zoom: true,
-    aspect_ratio: '9:16',
-    clip_count: 3,
-    target_duration: 60,
-    language: '',
-    // Editor Wizard state
-    layout: 'fill',
-    noise_removal: false,
-    bgm_ducking: false,
-    broll_insert: false,
-    bgm_volume: -16,
-  })
+  useEffect(() => {
+    request('/api/health').then(setHealth).catch(() => setHealth(null))
+  }, [])
 
-  const updateConfig = (key, value) => {
-    setStyleConfig(prev => ({ ...prev, [key]: value }))
+  useEffect(() => {
+    if (!job?.job_id || ['completed', 'failed', 'cancelled'].includes(job.status)) return
+    const timer = setInterval(async () => {
+      try { setJob(await request(`/api/job/${encodeURIComponent(job.job_id)}`)) } catch (e) { setError(e.message) }
+    }, 1600)
+    return () => clearInterval(timer)
+  }, [job?.job_id, job?.status])
+
+  const progress = Math.max(0, Math.min(100, Number(job?.progress || 0)))
+  const statusLabel = useMemo(() => {
+    if (!job) return 'SYSTEM READY'
+    if (job.status === 'completed') return 'MISSION COMPLETE'
+    if (job.status === 'failed') return 'PIPELINE ERROR'
+    return String(job.stage || job.status || 'PROCESSING').toUpperCase()
+  }, [job])
+
+  async function launch() {
+    if (!url.trim()) return
+    setBusy(true); setError(''); setJob(null)
+    try {
+      const payload = {
+        youtube_url: url.trim(), target_duration: duration, aspect_ratio: ratio,
+        subtitle_style: preset, font: 'Arial', font_size: 48,
+        primary_color: '#FFFFFF', highlight_color: '#22D3EE', stroke_color: '#000000', stroke_width: 3,
+        position: 'center', animation: 'bounce', auto_zoom: autoZoom, face_tracking: faceTracking,
+        clip_count: clipCount, language: null, normalize_audio: true, emoji_enabled: emoji,
+      }
+      setJob(await request('/api/generate', { method: 'POST', body: JSON.stringify(payload) }))
+    } catch (e) { setError(e.message) }
+    finally { setBusy(false) }
   }
 
-  // Style config yang dikirim ke backend — filter yang kosong
-  const activeConfig = () => {
-    const clean = {}
-    for (const [k, v] of Object.entries(styleConfig)) {
-      if (v !== '' && v !== null) clean[k] = v
-    }
-    return clean
-  }
+  const downloadUrl = job?.job_id ? `${API}/api/download/${encodeURIComponent(job.job_id)}` : null
 
   return (
-    <div className="min-h-screen bg-[#07080B] text-[#E4E4E7]">
-      {/* ── Animated background ── */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_0%,rgba(204,255,0,0.04),transparent_60%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_60%_50%_at_100%_50%,rgba(0,240,255,0.03),transparent_60%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_40%_40%_at_0%_100%,rgba(168,85,247,0.04),transparent_60%)]" />
-        {/* Subtle grid */}
-        <div
-          className="absolute inset-0 opacity-[0.015]"
-          style={{
-            backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.5) 1px, transparent 1px)',
-            backgroundSize: '32px 32px',
-          }}
-        />
-      </div>
+    <div className="nexus-shell">
+      <div className="stars" />
+      <header className="topbar">
+        <div className="brand"><span className="brand-mark">N</span><span>NEXU<span className="cyan">X</span></span><small>NEURAL VIDEO REPURPOSING</small></div>
+        <div className="status"><i className={health?.status === 'ok' ? 'live' : ''} /> {health?.status === 'ok' ? 'ENGINE ONLINE' : 'ENGINE OFFLINE'}</div>
+      </header>
 
-      <div className="relative z-10 max-w-7xl mx-auto px-4 py-6">
-        {/* ── Header ── */}
-        <Header jobStatus={jobStatus} />
+      <main>
+        <section className="hero" id="hero">
+          <div className="eyebrow">AUTONOMOUS AI VIDEO INFRASTRUCTURE // 06.3</div>
+          <h1>Turn long-form video into <span className="cyan">short-form gravity.</span></h1>
+          <p>Fronted UI, canonical NexuX engine. One command center for ingestion, editorial selection, subtitles, reframing and render QA.</p>
+        </section>
 
-        {/* ── Main Layout ── */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
-          {/* LEFT COLUMN: URL + Progress */}
-          <div className="lg:col-span-1 space-y-4">
-            <URLInput
-              url={youtubeUrl}
-              setUrl={setYoutubeUrl}
-              config={activeConfig()}
-              setJobStatus={setJobStatus}
-            />
-            <AnimatePresence>
-              {jobStatus && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                >
-                  <ProgressPanel jobStatus={jobStatus} />
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Auto-show dashboard on complete */}
-            {jobStatus?.status === 'completed' && !showDashboard && !showEditor && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="glass-card p-4 text-center"
-              >
-                <p className="text-sm text-spacex-success mb-2">✓ Clip siap! Lihat semua klip:</p>
-                <button onClick={() => setShowDashboard(true)} className="btn-primary text-sm">
-                  🎬 View All Clips
-                </button>
-              </motion.div>
-            )}
+        <section className="cockpit" id="workspace-console">
+          <div className="section-head"><div><span className="label">01 / INGEST</span><h2>Mission Console</h2></div><span className="telemetry">LOCAL-FIRST // API LINK ACTIVE</span></div>
+          <div className="ingest-row">
+            <input value={url} onChange={e => setUrl(e.target.value)} placeholder="Paste a YouTube URL to initialize the pipeline…" />
+            <button className="primary" onClick={launch} disabled={busy || !url.trim()}>{busy ? 'INITIALIZING…' : 'LAUNCH CLIPPER →'}</button>
           </div>
 
-          {/* RIGHT COLUMN: Customization */}
-          <div className="lg:col-span-2 space-y-4">
-            {/* ── Section Tabs ── */}
-            <div className="flex gap-2 flex-wrap">
-              {[
-                { id: 'style',  label: '🎨 Styles',     count: '15 presets' },
-                { id: 'text',   label: '🔤 Text',       count: '10 options' },
-                { id: 'colors', label: '🌈 Colors',     count: '8 palettes' },
-                { id: 'video',  label: '🎬 Video',      count: '8 settings' },
-              ].map(tab => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveSection(activeSection === tab.id ? '' : tab.id)}
-                  className={`tab-btn ${activeSection === tab.id ? 'active' : ''}`}
-                >
-                  {tab.label}
-                  <span className="ml-1.5 text-[10px] opacity-40">{tab.count}</span>
-                </button>
-              ))}
-            </div>
-
-            {/* ── Section Content ── */}
-            <AnimatePresence mode="wait">
-              {activeSection === 'style' && (
-                <motion.div
-                  key="style"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <StyleSelector config={styleConfig} updateConfig={updateConfig} />
-                </motion.div>
-              )}
-              {activeSection === 'text' && (
-                <motion.div
-                  key="text"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <TextSettings config={styleConfig} updateConfig={updateConfig} />
-                </motion.div>
-              )}
-              {activeSection === 'colors' && (
-                <motion.div
-                  key="colors"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <ColorCustomizer config={styleConfig} updateConfig={updateConfig} />
-                </motion.div>
-              )}
-              {activeSection === 'video' && (
-                <motion.div
-                  key="video"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <VideoSettings config={styleConfig} updateConfig={updateConfig} />
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* ── Output Preview ── */}
-            <AnimatePresence>
-              {jobStatus?.output_path && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 }}
-                >
-                  <OutputPreview 
-                    outputPath={jobStatus.output_path} 
-                    onViewClips={() => setShowDashboard(true)}
-                    onCustomize={() => setShowEditor(true)}
-                  />
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Auto-show dashboard on complete */}
-            {jobStatus?.status === 'completed' && !showDashboard && !showEditor && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="glass-card p-4 text-center"
-              >
-                <p className="text-sm text-spacex-success mb-2">✓ Clip siap! Lihat semua klip:</p>
-                <button onClick={() => setShowDashboard(true)} className="btn-primary text-sm">
-                  🎬 View All Clips
-                </button>
-              </motion.div>
-            )}
+          <div className="control-grid">
+            <div className="control-card"><span>DURATION</span><strong>{duration}s</strong><input type="range" min="20" max="60" value={duration} onChange={e => setDuration(Number(e.target.value))} /></div>
+            <div className="control-card"><span>ASPECT</span><div className="segmented">{['9:16', '1:1', '16:9'].map(v => <button key={v} className={ratio === v ? 'selected' : ''} onClick={() => setRatio(v)}>{v}</button>)}</div></div>
+            <div className="control-card"><span>CLIPS</span><div className="segmented">{[1,3,5].map(v => <button key={v} className={clipCount === v ? 'selected' : ''} onClick={() => setClipCount(v)}>{v}</button>)}</div></div>
           </div>
-        </div>
-      </div>
 
-      {/* ── Clips Dashboard: auto-show saat job complete ── */}
-      <AnimatePresence>
-        {showDashboard && (
-          <ClipsDashboard
-            clips={jobStatus?.clips || []}
-            onCustomize={(clip) => {
-              setShowDashboard(false)
-              setEditorClip(clip)
-              setShowEditor(true)
-            }}
-            onClose={() => setShowDashboard(false)}
-          />
-        )}
-      </AnimatePresence>
+          <div className="studio" id="subtitle-engine">
+            <div><span className="label">02 / EDITORIAL</span><h3>Subtitle Engine</h3></div>
+            <div className="preset-grid">{presets.map(([id, name]) => <button key={id} className={preset === id ? 'preset selected' : 'preset'} onClick={() => setPreset(id)}><span>{name}</span><small>LIVE RENDER STYLE</small></button>)}</div>
+          </div>
 
-      {/* ── Editor Wizard (full-screen overlay) ── */}
-      <AnimatePresence>
-        {showEditor && (
-          <EditorWizard
-            config={styleConfig}
-            updateConfig={updateConfig}
-            onClose={() => setShowEditor(false)}
-          />
-        )}
-      </AnimatePresence>
+          <div className="toggle-grid">
+            <button onClick={() => setAutoZoom(!autoZoom)} className={autoZoom ? 'toggle on' : 'toggle'}><span>Auto Zoom</span><b>{autoZoom ? 'ON' : 'OFF'}</b></button>
+            <button onClick={() => setFaceTracking(!faceTracking)} className={faceTracking ? 'toggle on' : 'toggle'}><span>Face Tracking</span><b>{faceTracking ? 'ON' : 'OFF'}</b></button>
+            <button onClick={() => setEmoji(!emoji)} className={emoji ? 'toggle on' : 'toggle'}><span>Emoji Layer</span><b>{emoji ? 'ON' : 'OFF'}</b></button>
+          </div>
+        </section>
+
+        <section className="results" id="capabilities">
+          <div className="section-head"><div><span className="label">03 / TELEMETRY</span><h2>{statusLabel}</h2></div><span className="telemetry">{progress}%</span></div>
+          <div className="progress"><motion.div animate={{ width: `${progress}%` }} /></div>
+          {job && <div className="result-panel">
+            <div><span className="muted">JOB ID</span><code>{job.job_id}</code></div>
+            <div><span className="muted">STAGE</span><strong>{job.stage || job.status}</strong></div>
+            <div><span className="muted">OUTPUT</span>{downloadUrl && job.status === 'completed' ? <a className="download" href={downloadUrl}>DOWNLOAD MP4 ↗</a> : <span className="muted">PIPELINE ACTIVE</span>}</div>
+          </div>}
+          {error && <div className="error">{error}</div>}
+        </section>
+      </main>
+
+      <footer><span>NEXUX / FRONTED PRODUCTION UI</span><span>CANONICAL ENGINE PRESERVED</span><span>© 2026</span></footer>
     </div>
   )
 }
