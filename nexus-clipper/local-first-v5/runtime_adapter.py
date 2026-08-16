@@ -7,11 +7,7 @@ from typing import Any, Callable
 
 @dataclass
 class CanonicalRuntime:
-    """Explicit dependency boundary for the canonical V5/V6 pipeline.
-
-    The adapter intentionally bridges to existing implementations during migration.
-    New canonical code should depend on this contract rather than importing server.py.
-    """
+    """Explicit dependency boundary for the canonical V5/V6 pipeline."""
 
     data_dir: Path
     jobs_dir: Path
@@ -31,6 +27,7 @@ class CanonicalRuntime:
 def default_runtime() -> CanonicalRuntime:
     """Compatibility bridge used until legacy orchestration is fully extracted."""
     import server
+    from advanced_render import render_with_spec
 
     return CanonicalRuntime(
         data_dir=server.DATA,
@@ -45,5 +42,5 @@ def default_runtime() -> CanonicalRuntime:
         detect_scene_changes=server.detect_scene_changes,
         detect_face_subjects=server.detect_face_subjects,
         build_timeline=server.build_timeline,
-        render_with_spec=server._render_with_spec,
+        render_with_spec=render_with_spec,
     )
