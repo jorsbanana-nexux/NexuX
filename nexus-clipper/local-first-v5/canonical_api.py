@@ -65,12 +65,12 @@ def _write(job: dict) -> None:
 
 @app.get("/")
 async def root() -> dict:
-    return {"name":"NexuX Local-First Canonical","version":"6.4.0","canonical_runtime":True,"broll":False,"multimodal_editorial":True,"prompt_clipping":True,"genre_intelligence":True,"virality_model":True,"cleanup":True,"dynamic_layouts":True,"voice_over":True,"critic_revision":True,"publishing_analytics":True,"ui_contract":"strict"}
+    return {"name":"NexuX Local-First Canonical","version":"6.4.0","canonical_runtime":True,"canonical_engine":"local-first-v5","broll":False,"multimodal_editorial":True,"prompt_clipping":True,"genre_intelligence":True,"virality_model":True,"cleanup":True,"dynamic_layouts":True,"voice_over":True,"critic_revision":True,"publishing_analytics":True,"ui_contract":"strict"}
 
 
 @app.get("/api/health")
 async def health() -> dict:
-    return {"status":"ok","canonical_runtime":True,"broll":False,"runtime_module":"canonical_api","vision_scanner":"sequential","editorial_engine":"v6.4-multimodal","retrieval_strategy":"caption-first-targeted","ui_contract":"strict","fronted_alias_mapping":True,"multimodal_editorial":True,"prompt_clipping":True,"genre_intelligence":True,"virality_model":True,"filler_pause_editing":True,"dynamic_layouts":True,"voice_over":True,"critic_revision":True,"publishing_analytics":True,**tool_state(),"whisper_model":os.getenv("WHISPER_MODEL","small")}
+    return {"status":"ok","canonical_runtime":True,"canonical_engine":"local-first-v5","broll":False,"runtime_module":"canonical_api","vision_scanner":"sequential","editorial_engine":"v6.4-multimodal","retrieval_strategy":"caption-first-targeted","ui_contract":"strict","fronted_alias_mapping":True,"multimodal_editorial":True,"prompt_clipping":True,"genre_intelligence":True,"virality_model":True,"filler_pause_editing":True,"dynamic_layouts":True,"voice_over":True,"critic_revision":True,"publishing_analytics":True,**tool_state(),"whisper_model":os.getenv("WHISPER_MODEL","small")}
 
 
 @app.get("/api/styles")
