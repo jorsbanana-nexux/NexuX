@@ -1,0 +1,637 @@
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { 
+  UploadCloud, 
+  Sparkles, 
+  Link as LinkIcon, 
+  Scissors, 
+  ArrowRight, 
+  FileVideo, 
+  X, 
+  Clock, 
+  Terminal,
+  Activity,
+  Gauge,
+  SlidersHorizontal,
+  CheckCircle2,
+  AlertTriangle,
+  Download,
+  RotateCcw,
+} from 'lucide-react';
+import { ProcessingLoadingState } from './ProcessingLoadingState';
+import { ResultsMosaicGrid } from './ResultsMosaicGrid';
+import { GeneratedClip } from './VideoResultCard';
+import { sound } from '../utils/soundEffects';
+import { MagneticElement } from './MagneticElement';
+import { useScrollVelocityBlur, VelocityTelemetry } from '../utils/useScrollVelocityBlur';
+import { subtitleStore } from '../utils/subtitleStore';
+import { SubtitleConfig } from '../types/subtitles';
+import { VideoModal } from './VideoModal';
+import { nexuxApi, buildOutputUrl, startJobPolling, type NexuXJob, type GenerateRequest } from '../api/nexuxApi';
+
+interface SpaceshipConsoleProps {
+  onProcessComplete?: (data: any) => void;
+}
+
+const HOOK_CATEGORIES = [
+  '🔥 High-Retention Hook',
+  '⚡ Pattern Interrupt',
+  '💡 Golden Insight',
+  '📈 Viral Momentum',
+  '🎯 Precision Cut',
+  '✨ Story Beat',
+];
+
+function formatDuration(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+function formatTimestamp(start: number, end: number): string {
+  return `${formatDuration(start)} - ${formatDuration(end)}`;
+}
+
+function mapJobToClips(job: NexuXJob): GeneratedClip[] {
+  if (!job.clips || job.clips.length === 0) return [];
+
+  return job.clips.map((clipPath, idx) => {
+    const meta = job.render_meta?.[idx] || {};
+    const videoUrl = buildOutputUrl(clipPath) || '';
+
+    // Extract data from render_meta
+    const virality = typeof meta.virality === 'number' ? meta.virality : 0;
+    const editorialEvidence = typeof meta.editorial_evidence === 'string' ? meta.editorial_evidence : '';
+    const timeline = meta.timeline as Record<string, unknown> | undefined;
+    const render = meta.render as Record<string, unknown> | undefined;
+    const retrieval = meta.retrieval as Record<string, unknown> | undefined;
+
+    // Extract timing info from timeline or retrieval
+    const startSec = typeof retrieval?.retrieved_start === 'number' ? retrieval.retrieved_start : 0;
+    const endSec = typeof retrieval?.retrieved_end === 'number' ? retrieval.retrieved_end : 0;
+    const duration = endSec - startSec;
+
+    // Use editorial evidence as subtitle snippet, or fallback
+    const subtitleSnippet = editorialEvidence || 'Clip ready for preview';
+
+    // Map hook category based on editorial signals
+    const hookCategory = HOOK_CATEGORIES[idx % HOOK_CATEGORIES.length];
+
+    // Build tags from genre and editorial context
+    const genre = typeof meta.genre === 'string' ? meta.genre : 'auto';
+    const tags = [genre, '9:16', idx === 0 ? 'Top Pick' : `Clip ${idx + 1}`].filter(Boolean) as string[];
+
+    return {
+      id: `${job.job_id}-clip-${idx + 1}`,
+      title: editorialEvidence ? editorialEvidence.slice(0, 60) + (editorialEvidence.length > 60 ? '...' : '') : `Clip ${idx + 1}`,
+      hookCategory,
+      duration: duration > 0 ? formatDuration(duration) : '0:45',
+      viralScore: Math.min(99, Math.max(0, Math.round(virality * 100))),
+      timestampRange: duration > 0 ? formatTimestamp(startSec, endSec) : '—',
+      subtitleSnippet,
+      aspectRatio: '9:16',
+      videoUrl,
+      tags,
+    };
+  });
+}
+
+export const SpaceshipConsole: React.FC<SpaceshipConsoleProps> = () => {
+  const [stage, setStage] = useState<'input' | 'loading' | 'results' | 'error'>('input');
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [inputUrl, setInputUrl] = useState('');
+  
+  // Customization controls
+  const [targetDuration, setTargetDuration] = useState<'auto' | '<30s' | '30-60s' | '60-90s'>('auto');
+  const [captionTheme, setCaptionTheme] = useState<'cyber' | 'minimal' | 'bold-yellow'>('cyber');
+  const [autoReframe, setAutoReframe] = useState(true);
+  const [clipCount, setClipCount] = useState(3);
+
+  // Job state
+  const [job, setJob] = useState<NexuXJob | null>(null);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [generatedClips, setGeneratedClips] = useState<GeneratedClip[]>([]);
+  const stopPollingRef = useRef<(() => void) | null>(null);
+
+  // Velocity blur telemetry state
+  const [telemetry, setTelemetry] = useState<VelocityTelemetry>({
+    velocity: 0,
+    blur: 0,
+    fps: 120,
+  });
+
+  // Synced Subtitle Configuration from Subtitle Engine Studio
+  const [activeSubtitleConfig, setActiveSubtitleConfig] = useState<SubtitleConfig>(subtitleStore.get());
+
+  useEffect(() => {
+    const unsubscribe = subtitleStore.subscribe((newConfig) => {
+      setActiveSubtitleConfig(newConfig);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (stopPollingRef.current) stopPollingRef.current();
+    };
+  }, []);
+
+  const consoleContainerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedPreviewClip, setSelectedPreviewClip] = useState<GeneratedClip | null>(null);
+
+  // Hook scroll velocity motion blur to console container
+  useScrollVelocityBlur(consoleContainerRef, (data) => {
+    setTelemetry(data);
+  });
+
+  const durationMap: Record<string, number> = {
+    'auto': 45,
+    '<30s': 30,
+    '30-60s': 45,
+    '60-90s': 60,
+  };
+
+  const captionThemeMap: Record<string, string> = {
+    'cyber': 'hormozi',
+    'minimal': 'minimalist',
+    'bold-yellow': 'hormozi',
+  };
+
+  const handleStartGeneration = async () => {
+    sound.playClick();
+    sound.playSwoosh();
+
+    // Determine the URL to use
+    const url = inputUrl.trim();
+    if (!url && !uploadedFile) {
+      setErrorMsg('Please provide a YouTube URL or upload a video file.');
+      setStage('error');
+      return;
+    }
+
+    // For file uploads, we'd need a file upload endpoint. 
+    // The canonical API currently supports YouTube URLs. If a file is uploaded,
+    // we show an informative message.
+    if (uploadedFile && !url) {
+      setErrorMsg('Direct file upload is not yet supported by the canonical API. Please provide a YouTube URL.');
+      setStage('error');
+      return;
+    }
+
+    setErrorMsg('');
+    setStage('loading');
+    setGeneratedClips([]);
+    setJob(null);
+
+    try {
+      const payload: GenerateRequest = {
+        youtube_url: url,
+        target_duration: durationMap[targetDuration] || 45,
+        aspect_ratio: '9:16',
+        subtitle_style: captionThemeMap[captionTheme] || 'hormozi',
+        font: 'Arial',
+        font_size: 48,
+        primary_color: '#FFFFFF',
+        highlight_color: '#FFD700',
+        stroke_color: '#000000',
+        stroke_width: 3,
+        position: 'center',
+        animation: 'pop',
+        auto_zoom: autoReframe,
+        face_tracking: autoReframe,
+        clip_count: clipCount,
+        language: null,
+        normalize_audio: true,
+        emoji_enabled: false,
+      };
+
+      const created = await nexuxApi.generate(payload);
+      setJob(created);
+
+      // Start real job polling
+      const stopPolling = startJobPolling(
+        created.job_id,
+        (updatedJob) => {
+          setJob(updatedJob);
+        },
+        (finishedJob) => {
+          setJob(finishedJob);
+          if (finishedJob.status === 'completed') {
+            const clips = mapJobToClips(finishedJob);
+            setGeneratedClips(clips);
+            setStage('results');
+            sound.playSuccess();
+          } else {
+            setErrorMsg(finishedJob.error || `Job ${finishedJob.status}.`);
+            setStage('error');
+          }
+        },
+      );
+
+      stopPollingRef.current = stopPolling;
+    } catch (error) {
+      setErrorMsg(error instanceof Error ? error.message : 'Failed to start generation.');
+      setStage('error');
+    }
+  };
+
+  const handleCancelJob = async () => {
+    if (!job?.job_id) return;
+    sound.playClick();
+    try {
+      await nexuxApi.cancel(job.job_id);
+      if (stopPollingRef.current) {
+        stopPollingRef.current();
+        stopPollingRef.current = null;
+      }
+      setErrorMsg('Job cancelled by user.');
+      setStage('error');
+    } catch (error) {
+      setErrorMsg(error instanceof Error ? error.message : 'Failed to cancel job.');
+    }
+  };
+
+  const handleResetToInput = () => {
+    sound.playClick();
+    if (stopPollingRef.current) {
+      stopPollingRef.current();
+      stopPollingRef.current = null;
+    }
+    setStage('input');
+    setUploadedFile(null);
+    setInputUrl('');
+    setJob(null);
+    setErrorMsg('');
+    setGeneratedClips([]);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      sound.playClick();
+      setUploadedFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragOver(false);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      sound.playClick();
+      setUploadedFile(e.target.files[0]);
+    }
+  };
+
+  // Real progress from API
+  const progress = Math.max(0, Math.min(100, Math.round(job?.progress ?? 0)));
+  const stageLabel = job?.stage || 'queued';
+
+  return (
+    <section 
+      id="workspace-console" 
+      className="relative py-24 px-6 sm:px-10 max-w-6xl mx-auto z-10 select-none"
+    >
+      <div className="space-y-12">
+        {/* Section Header with Japanese Subtitle */}
+        <div className="text-center max-w-2xl mx-auto space-y-3">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full border border-cyan-500/30 bg-cyan-950/20 text-cyan-300 font-mono text-[11px] uppercase tracking-widest shadow-[0_0_15px_rgba(34,211,238,0.15)]">
+            <Terminal className="w-3.5 h-3.5 text-cyan-400" />
+            <span>AI Cockpit // コックピット</span>
+          </div>
+
+          <h2 className="text-3xl sm:text-5xl font-display font-bold text-white tracking-tight">
+            Ingest & Repurpose
+          </h2>
+
+          <p className="text-stone-400 text-sm sm:text-base leading-relaxed">
+            Feed any long video or URL. NexuX extracts high-virality short clips with auto reframing and animated captions.
+          </p>
+        </div>
+
+        {/* Modern Astronaut Glassmorphism Visor Frame with Scroll Velocity Blur Target */}
+        <div 
+          ref={consoleContainerRef}
+          className="relative rounded-2xl hud-glass-panel p-6 sm:p-10 shadow-2xl spacex-cyan-border transition-all duration-300 gpu-accel"
+        >
+          {/* Header Status Bar with Velocity & Cockpit Telemetry */}
+          <div className="flex flex-wrap items-center justify-between pb-6 mb-8 border-b border-white/10 text-xs font-mono text-stone-400 gap-3">
+            <div className="flex items-center gap-3">
+              <span className={`w-2.5 h-2.5 rounded-full animate-ping ${stage === 'loading' ? 'bg-amber-400' : stage === 'results' ? 'bg-emerald-400' : stage === 'error' ? 'bg-red-400' : 'bg-cyan-400'}`}></span>
+              <span className="text-white font-semibold tracking-wider flex items-center gap-1.5">
+                STAGE: <span className="text-cyan-400 text-glow-cyan">{stage.toUpperCase()}</span>
+              </span>
+              {job && (
+                <span className="text-stone-400 ml-2">
+                  ENGINE: <span className="text-cyan-300">{stageLabel}</span>
+                </span>
+              )}
+            </div>
+
+            {/* Live Lenis / Scroll Velocity Telemetry Badge */}
+            <div className="flex items-center gap-4 text-[11px] text-stone-400 font-mono">
+              <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-black/60 border border-white/10">
+                <Gauge className="w-3.5 h-3.5 text-cyan-400" />
+                <span>VELOCITY: <strong className="text-cyan-300">{telemetry.velocity} px/s</strong></span>
+              </div>
+              <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-black/60 border border-white/10">
+                <Activity className="w-3.5 h-3.5 text-purple-400" />
+                <span>MOTION BLUR: <strong className="text-purple-300">{telemetry.blur} px</strong></span>
+              </div>
+              <div className="text-[11px] text-stone-400 font-mono">
+                ENGINE: <span className="text-stone-300">V6.4 CANONICAL</span>
+              </div>
+            </div>
+          </div>
+
+          {/* DYNAMIC STAGES */}
+          <AnimatePresence mode="wait">
+            {/* STAGE 1: INPUT STATE */}
+            {stage === 'input' && (
+              <motion.div
+                key="input-stage"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-8"
+              >
+                {/* URL Input as primary ingestion method */}
+                <div className="space-y-3">
+                  <label className="text-xs font-mono text-stone-300 uppercase tracking-wider block">
+                    YouTube / Video URL
+                  </label>
+                  <div className="flex gap-3">
+                    <div className="flex-1 relative">
+                      <input
+                        type="url"
+                        value={inputUrl}
+                        onChange={(e) => setInputUrl(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && inputUrl.trim()) {
+                            handleStartGeneration();
+                          }
+                        }}
+                        placeholder="https://youtube.com/watch?v=..."
+                        className="w-full bg-black/60 border border-white/15 rounded-xl px-4 py-3.5 text-sm text-white placeholder-stone-600 focus:outline-none focus:border-cyan-400 transition-colors font-mono"
+                      />
+                    </div>
+                    <button
+                      onClick={handleStartGeneration}
+                      onMouseEnter={() => sound.playHover()}
+                      disabled={!inputUrl.trim()}
+                      data-cursor-text="GO"
+                      className="px-6 py-3.5 rounded-xl bg-white text-black font-mono font-bold uppercase tracking-widest text-xs hover:bg-stone-200 transition-all flex items-center justify-center gap-2 shadow-[0_0_25px_rgba(255,255,255,0.4)] disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      <Scissors className="w-4 h-4" />
+                      <span>Clip It</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Divider */}
+                <div className="flex items-center gap-4">
+                  <div className="flex-1 h-px bg-white/10" />
+                  <span className="text-xs font-mono text-stone-500">OR</span>
+                  <div className="flex-1 h-px bg-white/10" />
+                </div>
+
+                {/* Drag & Drop Area (secondary) */}
+                <div
+                  onDrop={handleDrop}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onClick={() => {
+                    sound.playClick();
+                    fileInputRef.current?.click();
+                  }}
+                  onMouseEnter={() => sound.playHover()}
+                  data-cursor-text="UPLOAD"
+                  className={`relative group rounded-xl border border-dashed p-8 sm:p-14 text-center transition-all cursor-pointer ${
+                    isDragOver
+                      ? 'border-cyan-400 bg-cyan-950/40 shadow-[0_0_30px_rgba(34,211,238,0.3)]'
+                      : uploadedFile
+                      ? 'border-emerald-500/60 bg-emerald-950/20 shadow-[0_0_20px_rgba(16,185,129,0.2)]'
+                      : 'border-white/20 bg-black/40 hover:border-cyan-400/50 hover:bg-cyan-950/10 hover:shadow-[0_0_25px_rgba(34,211,238,0.15)]'
+                  }`}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="video/*"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                  />
+
+                  {uploadedFile ? (
+                    <div className="space-y-4">
+                      <div className="w-14 h-14 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center mx-auto text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.4)]">
+                        <FileVideo className="w-7 h-7" />
+                      </div>
+                      <div>
+                        <h4 className="text-base font-bold text-white font-mono break-all">
+                          {uploadedFile.name}
+                        </h4>
+                        <p className="text-xs text-stone-400 mt-1">
+                          {(uploadedFile.size / (1024 * 1024)).toFixed(2)} MB
+                        </p>
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          sound.playClick();
+                          setUploadedFile(null);
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-stone-300 text-xs font-mono transition-colors"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        Remove
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="w-14 h-14 rounded-xl bg-cyan-950/40 border border-cyan-400/30 flex items-center justify-center mx-auto text-cyan-300 group-hover:scale-110 transition-transform">
+                        <UploadCloud className="w-7 h-7" />
+                      </div>
+                      <div>
+                        <h4 className="text-base font-bold text-white">
+                          Drop video here
+                        </h4>
+                        <p className="text-xs text-stone-400 mt-1">
+                          MP4, MOV, MKV — direct upload (coming soon)
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Customization Controls */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {/* Target Duration */}
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-mono text-stone-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5" />
+                      Duration
+                    </label>
+                    <select
+                      value={targetDuration}
+                      onChange={(e) => setTargetDuration(e.target.value as typeof targetDuration)}
+                      className="w-full bg-black/60 border border-white/15 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-400 font-mono"
+                    >
+                      <option value="auto">Auto (45s)</option>
+                      <option value="<30s">Short (&lt;30s)</option>
+                      <option value="30-60s">Medium (30-60s)</option>
+                      <option value="60-90s">Long (60-90s)</option>
+                    </select>
+                  </div>
+
+                  {/* Caption Theme */}
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-mono text-stone-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <SlidersHorizontal className="w-3.5 h-3.5" />
+                      Caption Style
+                    </label>
+                    <select
+                      value={captionTheme}
+                      onChange={(e) => setCaptionTheme(e.target.value as typeof captionTheme)}
+                      className="w-full bg-black/60 border border-white/15 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-400 font-mono"
+                    >
+                      <option value="cyber">Cyber (Hormozi)</option>
+                      <option value="minimal">Minimal</option>
+                      <option value="bold-yellow">Bold Yellow</option>
+                    </select>
+                  </div>
+
+                  {/* Clip Count */}
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-mono text-stone-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <Scissors className="w-3.5 h-3.5" />
+                      Clip Count
+                    </label>
+                    <select
+                      value={clipCount}
+                      onChange={(e) => setClipCount(Number(e.target.value))}
+                      className="w-full bg-black/60 border border-white/15 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-400 font-mono"
+                    >
+                      <option value={1}>1 clip</option>
+                      <option value={3}>3 clips</option>
+                      <option value={5}>5 clips</option>
+                      <option value={10}>10 clips</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Auto-reframe Toggle */}
+                <div className="flex items-center justify-between p-4 rounded-xl bg-white/5 border border-white/10">
+                  <div className="flex items-center gap-3">
+                    <SlidersHorizontal className="w-4 h-4 text-cyan-400" />
+                    <div>
+                      <p className="text-sm font-mono text-white">Auto-Reframe + Face Tracking</p>
+                      <p className="text-[11px] text-stone-400 font-mono">Dynamic 9:16 crop with speaker tracking</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setAutoReframe(!autoReframe)}
+                    className={`relative w-12 h-6 rounded-full transition-colors ${autoReframe ? 'bg-cyan-400' : 'bg-stone-700'}`}
+                  >
+                    <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${autoReframe ? 'translate-x-6' : 'translate-x-0.5'}`} />
+                  </button>
+                </div>
+
+                {/* Generate Button */}
+                <button
+                  onClick={handleStartGeneration}
+                  onMouseEnter={() => sound.playHover()}
+                  disabled={!inputUrl.trim()}
+                  data-cursor-text="LAUNCH"
+                  className="w-full py-4 rounded-xl bg-white text-black font-mono font-bold uppercase tracking-widest text-xs hover:bg-stone-200 transition-all flex items-center justify-center gap-2 shadow-[0_0_25px_rgba(255,255,255,0.4)] disabled:opacity-30 disabled:cursor-not-allowed"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>Start Autonomous Slicing</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </motion.div>
+            )}
+
+            {/* STAGE 2: LOADING STATE — REAL PROGRESS FROM API */}
+            {stage === 'loading' && (
+              <motion.div
+                key="loading-stage"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3 }}
+              >
+                <ProcessingLoadingState
+                  progress={progress}
+                  stageLabel={stageLabel}
+                  onCancel={handleCancelJob}
+                />
+              </motion.div>
+            )}
+
+            {/* STAGE 3: RESULTS — REAL CLIPS FROM API */}
+            {stage === 'results' && generatedClips.length > 0 && (
+              <motion.div
+                key="results-stage"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3 }}
+              >
+                <ResultsMosaicGrid
+                  clips={generatedClips}
+                  onReset={handleResetToInput}
+                  onPreviewClip={(clip) => setSelectedPreviewClip(clip)}
+                />
+              </motion.div>
+            )}
+
+            {/* STAGE 4: ERROR STATE */}
+            {stage === 'error' && (
+              <motion.div
+                key="error-stage"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="py-16 flex flex-col items-center justify-center text-center space-y-6"
+              >
+                <div className="w-16 h-16 rounded-2xl bg-red-500/20 border border-red-500/40 flex items-center justify-center text-red-400 shadow-[0_0_25px_rgba(239,68,68,0.3)]">
+                  <AlertTriangle className="w-8 h-8" />
+                </div>
+                <div className="space-y-2 max-w-md">
+                  <h3 className="text-xl font-display font-bold text-white">Generation Failed</h3>
+                  <p className="text-sm text-stone-400 font-mono leading-relaxed">{errorMsg}</p>
+                </div>
+                <button
+                  onClick={handleResetToInput}
+                  onMouseEnter={() => sound.playHover()}
+                  className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-stone-300 hover:text-white border border-white/10 text-xs font-mono transition-colors"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Try Again
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+
+      {/* Video Preview Modal */}
+      <VideoModal
+        isOpen={!!selectedPreviewClip}
+        onClose={() => setSelectedPreviewClip(null)}
+      />
+    </section>
+  );
+};

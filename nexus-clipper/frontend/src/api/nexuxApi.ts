@@ -1,0 +1,240 @@
+export type NexuXStatus =
+  | 'queued'
+  | 'processing'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'interrupted';
+
+export interface GenerateRequest {
+  youtube_url: string;
+  target_duration: number;
+  aspect_ratio: string;
+  subtitle_style: string;
+  font: string;
+  font_size: number;
+  primary_color: string;
+  highlight_color: string;
+  stroke_color: string;
+  stroke_width: number;
+  position: 'top' | 'center' | 'bottom';
+  animation: string;
+  auto_zoom: boolean;
+  face_tracking: boolean;
+  clip_count: number;
+  language?: string | null;
+  normalize_audio: boolean;
+  emoji_enabled: boolean;
+  // Advanced V6 fields
+  clip_prompt?: string | null;
+  genre?: string;
+  remove_fillers_pauses?: boolean;
+  pause_threshold?: number;
+  voice_over?: boolean;
+  voice_over_text?: string | null;
+  voice_style?: string;
+  publish_platforms?: string[] | null;
+}
+
+export interface RenderMeta {
+  candidate_id?: string;
+  timeline?: Record<string, unknown>;
+  render?: Record<string, unknown>;
+  editorial_rank?: number;
+  editorial_signals?: Record<string, unknown>;
+  editorial_evidence?: string;
+  virality?: number;
+  prompt_relevance?: number;
+  genre?: string;
+  dynamic_layout?: Record<string, unknown>;
+  retrieval?: Record<string, unknown>;
+  voiceover?: string | null;
+}
+
+export interface CritiqueReport {
+  revision_required: boolean;
+  issues: Array<{ severity: string; message: string }>;
+}
+
+export interface PublishPlan {
+  platforms: string[];
+  metadata: Record<string, unknown>;
+}
+
+export interface NexuXJob {
+  job_id: string;
+  status: NexuXStatus;
+  progress: number;
+  stage: string;
+  output_path: string | null;
+  error: string | null;
+  clips: string[];
+  broll: false;
+  render_meta: RenderMeta[];
+  analysis_bundle: Record<string, unknown> | null;
+  critique?: CritiqueReport | null;
+  revision?: { requested: boolean; actions: unknown[]; attempt: number } | null;
+  publish_plan?: PublishPlan | null;
+  editorial_decision?: Record<string, unknown> | null;
+}
+
+export interface NexuXHealth {
+  status: string;
+  canonical_runtime?: boolean;
+  canonical_engine?: string;
+  broll?: boolean;
+  [key: string]: unknown;
+}
+
+export interface NexuXStyles {
+  subtitle_styles: Array<{
+    id: string;
+    name: string;
+    preview?: Record<string, unknown>;
+  }>;
+  aspect_ratios: string[];
+  animations?: string[];
+  positions?: string[];
+  broll?: boolean;
+  [key: string]: unknown;
+}
+
+export interface NexuXVision {
+  job_id: string;
+  analysis_bundle?: Record<string, unknown>;
+  media?: Record<string, unknown>;
+  scenes?: unknown[];
+  subjects?: unknown[];
+  quality?: Record<string, unknown>;
+  source?: string;
+}
+
+export interface NexuXRenderQA {
+  verdict?: string;
+  [key: string]: unknown;
+}
+
+const API_BASE = String(
+  import.meta.env.VITE_NEXUX_API_URL ?? 'http://127.0.0.1:8000',
+).replace(/\/$/, '');
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: {
+      Accept: 'application/json',
+      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(init?.headers ?? {}),
+    },
+  });
+
+  if (!response.ok) {
+    let detail = response.statusText || `HTTP ${response.status}`;
+    try {
+      const body = await response.json();
+      detail = body?.detail || detail;
+    } catch {
+      // Keep the HTTP status for non-JSON responses.
+    }
+    throw new Error(detail);
+  }
+
+  return response.json() as Promise<T>;
+}
+
+export const nexuxApi = {
+  baseUrl: API_BASE,
+  health: () => request<NexuXHealth>('/api/health'),
+  styles: () => request<NexuXStyles>('/api/styles'),
+  generate: (payload: GenerateRequest) =>
+    request<NexuXJob>('/api/generate', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  job: (jobId: string) =>
+    request<NexuXJob>(`/api/job/${encodeURIComponent(jobId)}`),
+  jobs: (status?: string) =>
+    request<{ total: number; jobs: NexuXJob[] }>(
+      `/api/jobs${status ? `?status=${encodeURIComponent(status)}` : ''}`,
+    ),
+  cancel: (jobId: string) =>
+    request<{ job_id: string; status: string }>(
+      `/api/job/${encodeURIComponent(jobId)}`,
+      { method: 'DELETE' },
+    ),
+  vision: (jobId: string) =>
+    request<NexuXVision>(`/api/vision/${encodeURIComponent(jobId)}`),
+  renderQA: (jobId: string) =>
+    request<NexuXRenderQA>(`/api/render-qa/${encodeURIComponent(jobId)}`),
+  critic: (jobId: string) =>
+    request<{ job_id: string; critique: CritiqueReport; revision: Record<string, unknown> }>(
+      `/api/critic/${encodeURIComponent(jobId)}`,
+    ),
+  publishPlan: (jobId: string) =>
+    request<{ job_id: string; publish_plan: PublishPlan }>(
+      `/api/publish/${encodeURIComponent(jobId)}`,
+    ),
+  publishEvent: (jobId: string, platform: string) =>
+    request<{ job_id: string; platform: string; status: string }>(
+      `/api/publish/${encodeURIComponent(jobId)}/${encodeURIComponent(platform)}`,
+      { method: 'POST' },
+    ),
+  analytics: (jobId: string) =>
+    request<Record<string, unknown>>(`/api/analytics/${encodeURIComponent(jobId)}`),
+  downloadUrl: (jobId: string) =>
+    `${API_BASE}/api/download/${encodeURIComponent(jobId)}`,
+};
+
+export function buildOutputUrl(outputPath: string | null): string | null {
+  if (!outputPath) return null;
+  if (/^https?:\/\//i.test(outputPath)) return outputPath;
+  return `${API_BASE}${outputPath.startsWith('/') ? '' : '/'}${outputPath}`;
+}
+
+/**
+ * Poll a job until it reaches a terminal state.
+ * Calls onUpdate on each poll, onFinish when terminal.
+ * Returns a stop function to cancel polling.
+ */
+export function startJobPolling(
+  jobId: string,
+  onUpdate: (job: NexuXJob) => void,
+  onFinish: (job: NexuXJob) => void,
+  intervalMs = 1200,
+): () => void {
+  let stopped = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  const tick = async () => {
+    if (stopped) return;
+    try {
+      const job = await nexuxApi.job(jobId);
+      onUpdate(job);
+      if (['completed', 'failed', 'cancelled', 'interrupted'].includes(job.status)) {
+        onFinish(job);
+        return;
+      }
+    } catch (error) {
+      onFinish({
+        job_id: jobId,
+        status: 'failed',
+        progress: 0,
+        stage: 'network_error',
+        output_path: null,
+        error: error instanceof Error ? error.message : String(error),
+        clips: [],
+        broll: false,
+        render_meta: [],
+        analysis_bundle: null,
+      });
+      return;
+    }
+    timer = setTimeout(tick, intervalMs);
+  };
+
+  void tick();
+  return () => {
+    stopped = true;
+    if (timer) clearTimeout(timer);
+  };
+}
