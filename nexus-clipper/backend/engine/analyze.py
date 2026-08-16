@@ -20,6 +20,7 @@ from .constants import (
 )
 from .utils import clean_for_json
 from .editorial import batch_editorial_analysis, analyze_editorial
+from .boundaries import adjust_clip_boundaries
 
 log = logging.getLogger("nexus.analyze")
 
@@ -234,6 +235,10 @@ def analyze_content(
         result.append(c)
         if len(result) >= max_clips * 2:  # Keep extras for critic replacement
             break
+
+    # ── V6.4: Natural Speech Boundary Adjustment ──
+    log.info("[Analyze] Snapping to natural speech boundaries...")
+    result = adjust_clip_boundaries(result, segments, total_duration, tolerance=5.0)
 
     # ── V6.4: Editorial Consciousness Enrichment ──
     if editorial_enrichment:
