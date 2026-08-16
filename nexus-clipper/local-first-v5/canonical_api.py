@@ -6,10 +6,12 @@ import uuid
 from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 import server as engine
+from canonical_v6_pipeline import run_generation as run_v6_generation
 from caption_runtime import render_ass_safe
 from sequential_vision import detect_face_subjects, detect_scene_changes, visual_quality
 from server import CompatJob, GenerateRequest
@@ -20,11 +22,25 @@ engine.detect_scene_changes = detect_scene_changes
 engine.detect_face_subjects = detect_face_subjects
 engine.visual_quality = visual_quality
 engine.render_ass = render_ass_safe
+engine._run_generation = run_v6_generation
 
 app = FastAPI(
-    title="NexuX Local-First V5",
-    version="5.9.0",
-    description="Canonical local-first clipping API. No B-roll. One public runtime surface.",
+    title="NexuX Local-First Canonical",
+    version="6.3.0",
+    description="Canonical local-first clipping API with V6.1 editorial intelligence and targeted retrieval. No B-roll.",
+)
+
+allowed_origins = [
+    item.strip()
+    for item in os.getenv("NEXUX_ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
+    if item.strip()
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
 )
 
 OUTPUTS = engine.OUTPUTS
@@ -42,7 +58,14 @@ def _write(job: dict) -> None:
 
 @app.get("/")
 async def root() -> dict:
-    return {"name": "NexuX Local-First V5", "version": "5.9.0", "canonical_runtime": True, "broll": False}
+    return {
+        "name": "NexuX Local-First Canonical",
+        "version": "6.3.0",
+        "canonical_runtime": True,
+        "broll": False,
+        "editorial_engine": "v6.1",
+        "retrieval": "caption-first-targeted",
+    }
 
 
 @app.get("/api/health")
@@ -54,6 +77,8 @@ async def health() -> dict:
         "runtime_module": "canonical_api",
         "vision_scanner": "sequential",
         "caption_boundary_remap": True,
+        "editorial_engine": "v6.1",
+        "retrieval_strategy": "caption-first-targeted",
         **tool_state(),
         "whisper_model": os.getenv("WHISPER_MODEL", "small"),
     }
