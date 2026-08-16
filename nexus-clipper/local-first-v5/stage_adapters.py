@@ -1,28 +1,22 @@
-"""Phase 13 concrete stage adapters for the canonical production pipeline.
-
-Adapters expose existing NexuX implementations behind the Phase 12 stage contract.
-They intentionally fail closed when required context is missing.
-"""
+"""Phase 13 concrete stage adapters for the canonical production pipeline."""
 from __future__ import annotations
 
 from typing import Any, Mapping
 
 import server as engine
-from editorial_intelligence import apply_editorial_intelligence, generate_candidates
+from editorial_intelligence import generate_candidates
 from editorial_ranker import select_diverse
-from multimodal_editorial import critic, revision_actions
+from multimodal_editorial import apply_editorial_intelligence, critic, revision_actions
 from publishing_analytics import build_publish_plan
-from targeted_retrieval import download_segment, fetch_recon_audio, fetch_youtube_captions
+from targeted_retrieval import fetch_recon_audio, fetch_youtube_captions
 
 
 def ingest_stage(ctx: Mapping[str, Any]) -> Mapping[str, Any]:
     url = str(ctx.get("youtube_url") or "").strip()
-    if not url:
-        raise ValueError("ingest requires youtube_url")
     job_dir = ctx.get("job_dir")
     job_id = str(ctx.get("job_id") or "run")
-    if not job_dir:
-        raise ValueError("ingest requires job_dir")
+    if not url or not job_dir:
+        raise ValueError("ingest requires youtube_url and job_dir")
     return {"source": {"type": "youtube", "url": url}, "job_dir": str(job_dir), "job_id": job_id, "retrieval_strategy": "caption-first-targeted", "confidence": 1.0, "provenance": ("stage_adapters.ingest",)}
 
 
@@ -50,9 +44,7 @@ def analyze_stage(ctx: Mapping[str, Any]) -> Mapping[str, Any]:
     if not segments:
         raise ValueError("analyze requires transcript segments")
     candidates = generate_candidates(segments, max_candidates=int(ctx.get("max_candidates", 1200)))
-    audio = dict(ctx.get("audio_profiles") or {})
-    vision = dict(ctx.get("vision") or {})
-    return {"candidates": candidates, "audio_profiles": audio, "vision": vision, "confidence": 0.8, "provenance": ("editorial_intelligence.generate_candidates",)}
+    return {"candidates": candidates, "audio_profiles": dict(ctx.get("audio_profiles") or {}), "vision": dict(ctx.get("vision") or {}), "confidence": 0.8, "provenance": ("editorial_intelligence.generate_candidates",)}
 
 
 def reason_stage(ctx: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -60,7 +52,7 @@ def reason_stage(ctx: Mapping[str, Any]) -> Mapping[str, Any]:
     if not candidates:
         raise ValueError("reason requires candidates")
     updated, decision = apply_editorial_intelligence(candidates, prompt=ctx.get("clip_prompt"), genre=ctx.get("genre", "auto"))
-    return {"candidates": updated, "editorial_decision": decision.to_dict() if hasattr(decision, "to_dict") else decision, "confidence": float(getattr(decision, "confidence", 0.75)), "provenance": ("editorial_intelligence.apply_editorial_intelligence",)}
+    return {"candidates": updated, "editorial_decision": decision.to_dict(), "confidence": float(decision.confidence), "provenance": ("multimodal_editorial.apply_editorial_intelligence",)}
 
 
 def plan_stage(ctx: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -73,7 +65,6 @@ def plan_stage(ctx: Mapping[str, Any]) -> Mapping[str, Any]:
 
 
 def direct_stage(ctx: Mapping[str, Any]) -> Mapping[str, Any]:
-    # Reuse the existing director outputs when present; Phase 6 remains an additive control layer.
     directives = dict(ctx.get("directives") or {})
     directives.setdefault("aspect_ratio", ctx.get("aspect_ratio", "9:16"))
     directives.setdefault("face_tracking", bool(ctx.get("face_tracking", True)))
@@ -82,30 +73,25 @@ def direct_stage(ctx: Mapping[str, Any]) -> Mapping[str, Any]:
 
 
 def render_stage(ctx: Mapping[str, Any]) -> Mapping[str, Any]:
-    # The concrete renderer is deliberately invoked through the existing canonical function.
     render_fn = ctx.get("render_fn")
     if not callable(render_fn):
-        raise RuntimeError("render stage requires an injected render_fn to preserve canonical renderer ownership")
-    result = render_fn(ctx)
-    return {"render_result": result, "confidence": 0.99, "provenance": ("injected.canonical_renderer",)}
+        raise RuntimeError("render stage requires an injected render_fn")
+    return {"render_result": render_fn(ctx), "confidence": 0.99, "provenance": ("injected.canonical_renderer",)}
 
 
 def critic_stage(ctx: Mapping[str, Any]) -> Mapping[str, Any]:
-    render_meta = list(ctx.get("render_meta") or [])
-    report = critic(render_meta, requested_duration=float(ctx.get("target_duration", 45)), expected_aspect=str(ctx.get("aspect_ratio", "9:16")))
+    report = critic(list(ctx.get("render_meta") or []), requested_duration=float(ctx.get("target_duration", 45)), expected_aspect=str(ctx.get("aspect_ratio", "9:16")))
     return {"critique": report, "confidence": 0.82, "provenance": ("multimodal_editorial.critic",)}
 
 
 def revise_stage(ctx: Mapping[str, Any]) -> Mapping[str, Any]:
     critique = dict(ctx.get("critique") or {})
-    required = bool(critique.get("revision_required", False))
-    return {"revision_required": required, "revision_actions": revision_actions(critique), "confidence": 0.8, "provenance": ("multimodal_editorial.revision_actions",)}
+    return {"revision_required": bool(critique.get("revision_required", False)), "revision_actions": revision_actions(critique), "confidence": 0.8, "provenance": ("multimodal_editorial.revision_actions",)}
 
 
 def publish_stage(ctx: Mapping[str, Any]) -> Mapping[str, Any]:
     candidates = list(ctx.get("story_candidates") or [])
-    first = candidates[0] if candidates else {}
-    plan = build_publish_plan(str(ctx.get("job_id") or "run"), first, ctx.get("publish_platforms"))
+    plan = build_publish_plan(str(ctx.get("job_id") or "run"), candidates[0] if candidates else {}, ctx.get("publish_platforms"))
     return {"publish_plan": plan, "confidence": 0.9, "provenance": ("publishing_analytics.build_publish_plan",)}
 
 
