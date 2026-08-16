@@ -11,11 +11,13 @@ from fastapi import FastAPI
 
 from analysis_bundle import build_analysis_bundle
 from audio_intelligence import analyze_audio, audio_signals
+from captions import PRESETS
 from editorial import editorial_metadata, to_dict
 from editorial_ranker import select_diverse
 from face_sampling import sample_faces
 from scoring import rank_score, score_text
 from transcription import transcribe
+from ui_contract import ANIMATIONS, ASPECT_RATIOS, POSITIONS
 from virtual_camera import SubjectObservation, build_camera_path, path_to_dict
 from youtube import download_youtube
 
@@ -32,6 +34,30 @@ MAX_UPLOAD = int(os.getenv("MAX_UPLOAD_MB", "1024")) * 1024 * 1024
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
 
 app = FastAPI(title="NexuX Local-First V6", version="6.3.0")
+
+
+@app.get("/api/health")
+async def health() -> dict[str, Any]:
+    return {
+        "status": "ok",
+        "canonical_runtime": False,
+        "runtime_module": "server_compat",
+        "whisper_model": WHISPER_MODEL,
+    }
+
+
+@app.get("/api/styles")
+async def styles() -> dict[str, Any]:
+    return {
+        "subtitle_styles": [
+            {"id": key, "name": key.replace("_", " ").title(), "preview": {"font": value.get("font"), "font_size": value.get("size"), "animation": value.get("animation")}}
+            for key, value in PRESETS.items()
+        ],
+        "aspect_ratios": list(ASPECT_RATIOS),
+        "animations": list(ANIMATIONS),
+        "positions": list(POSITIONS),
+        "broll": False,
+    }
 
 
 def ffprobe(path: Path) -> dict[str, Any]:
