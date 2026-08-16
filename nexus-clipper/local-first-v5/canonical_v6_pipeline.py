@@ -21,13 +21,14 @@ def _shift_transcript(transcript: dict[str, Any], offset: float) -> dict[str, An
         item = dict(segment)
         item["start"] = max(0.0, float(segment.get("start", 0.0)) - offset)
         item["end"] = max(0.0, float(segment.get("end", 0.0)) - offset)
-        words = []
-        for word in segment.get("words", []) or []:
-            word_item = dict(word)
-            word_item["start"] = max(0.0, float(word.get("start", 0.0)) - offset)
-            word_item["end"] = max(0.0, float(word.get("end", 0.0)) - offset)
-            words.append(word_item)
-        item["words"] = words
+        item["words"] = [
+            {
+                **dict(word),
+                "start": max(0.0, float(word.get("start", 0.0)) - offset),
+                "end": max(0.0, float(word.get("end", 0.0)) - offset),
+            }
+            for word in segment.get("words", []) or []
+        ]
         result["segments"].append(item)
     result["duration"] = max(0.0, float(transcript.get("duration", 0.0)) - offset)
     result["source"] = f"{transcript.get('source', 'unknown')}:shifted"
@@ -47,9 +48,12 @@ def _reconnaissance(runtime: CanonicalRuntime, job_dir: Path, url: str, language
     if transcript:
         if language:
             transcript["language"] = language
+        transcript["source"] = "youtube_vtt"
         return transcript, "youtube_vtt"
     audio = fetch_recon_audio(url, job_dir, job_id)
-    return runtime.transcribe_local(audio, language), "recon_audio_whisper"
+    transcript = runtime.transcribe_local(audio, language)
+    transcript["source"] = "recon_audio_whisper"
+    return transcript, "recon_audio_whisper"
 
 
 def _max_candidates(req: GenerateRequest) -> int:
@@ -63,52 +67,230 @@ async def run_generation(job_id: str, req: GenerateRequest, runtime: CanonicalRu
         runtime.cancel_flags.setdefault(job_id, False)
         if job.get("status") == "cancelled" or runtime.cancel_flags.get(job_id):
             return
+
         job_dir = runtime.data_dir / "uploads" / job_id
         job_dir.mkdir(parents=True, exist_ok=True)
-        runtime.set_job(job,status="processing",stage="reconnaissance",progress=5,source={"type":"youtube","url":req.youtube_url,"max_height":1080},job_dir=str(job_dir),retrieval={"strategy":"caption-first-targeted"})
-        transcript,recon_source=await asyncio.to_thread(_reconnaissance,runtime,job_dir,req.youtube_url,req.language,job_id)
-        runtime.set_job(job,stage="candidate_generation",progress=28,transcript=transcript,retrieval={"strategy":"caption-first-targeted","recon_source":recon_source})
-        if runtime.cancel_flags.get(job_id): runtime.set_job(job,status="cancelled",stage="cancelled"); return
-        candidates=generate_candidates(transcript.get("segments",[]),max_candidates=1200)
-        if not candidates: raise RuntimeError("No viable editorial candidates found")
-        candidates=[{**candidate,"editorial_context":{"prompt":getattr(req,"clip_prompt",None),"genre":getattr(req,"genre","auto"),"target_duration":req.target_duration}} for candidate in candidates]
-        candidates,decision=apply_editorial_intelligence(candidates,prompt=getattr(req,"clip_prompt",None),genre=getattr(req,"genre","auto"))
-        ranked=select_diverse(candidates,limit=_max_candidates(req),target_duration=float(req.target_duration),scene_boundaries=None,audio_profiles={},transcript=transcript,vision={"genre":getattr(req,"genre","auto"),"prompt":getattr(req,"clip_prompt",None)})
-        if not ranked: raise RuntimeError("Editorial ranking produced no candidates")
-        ranked,decision=apply_editorial_intelligence(ranked,prompt=getattr(req,"clip_prompt",None),genre=decision.genre)
-        render_candidates=ranked[:req.clip_count]
-        filler_cuts=detect_filler_segments(transcript.get("segments",[]),min_pause=float(getattr(req,"pause_threshold",0.42))) if getattr(req,"remove_fillers_pauses",True) else []
-        render_meta=[]; rendered=[]; all_subject_samples=[]
-        for idx,candidate in enumerate(render_candidates):
-            if runtime.cancel_flags.get(job_id): runtime.set_job(job,status="cancelled",stage="cancelled"); return
-            runtime.set_job(job,stage=f"retrieving clip {idx+1}/{len(render_candidates)}",progress=40+int(8*idx/max(1,len(render_candidates))))
-            video,retrieval=await asyncio.to_thread(download_segment,req.youtube_url,job_dir,candidate["id"],float(candidate["start"]),float(candidate["end"]),6.0,8.0,1080)
-            media=await asyncio.to_thread(runtime.ffprobe,video)
-            offset=float(retrieval["retrieved_start"])
-            local_candidate=_shift_candidate(candidate,offset)
-            local_transcript=_shift_transcript(transcript,offset)
-            local_candidate["cleanup_plan"]=apply_cleanup_to_candidate(local_candidate,filler_cuts).get("cleanup") if getattr(req,"remove_fillers_pauses",True) else {"enabled":False,"cuts":[],"removed_seconds":0.0}
-            duration=float(media.get("format",{}).get("duration") or local_transcript.get("duration") or 0.0)
-            scenes=await asyncio.to_thread(runtime.detect_scene_changes,video,0.0,duration or None)
-            timeline=await asyncio.to_thread(runtime.build_timeline,video,local_transcript,local_candidate)
-            subject_samples=await asyncio.to_thread(runtime.detect_face_subjects,video,float(local_candidate["start"]),float(local_candidate["end"]))
-            all_subject_samples.append({"candidate_id":local_candidate["id"],"observations":subject_samples})
-            voiceover_path=None
-            if getattr(req,"voice_over",False):
-                vo_text=getattr(req,"voice_over_text",None) or local_candidate.get("text","")
-                voiceover_path=runtime.outputs_dir/f"{job_id}_clip_{idx+1:02d}_voiceover.mp3"
-                await asyncio.to_thread(synthesize_sync,vo_text,voiceover_path,getattr(req,"voice_style","male_narrator"))
-            output=runtime.outputs_dir/f"{job_id}_clip_{idx+1:02d}.mp4"
-            info=await asyncio.to_thread(runtime.render_with_spec,video,{**job,"job_id":job_id,"transcript":local_transcript,"meta":media},local_candidate,output,timeline,req,voiceover_path)
+        source_probe = runtime.probe_youtube(req.youtube_url)
+        runtime.set_job(
+            job,
+            status="processing",
+            stage="reconnaissance",
+            progress=5,
+            source={"type": "youtube", "url": req.youtube_url, "max_height": 1080, "metadata": source_probe.metadata},
+            job_dir=str(job_dir),
+            retrieval={"strategy": "caption-first-targeted"},
+        )
+
+        transcript, recon_source = await asyncio.to_thread(
+            _reconnaissance, runtime, job_dir, req.youtube_url, req.language, job_id
+        )
+        runtime.set_job(
+            job,
+            stage="candidate_generation",
+            progress=28,
+            transcript=transcript,
+            retrieval={"strategy": "caption-first-targeted", "recon_source": recon_source},
+        )
+        if runtime.cancel_flags.get(job_id):
+            runtime.set_job(job, status="cancelled", stage="cancelled")
+            return
+
+        candidates = generate_candidates(transcript.get("segments", []), max_candidates=1200)
+        if not candidates:
+            raise RuntimeError("No viable editorial candidates found")
+        candidates = [
+            {
+                **candidate,
+                "editorial_context": {
+                    "prompt": getattr(req, "clip_prompt", None),
+                    "genre": getattr(req, "genre", "auto"),
+                    "target_duration": req.target_duration,
+                },
+            }
+            for candidate in candidates
+        ]
+        candidates, decision = apply_editorial_intelligence(
+            candidates, prompt=getattr(req, "clip_prompt", None), genre=getattr(req, "genre", "auto")
+        )
+        ranked = select_diverse(
+            candidates,
+            limit=_max_candidates(req),
+            target_duration=float(req.target_duration),
+            scene_boundaries=None,
+            audio_profiles={},
+            transcript=transcript,
+            vision={"genre": getattr(req, "genre", "auto"), "prompt": getattr(req, "clip_prompt", None)},
+        )
+        if not ranked:
+            raise RuntimeError("Editorial ranking produced no candidates")
+        ranked, decision = apply_editorial_intelligence(
+            ranked, prompt=getattr(req, "clip_prompt", None), genre=decision.genre
+        )
+        render_candidates = ranked[: req.clip_count]
+
+        filler_cuts = (
+            detect_filler_segments(
+                transcript.get("segments", []), min_pause=float(getattr(req, "pause_threshold", 0.42))
+            )
+            if getattr(req, "remove_fillers_pauses", True)
+            else []
+        )
+        render_meta: list[dict[str, Any]] = []
+        rendered: list[str] = []
+        all_subject_samples: list[dict[str, Any]] = []
+        audio_evidence: list[dict[str, Any]] = []
+
+        for idx, candidate in enumerate(render_candidates):
+            if runtime.cancel_flags.get(job_id):
+                runtime.set_job(job, status="cancelled", stage="cancelled")
+                return
+            runtime.set_job(
+                job,
+                stage=f"retrieving clip {idx + 1}/{len(render_candidates)}",
+                progress=40 + int(8 * idx / max(1, len(render_candidates))),
+            )
+            video, retrieval = await asyncio.to_thread(
+                download_segment,
+                req.youtube_url,
+                job_dir,
+                candidate["id"],
+                float(candidate["start"]),
+                float(candidate["end"]),
+                6.0,
+                8.0,
+                1080,
+            )
+            media = await asyncio.to_thread(runtime.ffprobe, video)
+            offset = float(retrieval["retrieved_start"])
+            local_candidate = _shift_candidate(candidate, offset)
+            local_transcript = _shift_transcript(transcript, offset)
+            local_candidate["cleanup_plan"] = (
+                apply_cleanup_to_candidate(local_candidate, filler_cuts).get("cleanup")
+                if getattr(req, "remove_fillers_pauses", True)
+                else {"enabled": False, "cuts": [], "removed_seconds": 0.0}
+            )
+
+            duration = float(media.get("format", {}).get("duration") or local_transcript.get("duration") or 0.0)
+            scenes = await asyncio.to_thread(runtime.detect_scene_changes, video, 0.0, duration or None)
+            audio_profile = await asyncio.to_thread(
+                runtime.analyze_audio,
+                video,
+                0.0,
+                duration or max(0.0, float(local_candidate["end"])),
+                speech_segments=local_transcript.get("segments", []),
+            )
+            audio_features = runtime.audio_signals(audio_profile)
+            local_candidate["audio_profile"] = audio_profile.to_dict()
+            local_candidate["audio_signals"] = audio_features
+            audio_evidence.append({
+                "candidate_id": local_candidate["id"],
+                "profile": audio_profile.to_dict(),
+                "signals": audio_features,
+            })
+
+            timeline = await asyncio.to_thread(runtime.build_timeline, video, local_transcript, local_candidate)
+            subject_samples = await asyncio.to_thread(
+                runtime.detect_face_subjects,
+                video,
+                float(local_candidate["start"]),
+                float(local_candidate["end"]),
+            )
+            all_subject_samples.append({"candidate_id": local_candidate["id"], "observations": subject_samples})
+
+            voiceover_path = None
+            if getattr(req, "voice_over", False):
+                vo_text = getattr(req, "voice_over_text", None) or local_candidate.get("text", "")
+                voiceover_path = runtime.outputs_dir / f"{job_id}_clip_{idx + 1:02d}_voiceover.mp3"
+                await asyncio.to_thread(
+                    synthesize_sync,
+                    vo_text,
+                    voiceover_path,
+                    getattr(req, "voice_style", "male_narrator"),
+                )
+
+            output = runtime.outputs_dir / f"{job_id}_clip_{idx + 1:02d}.mp4"
+            info = await asyncio.to_thread(
+                runtime.render_with_spec,
+                video,
+                {**job, "job_id": job_id, "transcript": local_transcript, "meta": media},
+                local_candidate,
+                output,
+                timeline,
+                req,
+                voiceover_path,
+            )
             rendered.append(f"/output/{output.name}")
-            render_meta.append({"candidate_id":local_candidate["id"],"timeline":timeline.to_dict(),"render":info,"editorial_rank":local_candidate.get("editorial_rank"),"editorial_signals":local_candidate.get("editorial_signals"),"editorial_evidence":local_candidate.get("editorial_evidence"),"virality":local_candidate.get("virality_score"),"prompt_relevance":local_candidate.get("prompt_relevance"),"genre":local_candidate.get("genre",decision.genre),"dynamic_layout":dynamic_layout_plan(aspect_ratio=req.aspect_ratio,genre=decision.genre,face_tracking=req.face_tracking,auto_zoom=req.auto_zoom),"retrieval":retrieval,"voiceover":str(voiceover_path) if voiceover_path else None})
-            runtime.set_job(job,progress=50+int(40*(idx+1)/len(render_candidates)),stage=f"rendering {idx+1}/{len(render_candidates)}",render_meta=render_meta)
-        analysis_bundle=build_analysis_bundle(transcript,render_candidates,[],all_subject_samples)
-        critique_report=critic(render_meta,requested_duration=float(req.target_duration),expected_aspect=req.aspect_ratio)
-        revision={"requested":critique_report.get("revision_required",False),"actions":revision_actions(critique_report),"attempt":int(job.get("revision",0))}
-        publish_plan=build_publish_plan(job_id,render_candidates[0] if render_candidates else {},getattr(req,"publish_platforms",None))
-        runtime.set_job(job,status="completed",stage="completed",progress=100,output_path=rendered[0] if rendered else None,clips=rendered,candidates=render_candidates,selected_candidate_id=render_candidates[0]["id"] if render_candidates else None,analysis_bundle=analysis_bundle.to_dict(),render_meta=render_meta,broll=False,critique=critique_report,revision=revision,publish_plan=publish_plan,editorial_decision=decision.to_dict(),retrieval={"strategy":"caption-first-targeted","recon_source":recon_source,"full_video_downloaded":False,"targeted_segments":len(rendered)})
+            render_meta.append(
+                {
+                    "candidate_id": local_candidate["id"],
+                    "timeline": timeline.to_dict(),
+                    "render": info,
+                    "editorial_rank": local_candidate.get("editorial_rank"),
+                    "editorial_signals": local_candidate.get("editorial_signals"),
+                    "editorial_evidence": local_candidate.get("editorial_evidence"),
+                    "virality": local_candidate.get("virality_score"),
+                    "prompt_relevance": local_candidate.get("prompt_relevance"),
+                    "genre": local_candidate.get("genre", decision.genre),
+                    "dynamic_layout": dynamic_layout_plan(
+                        aspect_ratio=req.aspect_ratio,
+                        genre=decision.genre,
+                        face_tracking=req.face_tracking,
+                        auto_zoom=req.auto_zoom,
+                    ),
+                    "retrieval": retrieval,
+                    "audio_profile": audio_profile.to_dict(),
+                    "audio_signals": audio_features,
+                    "voiceover": str(voiceover_path) if voiceover_path else None,
+                }
+            )
+            runtime.set_job(
+                job,
+                progress=50 + int(40 * (idx + 1) / len(render_candidates)),
+                stage=f"rendering {idx + 1}/{len(render_candidates)}",
+                render_meta=render_meta,
+                audio_evidence=audio_evidence,
+            )
+
+        analysis_bundle = build_analysis_bundle(transcript, render_candidates, [], all_subject_samples)
+        critique_report = critic(
+            render_meta, requested_duration=float(req.target_duration), expected_aspect=req.aspect_ratio
+        )
+        revision = {
+            "requested": critique_report.get("revision_required", False),
+            "actions": revision_actions(critique_report),
+            "attempt": int(job.get("revision", 0)),
+        }
+        publish_plan = build_publish_plan(
+            job_id, render_candidates[0] if render_candidates else {}, getattr(req, "publish_platforms", None)
+        )
+        runtime.set_job(
+            job,
+            status="completed",
+            stage="completed",
+            progress=100,
+            output_path=rendered[0] if rendered else None,
+            clips=rendered,
+            candidates=render_candidates,
+            selected_candidate_id=render_candidates[0]["id"] if render_candidates else None,
+            analysis_bundle=analysis_bundle.to_dict(),
+            render_meta=render_meta,
+            audio_evidence=audio_evidence,
+            broll=False,
+            critique=critique_report,
+            revision=revision,
+            publish_plan=publish_plan,
+            editorial_decision=decision.to_dict(),
+            retrieval={
+                "strategy": "caption-first-targeted",
+                "recon_source": recon_source,
+                "full_video_downloaded": False,
+                "targeted_segments": len(rendered),
+            },
+        )
     except Exception as exc:
-        runtime.set_job(job,status="cancelled",stage="cancelled",error="Job cancelled") if runtime.cancel_flags.get(job_id) else runtime.set_job(job,status="failed",stage="failed",error=str(exc))
+        if runtime.cancel_flags.get(job_id):
+            runtime.set_job(job, status="cancelled", stage="cancelled", error="Job cancelled")
+        else:
+            runtime.set_job(job, status="failed", stage="failed", error=str(exc))
     finally:
-        runtime.cancel_flags.pop(job_id,None)
+        runtime.cancel_flags.pop(job_id, None)
