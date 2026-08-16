@@ -1,15 +1,14 @@
 """
-Nexus-Clipper Premium v4.0 — AI Content Analysis Engine
-=========================================================
-Multi-dimensional viral scoring:
-- Hook strength (first 3 seconds)
-- Words-per-second (energy/pace)
-- Excitement keyword density
-- Speaker variety & interaction
-- Face visibility score
-- Retention curve prediction
-- Emotional arc analysis
-- Gemini AI semantic analysis
+Nexus-Clipper V6.4 — AI Content Analysis Engine
+==================================================
+Editorial-conscious viral clip selection with:
+- Editorial consciousness (narrative, emotion, coherence, hook intelligence)
+- Technical scoring (pace, face, scene, speaker)
+- Critic revision loop integration
+- Multi-language support (EN, ID, ES)
+
+The old v4.0 approach was rigid keyword matching. V6.4 blends
+algorithmic signals with editorial consciousness for gold-standard results.
 """
 import json, os, re
 from typing import List, Dict, Optional, Tuple
@@ -20,6 +19,7 @@ from .constants import (
     OUTPUT_DIR,
 )
 from .utils import clean_for_json
+from .editorial import batch_editorial_analysis, analyze_editorial
 
 log = logging.getLogger("nexus.analyze")
 
@@ -34,16 +34,18 @@ def analyze_content(
     screen_data: Optional[List[Dict]] = None,
     max_clips: int = 10,
     use_ai_scoring: bool = True,
+    editorial_enrichment: bool = True,
 ) -> List[Dict]:
     """Analyze transcript to find best viral clip candidates.
     
-    Multi-factor scoring:
-    1. Hook Score (0-20): First 3 seconds impact
+    V6.4 Multi-dimensional scoring:
+    1. Hook Score (0-20): First 3 seconds impact (keyword-based)
     2. Pace Score (0-20): Words per second
     3. Keyword Score (0-25): Excitement keyword density
     4. Speaker Score (0-15): Speaker variety & interaction
     5. Face Score (0-10): Face visibility
-    6. Position Score (0-10): Where in video (revelations tend to be later)
+    6. Position Score (0-10): Where in video
+    7. Editorial Consciousness (V6.4): Narrative, emotion, coherence, hook intelligence
     
     Args:
         transcript: Whisper transcript with segments
@@ -53,9 +55,10 @@ def analyze_content(
         screen_data: Optional screen share data
         max_clips: Maximum clips to return
         use_ai_scoring: Whether to use Gemini for semantic analysis
+        editorial_enrichment: Whether to apply editorial consciousness scoring
     
     Returns:
-        List of clip candidates sorted by viral_score (desc)
+        List of clip candidates sorted by score (desc), enriched with editorial data
     """
     segments = transcript.get("segments", [])
     if not segments:
@@ -71,11 +74,15 @@ def analyze_content(
         log.error("[Analyze] Cannot determine duration")
         return []
 
-    log.info(f"[Analyze] Duration: {total_duration:.1f}s | Target: {target_duration}s")
+    log.info(f"[Analyze] Duration: {total_duration:.1f}s | Target: {target_duration}s | "
+             f"Editorial: {'ON' if editorial_enrichment else 'OFF'}")
 
     # Short video → single full clip
     if total_duration <= target_duration:
-        return _make_full_clip(segments, total_duration)
+        clips = _make_full_clip(segments, total_duration)
+        if editorial_enrichment:
+            clips = batch_editorial_analysis(clips, segments, total_duration)
+        return clips
 
     # Windowed scanning
     window = target_duration
@@ -154,7 +161,7 @@ def analyze_content(
                 pct_screen = sum(1 for s in in_range if s.get("is_screen_share")) / len(in_range)
                 screen_bonus = pct_screen * 5
 
-        # Composite score
+        # Composite algorithmic score
         total_score = (
             scores["hook"] +
             scores["pace"] +
@@ -197,7 +204,7 @@ def analyze_content(
     # Fallback if no candidates
     if not candidates:
         log.warning("[Analyze] No candidates — using full video")
-        return [_make_full_clip(segments, total_duration)]
+        return _make_full_clip(segments, total_duration)
 
     # Sort & deduplicate
     candidates.sort(key=lambda x: x["score"], reverse=True)
@@ -225,10 +232,25 @@ def analyze_content(
                 log.warning(f"[Analyze] AI scoring failed: {e}")
         
         result.append(c)
-        if len(result) >= max_clips:
+        if len(result) >= max_clips * 2:  # Keep extras for critic replacement
             break
 
-    # Re-sort after AI scoring
+    # ── V6.4: Editorial Consciousness Enrichment ──
+    if editorial_enrichment:
+        log.info("[Analyze] Applying editorial consciousness scoring...")
+        result = batch_editorial_analysis(result, segments, total_duration)
+        
+        # Log editorial verdicts
+        for c in result:
+            ed = c.get("editorial", {})
+            if ed.get("verdict"):
+                log.info(f"  Clip [{c['start']:.0f}-{c['end']:.0f}s] "
+                        f"score={c['score']:.3f} verdict={ed['verdict']}")
+
+    # Trim to max_clips
+    result = result[:max_clips]
+
+    # Re-sort after all scoring
     result.sort(key=lambda x: x["score"], reverse=True)
 
     log.info(f"[Analyze] Selected {len(result)}/{len(candidates)} clips. "
@@ -291,83 +313,44 @@ def _ai_semantic_score(text: str) -> Optional[Dict]:
     try:
         import urllib.request
         
-        prompt = f"""Analyze this video transcript excerpt for viral potential. 
-Rate it 0-100 and explain in 1 sentence why.
+        prompt = f"""Analyze this video transcript excerpt for viral potential.
+Rate 0-1 how compelling this content is for short-form video (TikTok/Reels/Shorts).
+Consider: hook strength, emotional engagement, clarity of message, standalone coherence.
+Return JSON: {{"score": float, "analysis": "brief explanation"}}
 
-Transcript: \"{text[:500]}\"
+Transcript: "{text[:500]}" """
 
-Return JSON: {{"score": number, "analysis": "1 sentence"}}"""
-
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+        url = (f"https://generativelanguage.googleapis.com/v1beta/"
+               f"models/gemini-1.5-flash:generateContent?key={api_key}")
         
-        body = json.dumps({
+        payload = json.dumps({
             "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 0.3, "maxOutputTokens": 150},
+            "generationConfig": {"temperature": 0.3, "maxOutputTokens": 200}
         }).encode()
         
-        req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
-        resp = urllib.request.urlopen(req, timeout=15)
-        data = json.loads(resp.read())
+        req = urllib.request.Request(url, data=payload, method="POST")
+        req.add_header("Content-Type", "application/json")
         
-        text_response = data["candidates"][0]["content"]["parts"][0]["text"]
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read())
         
-        # Try to parse JSON from response
+        text_response = data.get("candidates", [{}])[0].get(
+            "content", {}).get("parts", [{}])[0].get("text", "")
+        
+        # Parse JSON from response
         json_match = re.search(r'\{[^}]+\}', text_response)
         if json_match:
-            return json.loads(json_match.group())
-        return {"score": 50, "analysis": text_response[:100]}
-        
+            result = json.loads(json_match.group())
+            return {"score": float(result.get("score", 0.5)),
+                    "analysis": result.get("analysis", "")}
     except Exception as e:
-        log.error(f"[AI Score] Gemini error: {e}")
-        return None
-
-
-def batch_analyze_with_ai(clips: List[Dict]) -> List[Dict]:
-    """Re-score multiple clips using Gemini AI."""
-    api_key = os.environ.get("GEMINI_API_KEY", "")
-    if not api_key or not clips:
-        return clips
+        log.debug(f"[Analyze] Gemini scoring skipped: {e}")
     
-    try:
-        import urllib.request
-        
-        # Build batch prompt
-        clip_summaries = []
-        for i, c in enumerate(clips[:5]):  # Max 5 at a time
-            clip_summaries.append(
-                f"Clip {i+1} ({c['start']}s-{c['end']}s): \"{c['text_preview'][:150]}...\""
-            )
-        
-        prompt = f"""Analyze these video clip candidates for viral potential.
-Rank them and give each a score 0-100.
+    return None
 
-{chr(10).join(clip_summaries)}
 
-Return JSON array: [{{"clip": number, "score": number, "reason": "1 sentence"}}]"""
-
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
-        body = json.dumps({
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"temperature": 0.3, "maxOutputTokens": 500},
-        }).encode()
-        
-        req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"})
-        resp = urllib.request.urlopen(req, timeout=20)
-        data = json.loads(resp.read())
-        text_response = data["candidates"][0]["content"]["parts"][0]["text"]
-        
-        # Parse
-        results = json.loads(text_response)
-        for r in results:
-            idx = r.get("clip", 1) - 1
-            if 0 <= idx < len(clips):
-                clips[idx]["ai_score"] = r["score"]
-                clips[idx]["ai_reason"] = r.get("reason", "")
-                # Blend
-                clips[idx]["score"] = round(clips[idx]["score"] * 0.6 + r["score"]/100 * 0.4, 3)
-        
-    except Exception as e:
-        log.error(f"[AI Batch] Error: {e}")
-    
-    clips.sort(key=lambda x: x["score"], reverse=True)
-    return clips
+def batch_analyze_with_ai(transcript: Dict, **kwargs) -> List[Dict]:
+    """Convenience wrapper for analyze_content with AI scoring enabled."""
+    kwargs["use_ai_scoring"] = True
+    kwargs["editorial_enrichment"] = True
+    return analyze_content(transcript, **kwargs)

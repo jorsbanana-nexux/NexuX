@@ -1,8 +1,12 @@
 """
-Nexus-Clipper Premium v4.0 — Pipeline Orchestrator
-====================================================
-End-to-end pipeline: Download → Analyze → Render
-With stage tracking, error recovery, and progress reporting.
+Nexus-Clipper V6.4 — Pipeline Orchestrator
+============================================
+End-to-end pipeline with editorial consciousness:
+1. Download → 2. Vision Analysis → 3. Transcription → 
+4. Editorial Analysis → 5. Render → 6. Critic Revision → 7. Final Assembly
+
+The critic revision loop (step 6) is what makes NexuX a conscious editor:
+each clip is evaluated, and weak clips are automatically revised.
 """
 import time, json
 from pathlib import Path
@@ -16,6 +20,8 @@ from .transcribe import transcribe
 from .vision import analyze_faces, detect_scene_changes, detect_screen_share
 from .analyze import analyze_content, batch_analyze_with_ai
 from .render import render_clip, concatenate_clips
+from .editorial import batch_editorial_analysis
+from .critic import evaluate_clip, apply_revision_directives, revision_loop
 
 log = logging.getLogger("nexus.pipeline")
 
@@ -26,15 +32,16 @@ async def run_pipeline(
     progress_callback: Optional[Callable] = None,
     **kwargs,
 ) -> Dict:
-    """Run the complete Nexus-Clipper pipeline.
+    """Run the complete Nexus-Clipper V6.4 pipeline.
     
     Stages:
     1. Download (0-15%)
     2. Face/Scene/Screen Analysis (15-25%)
     3. Transcription (25-55%)
-    4. Content Analysis (55-65%)
-    5. Rendering (65-95%)
-    6. Final Assembly (95-100%)
+    4. Editorial Analysis (55-70%) — V6.4: now includes editorial consciousness
+    5. Rendering (70-85%) — V6.4: smart zoom based on face data
+    6. Critic Revision (85-95%) — V6.4: NEW — quality gate with revision loop
+    7. Final Assembly (95-100%)
     
     Args:
         url: YouTube video URL
@@ -43,7 +50,7 @@ async def run_pipeline(
         **kwargs: Override pipeline parameters
     
     Returns:
-        Dict with job results: status, output_path, clips, stages
+        Dict with job results: status, output_path, clips, stages, critiques
     """
     result = {
         "job_id": job_id,
@@ -53,6 +60,7 @@ async def run_pipeline(
         "clips": [],
         "output_path": None,
         "error": None,
+        "critiques": [],  # V6.4: critic evaluations
     }
 
     async def _progress(stage: str, pct: float, **data):
@@ -60,6 +68,7 @@ async def run_pipeline(
             await progress_callback(stage, pct, **data)
 
     try:
+        # ── 1. Download ──
         await _progress("downloading", 0)
         video_path = retry(download_youtube, url, job_id, max_retries=MAX_RETRIES)
         video_size = get_file_size_mb(video_path)
@@ -69,6 +78,7 @@ async def run_pipeline(
         }
         await _progress("downloading", 15, video_size_mb=round(video_size, 1))
 
+        # ── 2. Vision Analysis ──
         await _progress("vision", 15)
         face_data = []
         scene_data = []
@@ -96,6 +106,7 @@ async def run_pipeline(
         }
         await _progress("vision", 25)
 
+        # ── 3. Transcription ──
         await _progress("transcribing", 25)
         transcript = retry(
             transcribe, video_path, job_id,
@@ -115,6 +126,7 @@ async def run_pipeline(
         }
         await _progress("transcribing", 55, segments=seg_count, speakers=len(speakers))
 
+        # ── 4. Editorial Analysis (V6.4) ──
         await _progress("analyzing", 55)
         clips = analyze_content(
             transcript,
@@ -124,6 +136,7 @@ async def run_pipeline(
             screen_data=screen_data if screen_data else None,
             max_clips=kwargs.get("clip_count", 10),
             use_ai_scoring=kwargs.get("ai_scoring", False),
+            editorial_enrichment=True,  # V6.4: Always on
         )
         if not clips:
             raise RuntimeError(
@@ -134,10 +147,12 @@ async def run_pipeline(
         result["stages"]["analyze"] = {
             "status": "ok", "clips_found": len(clips),
             "top_score": round(clips[0]["score"], 3) if clips else 0,
+            "top_editorial": clips[0].get("editorial", {}).get("verdict", "unknown") if clips else "none",
         }
-        await _progress("analyzing", 65, clips_found=len(clips))
+        await _progress("analyzing", 70, clips_found=len(clips))
 
-        await _progress("rendering", 65, clips_to_render=len(clips))
+        # ── 5. Rendering (V6.4: Smart Zoom) ──
+        await _progress("rendering", 70, clips_to_render=len(clips))
         rendered = []
         for i, clip in enumerate(clips):
             cp = retry(
@@ -150,15 +165,127 @@ async def run_pipeline(
                 max_retries=2,
             )
             rendered.append(cp)
-            pct = 65 + int((i + 1) / max(len(clips), 1) * 25)
+            pct = 70 + int((i + 1) / max(len(clips), 1) * 15)
             await _progress("rendering", pct, clips_done=i+1, clips_total=len(clips))
         if not rendered:
             raise RuntimeError("All render attempts failed.")
 
-        await _progress("finalizing", 90)
-        final = rendered[0]
-        if len(rendered) > 1:
-            final = concatenate_clips(job_id, rendered)
+        # ── 6. Critic Revision Loop (V6.4: NEW) ──
+        await _progress("critique", 85, clips_to_critique=len(rendered))
+        
+        full_segments = transcript.get("segments", [])
+        total_duration = float(full_segments[-1].get("end", 0)) if full_segments else 0
+        
+        final_clips = []
+        critiques = []
+        
+        for i, (clip, out_path) in enumerate(zip(clips, rendered)):
+            critique = evaluate_clip(
+                clip, i, full_segments, total_duration, full_segments,
+                out_path, revision_count=0
+            )
+            
+            if critique.verdict in ("GOLD", "ACCEPTABLE"):
+                final_clips.append(out_path)
+                critiques.append({
+                    "clip_index": i,
+                    "verdict": critique.verdict,
+                    "score": round(critique.score, 3),
+                    "dimensions": {k: round(v, 3) for k, v in critique.dimensions.items()},
+                    "issues": critique.issues,
+                })
+                log.info(f"[Pipeline] Clip {i}: {critique.verdict} ✅")
+            elif critique.verdict == "NEEDS_REVISION" and critique.should_retry:
+                # Try to revise
+                log.info(f"[Pipeline] Clip {i}: Revising...")
+                revised_clip = apply_revision_directives(
+                    clip, critique.revision_directives,
+                    clips, full_segments, total_duration
+                )
+                if revised_clip:
+                    try:
+                        revised_render = retry(
+                            render_clip, video_path, job_id, revised_clip, transcript,
+                            kwargs, i, face_data if face_data else None,
+                            kwargs.get("color_grade", "none"),
+                            kwargs.get("auto_zoom", True),
+                            kwargs.get("video_codec", "h264"),
+                            kwargs.get("audio_codec", "aac"),
+                            max_retries=2,
+                        )
+                        # Re-evaluate the revised clip
+                        revised_critique = evaluate_clip(
+                            revised_clip, i, full_segments, total_duration, full_segments,
+                            revised_render, revision_count=1
+                        )
+                        if revised_critique.verdict in ("GOLD", "ACCEPTABLE", "NEEDS_REVISION"):
+                            final_clips.append(revised_render)
+                            critiques.append({
+                                "clip_index": i,
+                                "verdict": revised_critique.verdict,
+                                "score": round(revised_critique.score, 3),
+                                "dimensions": {k: round(v, 3) for k, v in revised_critique.dimensions.items()},
+                                "issues": revised_critique.issues,
+                                "revised": True,
+                                "original_score": round(critique.score, 3),
+                            })
+                            log.info(f"[Pipeline] Clip {i}: Revised to {revised_critique.verdict} ✅")
+                        else:
+                            # Even revised version is weak — use original
+                            final_clips.append(out_path)
+                            critiques.append({
+                                "clip_index": i,
+                                "verdict": "ACCEPTABLE_AFTER_REVISION",
+                                "score": round(revised_critique.score, 3),
+                                "issues": revised_critique.issues,
+                                "revised": True,
+                            })
+                    except Exception as e:
+                        log.warning(f"[Pipeline] Re-render failed: {e}")
+                        final_clips.append(out_path)
+                        critiques.append({
+                            "clip_index": i,
+                            "verdict": critique.verdict,
+                            "score": round(critique.score, 3),
+                            "issues": critique.issues,
+                        })
+                else:
+                    # Can't improve — use original
+                    final_clips.append(out_path)
+                    critiques.append({
+                        "clip_index": i,
+                        "verdict": "WEAK_BEST_AVAILABLE",
+                        "score": round(critique.score, 3),
+                        "issues": critique.issues,
+                    })
+            else:
+                # REJECT but we still need clips — use the best we have
+                final_clips.append(out_path)
+                critiques.append({
+                    "clip_index": i,
+                    "verdict": critique.verdict,
+                    "score": round(critique.score, 3),
+                    "issues": critique.issues,
+                })
+                log.warning(f"[Pipeline] Clip {i}: {critique.verdict} — using anyway (best available)")
+            
+            pct = 85 + int((i + 1) / max(len(clips), 1) * 10)
+            await _progress("critique", pct, clips_critiqued=i+1, clips_total=len(clips))
+        
+        result["stages"]["critique"] = {
+            "status": "ok",
+            "gold": sum(1 for c in critiques if c.get("verdict") == "GOLD"),
+            "acceptable": sum(1 for c in critiques if c.get("verdict") == "ACCEPTABLE"),
+            "revised": sum(1 for c in critiques if c.get("revised")),
+            "weak": sum(1 for c in critiques if c.get("verdict") in ("WEAK_BEST_AVAILABLE", "REJECT")),
+        }
+        result["critiques"] = critiques
+
+        # ── 7. Final Assembly ──
+        await _progress("finalizing", 95)
+        final = final_clips[0]
+        if len(final_clips) > 1:
+            final = concatenate_clips(job_id, final_clips)
         if kwargs.get("normalize_audio", True):
             try:
                 from .render import normalize_audio
@@ -170,14 +297,19 @@ async def run_pipeline(
         final_str = str(final)
         result["status"] = "completed"
         result["output_path"] = final_str
-        result["clips"] = [str(r) for r in rendered]
+        result["clips"] = [str(r) for r in final_clips]
         result["stages"]["render"] = {
-            "status": "ok", "clips_rendered": len(rendered),
+            "status": "ok", "clips_rendered": len(final_clips),
             "final_path": final_str,
             "final_size_mb": round(get_file_size_mb(final), 1),
         }
         await _progress("completed", 100, output_path=final_str, clips=result["clips"])
         log.info(f"[Pipeline] COMPLETE: {final_str}")
+        log.info(f"[Pipeline] Critique summary: "
+                 f"{result['stages']['critique']['gold']} GOLD, "
+                 f"{result['stages']['critique']['acceptable']} ACCEPTABLE, "
+                 f"{result['stages']['critique']['revised']} REVISED, "
+                 f"{result['stages']['critique']['weak']} WEAK")
         return result
     except Exception as e:
         err_msg = str(e)

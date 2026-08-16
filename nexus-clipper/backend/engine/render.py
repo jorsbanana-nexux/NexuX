@@ -1,5 +1,5 @@
 """
-Nexus-Clipper Premium v4.0 — Rendering Engine
+Nexus-Clipper V6.4 — Rendering Engine
 ===============================================
 FFmpeg-powered clip rendering with:
 - ASS/SSA dynamic subtitles (per-word styling)
@@ -89,12 +89,10 @@ def render_clip(
         f"crop={w}:{h}",
     ]
 
-    # Auto-zoom (Ken Burns)
+    # Smart zoom — V6.4: uses face tracking data instead of random
     if auto_zoom and clip_dur > 3:
-        zoom_pct = random.uniform(1.02, 1.08)
-        vf_parts.append(
-            f"zoompan=z='min(zoom+0.0015,{zoom_pct})':d=1:"
-            f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s={w}x{h}")
+        zoom_filter = _build_smart_zoom(clip, face_data, w, h)
+        vf_parts.append(zoom_filter)
 
     # Color grading
     grade_filter = COLOR_GRADES.get(color_grade, "")
@@ -134,6 +132,77 @@ def render_clip(
     size_mb = output_path.stat().st_size / (1024 * 1024) if output_path.exists() else 0
     log.info(f"[Render] Clip {clip_index} OK: {output_path.name} ({size_mb:.1f} MB)")
     return output_path
+
+
+
+def _build_smart_zoom(
+    clip: Dict,
+    face_data: Optional[List[Dict]],
+    canvas_w: int,
+    canvas_h: int,
+) -> str:
+    """Build FFmpeg zoompan filter using face tracking data.
+    
+    V6.4: Instead of random zoom, this tracks the speaker's face
+    and smoothly follows them. If no face data, falls back to
+    a gentle, deterministic Ken Burns effect.
+    """
+    clip_start = clip["start"]
+    clip_end = clip["end"]
+    clip_dur = clip_end - clip_start
+
+    if face_data:
+        # Get face positions within this clip's time range
+        relevant = [
+            fd for fd in face_data
+            if clip_start <= fd.get("time", 0) <= clip_end
+            and fd.get("faces")
+        ]
+
+        if relevant and len(relevant) >= 3:
+            # Calculate average face position (normalized 0-1)
+            avg_x = sum(f["faces"][0]["x"] + f["faces"][0]["w"] / 2
+                        for f in relevant) / len(relevant)
+            avg_y = sum(f["faces"][0]["y"] + f["faces"][0]["h"] / 2
+                        for f in relevant) / len(relevant)
+
+            # Determine zoom level based on face size
+            avg_face_w = sum(f["faces"][0]["w"] for f in relevant) / len(relevant)
+            # Larger face = less zoom needed; smaller face = more zoom
+            if avg_face_w > 0.25:
+                zoom_max = 1.05  # Face already large, gentle zoom
+            elif avg_face_w > 0.12:
+                zoom_max = 1.12  # Medium face, moderate zoom
+            else:
+                zoom_max = 1.20  # Small face, more aggressive zoom
+
+            # Center on face position, clamped to valid range
+            # zoompan x/y are in output pixel space at zoom factor
+            center_x = f"{avg_x:.3f}"
+            center_y = f"{avg_y:.3f}"
+
+            # Build smooth zoompan that centers on the face
+            zoom_filter = (
+                f"zoompan=z='min(zoom+0.001,{zoom_max})':d=1:"
+                f"x='iw*{center_x}-(iw/zoom*{center_x})':"
+                f"y='ih*{center_y}-(ih/zoom*{center_y})':"
+                f"s={canvas_w}x{canvas_h}"
+            )
+            log.info(f"[Render] Smart zoom: face-centered ({center_x}, {center_y}) "
+                     f"zoom_max={zoom_max}")
+            return zoom_filter
+
+    # Fallback: deterministic gentle zoom (not random)
+    # Use clip index as seed for variety, but predictable per clip
+    zoom_max = 1.06 + (clip.get("clip_index", 0) * 0.01)
+    zoom_max = min(zoom_max, 1.10)
+    zoom_filter = (
+        f"zoompan=z='min(zoom+0.0015,{zoom_max:.2f})':d=1:"
+        f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+        f"s={canvas_w}x{canvas_h}"
+    )
+    log.info(f"[Render] Smart zoom: Ken Burns fallback zoom_max={zoom_max:.2f}")
+    return zoom_filter
 
 
 def _build_ass(
@@ -176,7 +245,7 @@ def _build_ass(
     # ── ASS Header ──
     lines = [
         "[Script Info]",
-        "Title: Nexus-Clipper Premium v4",
+        "Title: Nexus-Clipper V6.4",
         "ScriptType: v4.00+",
         "WrapStyle: 0",
         "ScaledBorderAndShadow: yes",
