@@ -22,6 +22,8 @@ from .analyze import analyze_content, batch_analyze_with_ai
 from .render import render_clip, concatenate_clips
 from .editorial import batch_editorial_analysis
 from .critic import evaluate_clip, apply_revision_directives, revision_loop
+from .subtitle_quality import process_subtitle_quality
+from .audio_enhancer import enhance_audio
 
 log = logging.getLogger("nexus.pipeline")
 
@@ -150,6 +152,21 @@ async def run_pipeline(
             "top_editorial": clips[0].get("editorial", {}).get("verdict", "unknown") if clips else "none",
         }
         await _progress("analyzing", 70, clips_found=len(clips))
+
+        # ── 4.5. Subtitle Quality Validation (V6.4: NEW) ──
+        await _progress("subtitle_qa", 68)
+        for clip in clips:
+            groups, sub_report = process_subtitle_quality(transcript, clip, kwargs)
+            clip["subtitle_quality"] = sub_report
+            if not sub_report["readable"]:
+                log.warning(f"[Pipeline] Subtitle quality issues for clip at {clip['start']:.0f}s")
+        result["stages"]["subtitle_qa"] = {
+            "status": "ok",
+            "avg_quality": round(
+                sum(c.get("subtitle_quality", {}).get("quality_score", 0) for c in clips) / max(len(clips), 1), 3
+            ),
+        }
+        await _progress("subtitle_qa", 70)
 
         # ── 5. Rendering (V6.4: Smart Zoom) ──
         await _progress("rendering", 70, clips_to_render=len(clips))
@@ -286,13 +303,36 @@ async def run_pipeline(
         final = final_clips[0]
         if len(final_clips) > 1:
             final = concatenate_clips(job_id, final_clips)
+        # ── Audio Enhancement (V6.4: Professional audio chain) ──
         if kwargs.get("normalize_audio", True):
             try:
-                from .render import normalize_audio
-                norm_path = OUTPUT_DIR / job_id / f"{job_id}_normalized.mp4"
-                final = normalize_audio(final, norm_path)
+                enhanced_path = OUTPUT_DIR / job_id / f"{job_id}_enhanced.mp4"
+                # Get speech segments for ducking
+                speech_segs = [
+                    {"start": s.get("start", 0), "end": s.get("end", 0)}
+                    for s in full_segments
+                ]
+                final, audio_report = enhance_audio(
+                    final, enhanced_path,
+                    has_bgm=False,
+                    speech_segments=speech_segs,
+                    aggressive=False,
+                )
+                result["stages"]["audio_enhancement"] = {
+                    "status": "ok",
+                    "filters": audio_report.get("filters_applied", []),
+                    "improvement": audio_report.get("improvement", {}),
+                }
+                log.info(f"[Pipeline] Audio enhanced: {len(audio_report.get('filters_applied', []))} filters applied")
             except Exception as e:
-                log.warning(f"[Pipeline] Audio normalization failed: {e}")
+                log.warning(f"[Pipeline] Audio enhancement failed: {e}")
+                # Fallback to basic normalize
+                try:
+                    from .render import normalize_audio
+                    norm_path = OUTPUT_DIR / job_id / f"{job_id}_normalized.mp4"
+                    final = normalize_audio(final, norm_path)
+                except Exception as e2:
+                    log.warning(f"[Pipeline] Fallback normalization also failed: {e2}")
 
         final_str = str(final)
         result["status"] = "completed"

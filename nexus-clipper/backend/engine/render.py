@@ -20,6 +20,7 @@ from .constants import (
 from .utils import (
     to_unix, rel_path, fmt_time, retry, run_ffmpeg,
 )
+from .subtitle_quality import group_words_for_readability, smart_line_break, MAX_LINE_LENGTH
 from .styles import (
     resolve_style, get_animation_tag, get_position, hex_to_ass,
     SPEAKER_PALETTE,
