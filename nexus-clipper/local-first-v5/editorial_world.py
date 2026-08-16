@@ -21,14 +21,12 @@ class EditorialEvidence:
 
 
 def build_editorial_evidence(world: AnalysisWorld) -> tuple[EditorialEvidence, ...]:
-    modalities = world.modalities
-    vision = modalities.get("vision", {}) or {}
-    audio = modalities.get("audio", {}) or {}
-    editorial = modalities.get("editorial", {}) or {}
-    scene_list = tuple(vision.get("scenes", []) or [])
-    subject_list = tuple(vision.get("subjects", []) or [])
-    audio_profiles = audio.get("profiles", {}) or {}
-    candidates = editorial.get("candidates", []) or []
+    scene_list = tuple(world.vision.get("scenes", []) or [])
+    subject_list = tuple(world.vision.get("subjects", []) or [])
+    audio_profiles = world.audio.get("profiles", {}) or {}
+    candidates = world.candidates
+    provenance_values = tuple(f"{key}:{value}" for key, value in world.provenance.items())
+    world_confidence = float(world.confidence.get("world", 0.0))
 
     result: list[EditorialEvidence] = []
     for candidate in candidates:
@@ -45,8 +43,8 @@ def build_editorial_evidence(world: AnalysisWorld) -> tuple[EditorialEvidence, .
                 audio=dict(audio_profiles.get(candidate_id, {}) or {}),
                 scenes=scene_list,
                 subjects=subject_list,
-                confidence=float(candidate.get("confidence", world.confidence)),
-                provenance=(world.provenance.source, world.provenance.analysis_engine),
+                confidence=float(candidate.get("confidence", world_confidence)),
+                provenance=provenance_values,
             )
         )
     return tuple(result)
@@ -56,10 +54,11 @@ def ranking_context(world: AnalysisWorld) -> dict[str, Any]:
     evidence = build_editorial_evidence(world)
     return {
         "schema_version": world.schema_version,
-        "world_id": world.world_id,
-        "confidence": world.confidence,
-        "provenance": world.provenance.to_dict(),
+        "job_id": world.job_id,
+        "confidence": dict(world.confidence),
+        "provenance": dict(world.provenance),
+        "modalities": sorted(world.modalities),
         "candidates": [item.__dict__ for item in evidence],
-        "intent": dict(world.modalities.get("intent", {}) or {}),
-        "semantics": dict(world.modalities.get("semantics", {}) or {}),
+        "intent": dict(world.editorial),
+        "semantics": dict(world.editorial.get("semantics", {}) or {}),
     }
