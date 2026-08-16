@@ -711,7 +711,9 @@ async def get_analytics(job_id: str, _=Depends(_require_auth)):
     }
 
 @app.get("/api/download/{job_id}")
-async def download_clips(job_id: str, _=Depends(_require_auth)):
+async def download_clips(job_id: str, request: Request):
+    if not _verify_api_key(request):
+        raise HTTPException(401, "Invalid or missing API key")
     j = _get_job(job_id)
     if not j:
         raise HTTPException(404, f"Job {job_id} not found")

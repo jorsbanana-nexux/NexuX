@@ -258,7 +258,7 @@ async def run_pipeline(
                             revised_clip, i, full_segments, total_duration, full_segments,
                             revised_render, revision_count=1
                         )
-                        if revised_critique.verdict in ("GOLD", "ACCEPTABLE", "NEEDS_REVISION"):
+                        if revised_critique.verdict in ("GOLD", "ACCEPTABLE"):
                             final_clips.append(revised_render)
                             critiques.append({
                                 "clip_index": i,
@@ -271,14 +271,16 @@ async def run_pipeline(
                             })
                             log.info(f"[Pipeline] Clip {i}: Revised to {revised_critique.verdict} ✅")
                         else:
-                            final_clips.append(out_path)
+                            # Still needs revision after one attempt — accept as best available
+                            final_clips.append(revised_render)
                             critiques.append({
                                 "clip_index": i,
-                                "verdict": "ACCEPTABLE_AFTER_REVISION",
+                                "verdict": "WEAK_AFTER_REVISION",
                                 "score": round(revised_critique.score, 3),
                                 "issues": revised_critique.issues,
                                 "revised": True,
                             })
+                            log.warning(f"[Pipeline] Clip {i}: Still {revised_critique.verdict} after revision — using best available")
                     except Exception as e:
                         log.warning(f"[Pipeline] Re-render failed: {e}")
                         final_clips.append(out_path)
@@ -297,14 +299,15 @@ async def run_pipeline(
                         "issues": critique.issues,
                     })
             else:
-                final_clips.append(out_path)
+                # REJECT verdict — skip this clip, don't include in final output
                 critiques.append({
                     "clip_index": i,
                     "verdict": critique.verdict,
                     "score": round(critique.score, 3),
                     "issues": critique.issues,
+                    "skipped": True,
                 })
-                log.warning(f"[Pipeline] Clip {i}: {critique.verdict} — using anyway (best available)")
+                log.warning(f"[Pipeline] Clip {i}: {critique.verdict} — SKIPPED (quality gate rejected)")
             
             pct = 85 + int((i + 1) / max(len(clips), 1) * 10)
             await _progress("critique", pct, clips_critiqued=i+1, clips_total=len(clips))

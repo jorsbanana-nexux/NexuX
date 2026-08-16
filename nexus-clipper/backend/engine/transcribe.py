@@ -1,7 +1,7 @@
 """
-Nexus-Clipper Premium v4.0 — Transcription Engine
+NexuX V7.0 — Transcription Engine
 ===================================================
-WhisperX (preferred) + openai-whisper fallback.
+faster-whisper (primary, in requirements.txt) + whisperx fallback.
 Word-level timestamps, speaker diarization, language detection.
 """
 import json, os
@@ -22,10 +22,11 @@ def transcribe(
     diarization: bool = True,
     model_size: Optional[str] = None,
 ) -> Dict:
-    """Transcribe video audio to text with word‑level timestamps.
+    """Transcribe video audio to text with word-level timestamps.
     
-    Tries WhisperX first (faster, better alignment, diarization support).
-    Falls back to openai‑whisper if WhisperX unavailable.
+    Tries faster-whisper first (already in requirements.txt).
+    Falls back to whisperx if installed (adds diarization).
+    Falls back to openai-whisper if installed.
     
     Args:
         video_path: Path to video file
@@ -35,7 +36,7 @@ def transcribe(
         model_size: Whisper model size override
     
     Returns:
-        Transcript dict with segments containing word‑level timestamps
+        Transcript dict with segments containing word-level timestamps
     """
     work_dir = OUTPUT_DIR / job_id
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -43,18 +44,110 @@ def transcribe(
     device = get_device()
     model = model_size or os.environ.get("WHISPER_MODEL", "large-v3")
     
-    # ── Try WhisperX (preferred) ──
+    # ── Try faster-whisper (primary, in requirements.txt) ──
+    try:
+        result = _transcribe_faster_whisper(video_path, device, model, language)
+        if result:
+            # Try diarization with whisperx if requested and available
+            if diarization:
+                result = _try_diarization(video_path, result, device)
+            _save(result, job_id)
+            return result
+    except Exception as e:
+        log.warning(f"[Transcribe] faster-whisper failed: {e}")
+    
+    # ── Fallback: whisperx (if installed separately) ──
     try:
         result = _transcribe_whisperx(video_path, device, model, language, diarization)
         if result:
             _save(result, job_id)
             return result
     except Exception as e:
-        log.warning(f"[Transcribe] WhisperX failed: {e}. Falling back to openai-whisper...")
+        log.warning(f"[Transcribe] whisperx failed: {e}")
     
-    # ── Fallback: openai-whisper ──
+    # ── Fallback: openai-whisper (if installed separately) ──
     result = _transcribe_whisper(video_path, device, model, language)
     _save(result, job_id)
+    return result
+
+
+def _transcribe_faster_whisper(
+    video_path: Path, device: str, model_size: str,
+    language: Optional[str],
+) -> Optional[Dict]:
+    """Transcribe using faster-whisper (already in requirements.txt)."""
+    from faster_whisper import WhisperModel
+    
+    log.info(f"[faster-whisper] Loading {model_size} on {device}...")
+    compute = "float16" if device == "cuda" else "int8"
+    
+    model = WhisperModel(model_size, device=device, compute_type=compute)
+    
+    beam = 5
+    opts = {
+        "word_timestamps": True,
+        "beam_size": beam,
+        "vad_filter": True,
+    }
+    if language:
+        opts["language"] = language
+    
+    segments_gen, info = model.transcribe(str(video_path), **opts)
+    detected_lang = info.language if hasattr(info, "language") else "?"
+    log.info(f"[faster-whisper] Language: {detected_lang} (prob: {getattr(info, 'language_probability', 0):.2f})")
+    
+    # Convert generator to list and normalize format
+    segments = []
+    for seg in segments_gen:
+        words = []
+        if hasattr(seg, "words") and seg.words:
+            for w in seg.words:
+                words.append({
+                    "word": w.word.strip(),
+                    "start": round(w.start, 3),
+                    "end": round(w.end, 3),
+                    "probability": round(w.probability, 3) if hasattr(w, "probability") else 1.0,
+                })
+        segments.append({
+            "start": round(seg.start, 3),
+            "end": round(seg.end, 3),
+            "text": seg.text.strip(),
+            "words": words,
+        })
+    
+    log.info(f"[faster-whisper] Transcribed {len(segments)} segments")
+    
+    return {
+        "language": detected_lang,
+        "segments": segments,
+        "text": " ".join(s["text"] for s in segments),
+    }
+
+
+def _try_diarization(
+    video_path: Path, result: Dict, device: str,
+) -> Dict:
+    """Try to add speaker diarization using whisperx (optional)."""
+    try:
+        import whisperx
+        
+        log.info("[Diarization] Attempting speaker identification via whisperx...")
+        hf_token = os.environ.get("HF_TOKEN", "")
+        diarize_model = whisperx.DiarizationPipeline(
+            use_auth_token=hf_token or None, device=device)
+        audio = whisperx.load_audio(str(video_path))
+        diarize_segments = diarize_model(audio)
+        result = whisperx.assign_word_speakers(diarize_segments, result)
+        
+        speakers = set(
+            s.get("speaker", "SPEAKER_00")
+            for s in result.get("segments", []))
+        log.info(f"[Diarization] Speakers detected: {len(speakers)}")
+    except ImportError:
+        log.info("[Diarization] whisperx not installed, skipping speaker identification")
+    except Exception as e:
+        log.warning(f"[Diarization] Failed: {e}")
+    
     return result
 
 
@@ -62,7 +155,7 @@ def _transcribe_whisperx(
     video_path: Path, device: str, model_size: str,
     language: Optional[str], diarization: bool,
 ) -> Optional[Dict]:
-    """Transcribe using WhisperX."""
+    """Transcribe using whisperx (optional, requires separate install)."""
     import whisperx
     
     log.info(f"[WhisperX] Loading {model_size} on {device}...")
@@ -106,7 +199,7 @@ def _transcribe_whisper(
     video_path: Path, device: str, model_size: str,
     language: Optional[str],
 ) -> Dict:
-    """Transcribe using openai-whisper."""
+    """Transcribe using openai-whisper (optional, requires separate install)."""
     import whisper
     
     log.info(f"[Whisper] Loading {model_size} on {device}...")

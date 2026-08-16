@@ -1,4 +1,4 @@
-# ── Nexus-Clipper V6.4 Backend Dependencies ──
+# ── NexuX V7.0 Backend Dependencies ──
 # Local-First: No cloud AI SDKs required.
 # Only direct dependencies are listed; pip resolves transitive deps.
 

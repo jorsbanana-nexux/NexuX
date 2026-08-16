@@ -84,8 +84,9 @@ def render_clip(
     output_rel = rel_path(output_path)
 
     # ── Video Filter Chain ──
+    # Order: scale → crop → zoompan → ass (subtitles) → color_grade
+    # Subtitles burned AFTER scaling so they render crisp at target resolution
     vf_parts = [
-        f"ass='{ass_rel}'",
         f"scale={w}:{h}:force_original_aspect_ratio=increase",
         f"crop={w}:{h}",
     ]
@@ -94,6 +95,10 @@ def render_clip(
     if auto_zoom and clip_dur > 3:
         zoom_filter = _build_smart_zoom(clip, face_data, w, h)
         vf_parts.append(zoom_filter)
+
+    # Subtitle burn-in (after scale/crop/zoom so text is crisp at final resolution)
+    if ass_rel:
+        vf_parts.append(f"ass='{ass_rel}'")
 
     # Color grading
     grade_filter = COLOR_GRADES.get(color_grade, "")

@@ -213,8 +213,10 @@ export const nexuxApi = {
     ),
   analytics: (jobId: string) =>
     request<Record<string, unknown>>(`/api/analytics/${encodeURIComponent(jobId)}`),
-  downloadUrl: (jobId: string) =>
-    `${API_BASE}/api/download/${encodeURIComponent(jobId)}`,
+  downloadUrl: (jobId: string) => {
+    const base = `${API_BASE}/api/download/${encodeURIComponent(jobId)}`;
+    return API_KEY ? `${base}?key=${encodeURIComponent(API_KEY)}` : base;
+  },
 };
 
 export function buildOutputUrl(outputPath: string | null): string | null {
