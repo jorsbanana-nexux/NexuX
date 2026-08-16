@@ -93,10 +93,11 @@ def generate_candidates(segments: list[dict[str, Any]], max_candidates: int = 12
         return []
     result: dict[str, dict[str, Any]] = {}
     strategies = {
-        "temporal": (1, 18),
         "narrative": (2, 18),
+        "temporal": (1, 18),
         "semantic": (3, 14),
     }
+    priority = {"narrative": 3, "semantic": 2, "temporal": 1}
     for strategy, (step, span) in strategies.items():
         for i in range(0, len(segments), step):
             for j in range(i, min(len(segments), i + span)):
@@ -104,10 +105,17 @@ def generate_candidates(segments: list[dict[str, Any]], max_candidates: int = 12
                 if item is None:
                     continue
                 key = f"{round(item['start'], 3)}:{round(item['end'], 3)}"
-                # Preserve the strongest generation explanation when windows overlap.
                 existing = result.get(key)
-                if existing is None or sum(item["narrative"].values()) > sum(existing["narrative"].values()):
+                if existing is None:
                     result[key] = item
+                else:
+                    item_strength = sum(item["narrative"].values())
+                    existing_strength = sum(existing["narrative"].values())
+                    if item_strength > existing_strength or (
+                        item_strength == existing_strength
+                        and priority.get(strategy, 0) > priority.get(existing.get("generation_strategy", ""), 0)
+                    ):
+                        result[key] = item
                 if len(result) >= max_candidates:
                     break
             if len(result) >= max_candidates:
