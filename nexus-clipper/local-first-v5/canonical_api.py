@@ -15,6 +15,7 @@ from canonical_v6_pipeline import run_generation as run_v6_generation
 from caption_runtime import render_ass_safe
 from sequential_vision import detect_face_subjects, detect_scene_changes, visual_quality
 from server import CompatJob, GenerateRequest
+from ui_contract_validation import validate_generate_request
 from vision_quality import inspect_render, media_stream_summary, tool_state
 
 engine.detect_scene_changes = detect_scene_changes
@@ -84,6 +85,7 @@ async def health() -> dict:
         "caption_boundary_remap": True,
         "editorial_engine": "v6.1",
         "retrieval_strategy": "caption-first-targeted",
+        "ui_contract": "strict",
         **tool_state(),
         "whisper_model": os.getenv("WHISPER_MODEL", "small"),
     }
@@ -103,6 +105,7 @@ async def styles() -> dict:
 
 @app.post("/api/generate", response_model=CompatJob)
 async def generate(req: GenerateRequest, bg: BackgroundTasks) -> CompatJob:
+    validate_generate_request(req)
     job_id = uuid.uuid4().hex
     job = {
         "job_id": job_id,
