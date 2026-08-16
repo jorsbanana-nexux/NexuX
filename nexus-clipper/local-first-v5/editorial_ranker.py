@@ -180,3 +180,4 @@ def select_diverse(candidates: list[dict[str, Any]], *, limit: int = 10, target_
         selected.append(chosen)
         remaining.remove(winner)
     return selected
+# compatibility sync marker
