@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from adaptive_context import adaptive_verify_context
 from analysis_world import AnalysisWorld
 from contextual_reasoning import contextual_score, enrich_world_with_context
 from editorial_intent import normalize_intent
@@ -11,16 +12,22 @@ from narrative_reasoning import enrich_world_with_narrative, narrative_score
 
 
 def select_diverse_from_world_with_intent(world: AnalysisWorld, *, limit: int = 10, target_duration: float = 45.0) -> list[dict[str, Any]]:
-    """Select candidates using intent, narrative, and contextual verification before ranking."""
+    """Select candidates using intent, narrative, adaptive context, and multimodal ranking."""
     world.validate()
     world = enrich_world_with_context(world)
     world = enrich_world_with_narrative(world)
     intent = normalize_intent(world.editorial.get("intent", {}))
     candidates = [dict(item) for item in world.candidates]
     reasoned = reason_candidates(candidates, intent=intent)
+    adaptive_by_id: dict[str, dict[str, Any]] = {}
     for item in reasoned:
         item["narrative_score"] = round(narrative_score(item), 6)
         item["contextual_score"] = round(contextual_score(item), 6)
+        adaptive = adaptive_verify_context(item, world.transcript)
+        adaptive_payload = adaptive.to_dict()
+        adaptive_by_id[str(item.get("id", ""))] = adaptive_payload
+        item["adaptive_context"] = adaptive_payload
+        item["adaptive_context_score"] = round(0.60 * adaptive.semantic_match + 0.40 * adaptive.confidence, 6)
         narrative = item.get("narrative_assessment", {}) or {}
         contextual = item.get("contextual_narrative", {}) or {}
         item["narrative_recommendation"] = narrative.get("recommendation", "REVIEW")
@@ -28,7 +35,15 @@ def select_diverse_from_world_with_intent(world: AnalysisWorld, *, limit: int = 
         item["contextual_recommendation"] = contextual.get("recommendation", "REVIEW")
         item["contextual_reasons"] = list(contextual.get("reasons", []) or [])
 
-    reasoned.sort(key=lambda item: 0.40 * float(item.get("intent_reasoning", {}).get("intent_score", 0.0)) + 0.35 * float(item.get("narrative_score", 0.0)) + 0.25 * float(item.get("contextual_score", 0.0)), reverse=True)
+    reasoned.sort(
+        key=lambda item: (
+            0.32 * float(item.get("intent_reasoning", {}).get("intent_score", 0.0))
+            + 0.28 * float(item.get("narrative_score", 0.0))
+            + 0.18 * float(item.get("contextual_score", 0.0))
+            + 0.22 * float(item.get("adaptive_context_score", 0.0))
+        ),
+        reverse=True,
+    )
     pool_size = max(limit * 4, min(len(reasoned), 40))
     pool = reasoned[:pool_size]
     audio_profiles = dict(world.audio.get("profiles", {}) or {})
@@ -38,5 +53,7 @@ def select_diverse_from_world_with_intent(world: AnalysisWorld, *, limit: int = 
         item["intent"] = intent.to_dict()
         item["narrative_reasoning"] = {"score": float(item.get("narrative_score", 0.0)), "recommendation": item.get("narrative_recommendation", "REVIEW"), "reasons": list(item.get("narrative_reasons", []) or [])}
         contextual = item.get("contextual_narrative", {}) or {}
+        adaptive = item.get("adaptive_context", {}) or {}
         item["contextual_reasoning"] = {"score": float(item.get("contextual_score", 0.0)), "recommendation": contextual.get("recommendation", "REVIEW"), "reasons": list(contextual.get("reasons", []) or []), "promise_payoff_match": float(contextual.get("promise_payoff_match", 0.0)), "premature_cut_risk": float(contextual.get("premature_cut_risk", 0.0))}
+        item["adaptive_context_reasoning"] = {"score": float(item.get("adaptive_context_score", 0.0)), "semantic_match": float(adaptive.get("semantic_match", 0.0)), "uncertainty": float(adaptive.get("uncertainty", 0.0)), "final_radius": float(adaptive.get("final_radius", 0.0)), "expansions": int(adaptive.get("expansions", 0)), "stop_reason": adaptive.get("stop_reason", "unknown"), "confidence": float(adaptive.get("confidence", 0.0))}
     return selected
