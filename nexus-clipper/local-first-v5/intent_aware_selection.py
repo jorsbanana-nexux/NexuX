@@ -3,10 +3,11 @@ from __future__ import annotations
 from typing import Any
 
 from analysis_world import AnalysisWorld
+from contextual_reasoning import contextual_score, enrich_world_with_context
 from editorial_intent import normalize_intent
 from editorial_ranker import select_diverse
 from editorial_reasoning import reason_candidates
-from narrative_reasoning import assess_world_candidates, enrich_world_with_narrative, narrative_score
+from narrative_reasoning import enrich_world_with_narrative, narrative_score
 
 
 def select_diverse_from_world_with_intent(
@@ -15,21 +16,31 @@ def select_diverse_from_world_with_intent(
     limit: int = 10,
     target_duration: float = 45.0,
 ) -> list[dict[str, Any]]:
-    """Select candidates using intent plus explicit narrative judgment before multimodal ranking."""
+    """Select candidates using intent, narrative, and contextual verification before ranking."""
     world.validate()
+    world = enrich_world_with_context(world)
     world = enrich_world_with_narrative(world)
     intent = normalize_intent(world.editorial.get("intent", {}))
     candidates = [dict(item) for item in world.candidates]
     reasoned = reason_candidates(candidates, intent=intent)
     for item in reasoned:
         item["narrative_score"] = round(narrative_score(item), 6)
+        item["contextual_score"] = round(contextual_score(item), 6)
         assessment = item.get("narrative_assessment", {})
+        contextual = item.get("contextual_narrative", {})
         item["narrative_recommendation"] = assessment.get("recommendation", "REVIEW")
         item["narrative_reasons"] = list(assessment.get("reasons", []) or [])
+        item["contextual_recommendation"] = contextual.get("recommendation", "REVIEW")
+        item["contextual_reasons"] = list(contextual.get("reasons", []) or [])
 
-    # Narrative quality is a bounded gate, not a replacement for multimodal scoring.
-    # Keep a sufficiently large pool so narrative heuristics cannot erase stronger alternatives.
-    reasoned.sort(key=lambda item: 0.55 * float(item.get("intent_reasoning", {}).get("intent_score", 0.0)) + 0.45 * float(item.get("narrative_score", 0.0)), reverse=True)
+    reasoned.sort(
+        key=lambda item: (
+            0.40 * float(item.get("intent_reasoning", {}).get("intent_score", 0.0))
+            + 0.35 * float(item.get("narrative_score", 0.0))
+            + 0.25 * float(item.get("contextual_score", 0.0))
+        ),
+        reverse=True,
+    )
     pool_size = max(limit * 4, min(len(reasoned), 40))
     pool = reasoned[:pool_size]
     audio_profiles = dict(world.audio.get("profiles", {}) or {})
@@ -55,5 +66,12 @@ def select_diverse_from_world_with_intent(
             "score": float(item.get("narrative_score", 0.0)),
             "recommendation": item.get("narrative_recommendation", "REVIEW"),
             "reasons": list(item.get("narrative_reasons", []) or []),
+        }
+        item["contextual_reasoning"] = {
+            "score": float(item.get("contextual_score", 0.0)),
+            "recommendation": item.get("contextual_recommendation", "REVIEW"),
+            "reasons": list(item.get("contextual_reasons", []) or []),
+            "promise_payoff_match": float(item.get("contextual_narrative", {}).get("promise_payoff_match", 0.0)),
+            "premature_cut_risk": float(item.get("contextual_narrative", {}).get("premature_cut_risk", 0.0)),
         }
     return selected
