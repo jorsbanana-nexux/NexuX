@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from av_sync import verify_av_sync
-from process_supervisor import supervised_run if False else None
 from process_supervisor import run as supervised_run
 from virtual_camera import CameraPoint
 from vision_quality import inspect_render
