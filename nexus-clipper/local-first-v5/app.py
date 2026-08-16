@@ -1,5 +1,6 @@
-from __future__ import annotations
+from __future__
 
+import copy
 import json
 import os
 import re
@@ -18,15 +19,19 @@ from audio_intelligence import analyze_audio, audio_signals
 from captions import render_ass
 from compositor import CompositionSpec, build_final_filter, run_ffmpeg
 from editorial import to_dict, editorial_metadata
+from editorial_intelligence import generate_candidates as generate_v6_candidates
 from editorial_ranker import select_diverse
 from face_sampling import sample_faces
 from fonts import install_font, list_fonts
 from scoring import rank_score, score_text
+from targeted_retrieval import download_segment, fetch_recon_audio, fetch_youtube_captions, retrieval_summary
 from timeline import build_timeline
 from transcription import transcribe
 from virtual_camera import SubjectObservation, build_camera_path, path_to_dict
 from vision_quality import detect_scene_changes, detect_face_subjects, inspect_render, media_stream_summary, tool_state
-from youtube import download_youtube, probe_youtube
+from youtube import probe_youtube
+from ai_provider import build_env_provider
+from ai_selection import select_with_ai
 
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data"
@@ -39,8 +44,9 @@ for p in (UPLOADS, JOBS, OUTPUTS, FONTS):
 
 MAX_UPLOAD = int(os.getenv("MAX_UPLOAD_MB", "1024")) * 1024 * 1024
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
+AI_EDITORIAL_ENABLED = os.getenv("NEXUX_AI_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on"}
 
-app = FastAPI(title="NexuX Local-First V5", version="5.8.0")
+app = FastAPI(title="NexuX Local-First V6", version="6.3.0")
 
 
 class YouTubeImport(BaseModel):
@@ -81,6 +87,54 @@ def load_job(job_id: str) -> dict[str, Any]:
 
 def transcribe_local(video: Path, language: str | None = None) -> dict[str, Any]:
     return transcribe(video, language=language)
+
+
+def _shift_transcript(transcript: dict[str, Any], offset: float) -> dict[str, Any]:
+    result = copy.deepcopy(transcript)
+    for segment in result.get("segments", []):
+        segment["start"] = max(0.0, float(segment.get("start", 0.0)) - offset)
+        segment["end"] = max(0.0, float(segment.get("end", 0.0)) - offset)
+        for word in segment.get("words", []) or []:
+            word["start"] = max(0.0, float(word.get("start", 0.0)) - offset)
+            word["end"] = max(0.0, float(word.get("end", 0.0)) - offset)
+    result["duration"] = max(0.0, float(result.get("duration", 0.0)) - offset)
+    result["source"] = f"{result.get('source', 'unknown')}:shifted"
+    return result
+
+
+def _shift_candidate(candidate: dict[str, Any], offset: float) -> dict[str, Any]:
+    result = dict(candidate)
+    result["start"] = max(0.0, float(candidate["start"]) - offset)
+    result["end"] = max(result["start"], float(candidate["end"]) - offset)
+    result["duration"] = result["end"] - result["start"]
+    return result
+
+
+def _ensure_youtube_media(job: dict[str, Any], candidate: dict[str, Any]) -> tuple[Path, dict[str, Any], dict[str, Any]]:
+    """Fetch only the selected candidate plus safety handles when full video is absent."""
+    existing = job.get("video_path")
+    if existing and Path(existing).exists():
+        return Path(existing), job, candidate
+    source = job.get("source", {})
+    url = source.get("url")
+    if source.get("type") != "youtube" or not url:
+        raise HTTPException(404, "Source media is unavailable")
+    path, retrieval = download_segment(
+        url,
+        Path(job["job_dir"]),
+        candidate["id"],
+        float(candidate["start"]),
+        float(candidate["end"]),
+        max_height=int(source.get("max_height", 1080)),
+    )
+    local_job = copy.deepcopy(job)
+    offset = float(retrieval["retrieved_start"])
+    local_candidate = _shift_candidate(candidate, offset)
+    local_job["video_path"] = str(path)
+    local_job["transcript"] = _shift_transcript(job["transcript"], offset)
+    local_job["meta"] = ffprobe(path)
+    local_job["retrieval"] = {**job.get("retrieval", {}), "last_segment": retrieval}
+    return path, local_job, local_candidate
 
 
 def build_candidates(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -124,6 +178,15 @@ def rerank_candidates(
             audio_profiles[candidate["id"]] = audio_signals(profile)
             candidate["audio_profile"] = profile.to_dict()
     return select_diverse(candidates, limit=limit, target_duration=target_duration, scene_boundaries=scene_boundaries, audio_profiles=audio_profiles)
+
+
+def apply_ai_selection(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not AI_EDITORIAL_ENABLED:
+        return candidates
+    provider = build_env_provider()
+    if provider is None:
+        return candidates
+    return select_with_ai(candidates, provider=provider)
 
 
 def resolve_candidate(job: dict[str, Any], candidate_id: str | None = None) -> dict[str, Any]:
@@ -178,7 +241,7 @@ def render(video: Path, job: dict[str, Any], clip: dict[str, Any], output: Path,
 
 @app.get("/health")
 def health() -> dict[str, Any]:
-    return {"status": "ok", **tool_state(), "whisper_model": WHISPER_MODEL, "broll": False, "vision_quality": True, "editorial_ranker": True, "audio_intelligence": True}
+    return {"status": "ok", **tool_state(), "whisper_model": WHISPER_MODEL, "broll": False, "vision_quality": True, "editorial_ranker": True, "audio_intelligence": True, "targeted_retrieval": True, "editorial_intelligence": True, "ai_editorial": AI_EDITORIAL_ENABLED and build_env_provider() is not None, "version": "6.3.0"}
 
 
 @app.post("/youtube/preview")
@@ -195,18 +258,34 @@ def youtube_preview(req: YouTubeImport):
 def youtube_import(req: YouTubeImport):
     job_id = uuid.uuid4().hex
     job_dir = UPLOADS / job_id
+    job_dir.mkdir(parents=True, exist_ok=True)
     try:
-        video_path, meta = download_youtube(req.url, job_dir, max_height=req.max_height)
-        media = ffprobe(video_path)
+        meta = probe_youtube(req.url)
+        captions = fetch_youtube_captions(req.url, job_dir)
+        recon_audio = None
+        if captions is None:
+            recon_audio = fetch_recon_audio(req.url, job_dir, job_id)
     except ValueError as exc:
         shutil.rmtree(job_dir, ignore_errors=True)
         raise HTTPException(422, str(exc)) from exc
     except Exception as exc:
         shutil.rmtree(job_dir, ignore_errors=True)
-        raise HTTPException(400, f"YouTube import failed: {exc}") from exc
-    job = {"job_id": job_id, "status": "imported", "source": {"type": "youtube", "url": req.url, "metadata": meta}, "video_path": str(video_path), "meta": media}
+        raise HTTPException(400, f"YouTube reconnaissance failed: {exc}") from exc
+    job = {
+        "job_id": job_id,
+        "job_dir": str(job_dir),
+        "status": "reconnaissance_ready",
+        "source": {"type": "youtube", "url": req.url, "metadata": meta, "max_height": req.max_height},
+        "transcript": captions,
+        "recon_audio_path": str(recon_audio) if recon_audio else None,
+        "retrieval": {
+            "strategy": "caption_first_targeted_media",
+            "full_video_downloaded": False,
+            "caption_first": captions is not None,
+        },
+    }
     save_job(job_id, job)
-    return job
+    return {**job, "retrieval": retrieval_summary(job)}
 
 
 @app.post("/upload")
@@ -238,15 +317,29 @@ async def upload(file: UploadFile = File(...)):
 @app.post("/analyze/{job_id}")
 def analyze(job_id: str):
     job = load_job(job_id)
-    transcript = transcribe_local(Path(job["video_path"]))
-    candidates = build_candidates(transcript["segments"])
+    if job.get("transcript"):
+        transcript = job["transcript"]
+    elif job.get("recon_audio_path"):
+        transcript = transcribe_local(Path(job["recon_audio_path"]), language=None)
+        job["transcript"] = transcript
+    elif job.get("video_path"):
+        transcript = transcribe_local(Path(job["video_path"]), language=None)
+    else:
+        raise HTTPException(422, "No reconnaissance transcript or local media available")
+
+    candidates = generate_v6_candidates(transcript["segments"])
     if not candidates:
-        raise HTTPException(422, "No 20-60s standalone candidates found")
-    source = Path(job["video_path"])
-    duration = min(float(job.get("meta", {}).get("format", {}).get("duration") or 60.0), 600.0)
-    scenes = detect_scene_changes(source, 0.0, duration)
+        raise HTTPException(422, "No editorial candidates found")
+
+    source = Path(job["video_path"]) if job.get("video_path") else None
+    scenes: list[dict[str, Any]] = []
+    subjects: list[dict[str, Any]] = []
+    if source and source.exists():
+        duration = min(float(job.get("meta", {}).get("format", {}).get("duration") or 60.0), 600.0)
+        scenes = detect_scene_changes(source, 0.0, duration)
+        subjects = detect_face_subjects(source, 0.0, duration)
     ranked = rerank_candidates(candidates, scenes, target_duration=45.0, limit=10, video=source, transcript=transcript)
-    subjects = detect_face_subjects(source, 0.0, duration)
+    ranked = apply_ai_selection(ranked)
     bundle = build_analysis_bundle(transcript, ranked, scenes, subjects)
     job.update({
         "status": "analyzed",
@@ -255,6 +348,7 @@ def analyze(job_id: str):
         "selected_candidate_id": ranked[0]["id"],
         "analysis_bundle": bundle.to_dict(),
         "vision": {"scene_count": len(scenes), "scenes": scenes, "subject_samples": subjects},
+        "retrieval": {**job.get("retrieval", {}), "candidate_count": len(candidates), "selected_count": len(ranked), "generation": "v6.1_multi_strategy", "ai_editorial": AI_EDITORIAL_ENABLED and build_env_provider() is not None},
     })
     save_job(job_id, job)
     return job
@@ -264,21 +358,26 @@ def analyze(job_id: str):
 def timeline_preview(job_id: str, candidate_id: str):
     job = load_job(job_id); candidate = resolve_candidate(job, candidate_id)
     try:
-        timeline = build_timeline(Path(job["video_path"]), job["transcript"], candidate)
+        source, local_job, local_candidate = _ensure_youtube_media(job, candidate)
+        timeline = build_timeline(source, local_job["transcript"], local_candidate)
     except FileNotFoundError as exc:
         raise HTTPException(404, f"Video not found: {exc}") from exc
     except Exception as exc:
         raise HTTPException(500, f"Timeline analysis failed: {exc}") from exc
-    return {"job_id": job_id, "candidate_id": candidate_id, "timeline": timeline.to_dict()}
+    return {"job_id": job_id, "candidate_id": candidate_id, "timeline": timeline.to_dict(), "retrieval": local_job.get("retrieval")}
 
 
 @app.get("/vision/{job_id}")
 def vision_preview(job_id: str):
     job = load_job(job_id)
-    source = Path(job["video_path"])
-    media = media_stream_summary(source)
-    duration = media["duration"]
-    return {"job_id": job_id, "media": media, "scenes": detect_scene_changes(source, 0.0, duration), "subjects": detect_face_subjects(source, 0.0, duration)}
+    candidate = resolve_candidate(job)
+    try:
+        source, local_job, local_candidate = _ensure_youtube_media(job, candidate)
+        media = media_stream_summary(source)
+        duration = media["duration"]
+        return {"job_id": job_id, "media": media, "scenes": detect_scene_changes(source, 0.0, duration), "subjects": detect_face_subjects(source, 0.0, duration), "retrieval": local_job.get("retrieval")}
+    except Exception as exc:
+        raise HTTPException(500, f"Vision analysis failed: {exc}") from exc
 
 
 @app.get("/fonts")
@@ -312,14 +411,17 @@ def get_job(job_id: str):
 
 @app.post("/render/{job_id}")
 def render_job(job_id: str, options: RenderOptions | None = None):
-    job = load_job(job_id); candidate = resolve_candidate(job); options = options or RenderOptions()
+    job = load_job(job_id)
+    candidate = resolve_candidate(job)
+    options = options or RenderOptions()
     try:
-        timeline = build_timeline(Path(job["video_path"]), job["transcript"], candidate)
+        source, local_job, local_candidate = _ensure_youtube_media(job, candidate)
+        timeline = build_timeline(source, local_job["transcript"], local_candidate)
         output = OUTPUTS / f"{job_id}_{candidate['id']}.mp4"
-        render_info = render(Path(job["video_path"]), job, candidate, output, timeline, options.preset, options.font_name, options.emoji_enabled, options.camera_enabled)
+        render_info = render(source, local_job, local_candidate, output, timeline, options.preset, options.font_name, options.emoji_enabled, options.camera_enabled)
     except Exception as exc:
         raise HTTPException(500, f"Render failed: {exc}") from exc
-    job.update({"status": "completed", "output": str(output), "selected_timeline": timeline.to_dict(), "render": {**options.model_dump(), **render_info}})
+    job.update({"status": "completed", "output": str(output), "selected_timeline": timeline.to_dict(), "render": {**options.model_dump(), **render_info}, "retrieval": local_job.get("retrieval", job.get("retrieval", {}))})
     save_job(job_id, job)
     return job
 
