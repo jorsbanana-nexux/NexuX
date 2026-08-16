@@ -10,6 +10,7 @@ from fastapi import BackgroundTasks, HTTPException
 from analysis_world_service import build_and_persist_world, load_world, world_path
 from canonical_v6_pipeline import run_generation
 from contracts import CompatJob, GenerateRequest
+from editorial_intent import EditorialIntent
 from publishing_analytics import record_analytics_event
 from runtime_adapter import CanonicalRuntime, default_runtime
 from ui_contract import canonicalize_fronted_values
@@ -33,7 +34,6 @@ class CanonicalApplicationService:
                 job["analysis_world"] = {"schema_version": world.schema_version, "path": str(path), "modalities": sorted(world.modalities)}
                 self.runtime.set_job(job, analysis_world=job["analysis_world"])
             except (OSError, ValueError, TypeError):
-                # World synchronization must not corrupt an otherwise valid completed job.
                 pass
         return job
 
@@ -70,7 +70,11 @@ class CanonicalApplicationService:
             scenes=vision.get("scenes") or [],
             subjects=vision.get("subject_samples") or [],
             candidates=candidates,
-            editorial=job.get("editorial_decision") or {},
+            editorial={
+                "intent": job.get("editorial_intent") or {},
+                "decision": job.get("editorial_decision") or {},
+                "stage": "synchronized",
+            },
             provenance=provenance,
             confidence={"world": 1.0},
         )
@@ -87,6 +91,17 @@ class CanonicalApplicationService:
             request.subtitle_style, request.animation
         )
         validate_generate_request(request)
+        intent = EditorialIntent(
+            objective=request.editorial_objective,
+            audience=request.audience,
+            platform=(request.publish_platforms or ["generic"])[0],
+            tone=request.editorial_tone,
+            style=request.editorial_style,
+            target_duration=float(request.target_duration),
+            limit=int(request.clip_count),
+            required_topics=tuple(request.required_topics),
+            excluded_topics=tuple(request.excluded_topics),
+        )
         job_id = uuid.uuid4().hex
         job = {
             "job_id": job_id,
@@ -100,6 +115,7 @@ class CanonicalApplicationService:
             "render_meta": [],
             "analysis_bundle": None,
             "analysis_world": None,
+            "editorial_intent": intent.to_dict(),
             "revision": 0,
             "critic": None,
             "publish_plan": None,
@@ -115,6 +131,8 @@ class CanonicalApplicationService:
                 "clip_count": request.clip_count,
                 "aspect_ratio": request.aspect_ratio,
                 "genre": request.genre,
+                "editorial_objective": request.editorial_objective,
+                "audience": request.audience,
                 "prompt": bool(request.clip_prompt),
                 "voice_over": request.voice_over,
             },

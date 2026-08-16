@@ -3,6 +3,8 @@ from __future__ import annotations
 from analysis_world import build_analysis_world
 from editorial_ranker import select_diverse_from_world
 from editorial_world import build_editorial_evidence, ranking_context
+from editorial_intent import EditorialIntent
+from editorial_reasoning import reason_about_candidate, reason_candidates
 
 
 def _world():
@@ -47,3 +49,67 @@ def test_final_selection_records_analysis_world_lineage() -> None:
     assert selected[0]["id"] == "clip-a"
     assert selected[0]["analysis_world"]["job_id"] == "job-2b"
     assert selected[0]["analysis_world"]["schema_version"] == "2.0"
+
+
+def _candidate(cid: str, text: str, start: float, payoff: float = 0.8) -> dict:
+    return {
+        "id": cid,
+        "start": start,
+        "end": start + 35,
+        "duration": 35,
+        "text": text,
+        "editorial": {"semantic": {
+            "payoff_strength": payoff,
+            "context_completeness": 0.85,
+            "standalone_quality": 0.85,
+            "specificity": 0.8,
+            "novelty_proxy": 0.7,
+            "topic_coherence": 0.9,
+        }},
+        "scores": {"hook": 80},
+        "narrative": {"tension": 0.7, "payoff": payoff, "revelation": 0.6},
+    }
+
+
+def test_intent_reasoning_prefers_required_topic():
+    intent = EditorialIntent(objective="educational", required_topics=("python",), target_duration=35)
+    wanted = _candidate("wanted", "Python solved the deployment problem", 0)
+    other = _candidate("other", "The office was busy today", 40)
+    ranked = reason_candidates([other, wanted], intent=intent)
+    assert ranked[0]["id"] == "wanted"
+    assert ranked[0]["intent_reasoning"]["required_topic_match"] > 0
+
+
+def test_intent_reasoning_penalizes_excluded_topic():
+    intent = EditorialIntent(objective="authority", excluded_topics=("politics",))
+    clean = _candidate("clean", "We reduced latency by forty percent", 0)
+    excluded = _candidate("excluded", "Politics changed the market", 40)
+    clean_score = reason_about_candidate(clean, intent=intent)["intent_score"]
+    excluded_score = reason_about_candidate(excluded, intent=intent)["intent_score"]
+    assert clean_score > excluded_score
+
+
+def test_world_selection_persists_explicit_intent_lineage():
+    candidates = [
+        _candidate("tech", "Python makes this workflow faster", 0),
+        _candidate("general", "The meeting was interesting", 50),
+    ]
+    world = build_analysis_world(
+        job_id="job-intent",
+        transcript={"segments": []},
+        candidates=candidates,
+        editorial={
+            "intent": {
+                "objective": "educational",
+                "required_topics": ["Python"],
+                "target_duration": 35,
+                "limit": 1,
+            }
+        },
+        confidence={"world": 0.9},
+    )
+    selected = select_diverse_from_world(world, limit=1, target_duration=35)
+    assert selected
+    assert selected[0]["id"] == "tech"
+    assert selected[0]["editorial_intent"]["required_topics"] == ["Python"]
+    assert selected[0]["editorial_reasoning"]["required_topic_match"] > 0

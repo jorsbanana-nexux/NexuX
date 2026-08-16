@@ -32,6 +32,12 @@ class GenerateRequest(BaseModel):
     voice_over_text: str | None = Field(default=None, max_length=1200)
     voice_style: str = Field(default="male_narrator", max_length=40)
     publish_platforms: list[str] | None = None
+    editorial_objective: str = Field(default="find_best_clips", max_length=40)
+    audience: str = Field(default="general", max_length=80)
+    editorial_tone: str = Field(default="natural", max_length=40)
+    editorial_style: str = Field(default="balanced", max_length=40)
+    required_topics: list[str] = Field(default_factory=list, max_length=20)
+    excluded_topics: list[str] = Field(default_factory=list, max_length=20)
 
 
 class CompatJob(BaseModel):
@@ -45,3 +51,4 @@ class CompatJob(BaseModel):
     broll: bool = False
     render_meta: list[dict[str, Any]] = Field(default_factory=list)
     analysis_bundle: dict[str, Any] | None = None
+    editorial_intent: dict[str, Any] | None = None
