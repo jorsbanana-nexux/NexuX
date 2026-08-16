@@ -1,4 +1,10 @@
-export type NexuXStatus = 'queued' | 'processing' | 'completed' | 'failed' | 'cancelled' | 'interrupted';
+export type NexuXStatus =
+  | 'queued'
+  | 'processing'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'interrupted';
 
 export interface GenerateRequest {
   youtube_url: string;
@@ -34,7 +40,46 @@ export interface NexuXJob {
   analysis_bundle: Record<string, unknown> | null;
 }
 
-const API_BASE = String(import.meta.env.VITE_NEXUX_API_URL ?? 'http://127.0.0.1:8000').replace(/\/$/, '');
+export interface NexuXHealth {
+  status: string;
+  canonical_runtime?: boolean;
+  canonical_engine?: string;
+  broll?: false;
+  [key: string]: unknown;
+}
+
+export interface NexuXStyles {
+  subtitle_styles: Array<{
+    id: string;
+    name: string;
+    preview?: Record<string, unknown>;
+  }>;
+  aspect_ratios: string[];
+  color_grades?: string[];
+  video_codecs?: string[];
+  audio_codecs?: string[];
+  broll?: false;
+}
+
+export interface NexuXVision {
+  job_id: string;
+  analysis_bundle?: Record<string, unknown> | null;
+  media?: Record<string, unknown>;
+  scenes?: unknown[];
+  subjects?: unknown[];
+  quality?: Record<string, unknown>;
+  source?: string;
+  [key: string]: unknown;
+}
+
+export interface NexuXRenderQA {
+  verdict?: string;
+  [key: string]: unknown;
+}
+
+const API_BASE = String(
+  import.meta.env.VITE_NEXUX_API_URL ?? 'http://127.0.0.1:8000',
+).replace(/\/$/, '');
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
@@ -45,30 +90,51 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...(init?.headers ?? {}),
     },
   });
+
   if (!response.ok) {
     let detail = response.statusText || `HTTP ${response.status}`;
     try {
       const body = await response.json();
       detail = body?.detail || detail;
     } catch {
-      // Keep the HTTP status when the body is not JSON.
+      // Preserve the HTTP status when the response is not JSON.
     }
     throw new Error(detail);
   }
+
   return response.json() as Promise<T>;
 }
 
 export const nexuxApi = {
   baseUrl: API_BASE,
-  health: () => request<Record<string, unknown>>('/api/health'),
-  styles: () => request<Record<string, unknown>>('/api/styles'),
-  generate: (payload: GenerateRequest) => request<NexuXJob>('/api/generate', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  }),
-  job: (jobId: string) => request<NexuXJob>(`/api/job/${encodeURIComponent(jobId)}`),
-  cancel: (jobId: string) => request<{ job_id: string; status: string }>(`/api/job/${encodeURIComponent(jobId)}`, {
-    method: 'DELETE',
-  }),
-  downloadUrl: (jobId: string) => `${API_BASE}/api/download/${encodeURIComponent(jobId)}`,
+  health: () => request<NexuXHealth>('/api/health'),
+  styles: () => request<NexuXStyles>('/api/styles'),
+  generate: (payload: GenerateRequest) =>
+    request<NexuXJob>('/api/generate', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  job: (jobId: string) =>
+    request<NexuXJob>(`/api/job/${encodeURIComponent(jobId)}`),
+  jobs: (status?: NexuXStatus) =>
+    request<{ total: number; jobs: NexuXJob[] }>(
+      `/api/jobs${status ? `?status=${encodeURIComponent(status)}` : ''}`,
+    ),
+  cancel: (jobId: string) =>
+    request<{ job_id: string; status: string }>(
+      `/api/job/${encodeURIComponent(jobId)}`,
+      { method: 'DELETE' },
+    ),
+  vision: (jobId: string) =>
+    request<NexuXVision>(`/api/vision/${encodeURIComponent(jobId)}`),
+  renderQA: (jobId: string) =>
+    request<NexuXRenderQA>(`/api/render-qa/${encodeURIComponent(jobId)}`),
+  downloadUrl: (jobId: string) =>
+    `${API_BASE}/api/download/${encodeURIComponent(jobId)}`,
 };
+
+export function buildOutputUrl(outputPath: string | null): string | null {
+  if (!outputPath) return null;
+  if (/^https?:\/\//i.test(outputPath)) return outputPath;
+  return `${API_BASE}${outputPath.startsWith('/') ? '' : '/'}${outputPath}`;
+}
