@@ -3,24 +3,33 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { CustomCursor } from './components/CustomCursor';
 import { CosmicAtmosphere } from './components/CosmicAtmosphere';
 import { Rocket4KVideoBackground, SPACE_4K_VARIANTS } from './components/Rocket4KVideoBackground';
 import { Navbar } from './components/Navbar';
 import { HeroSection } from './components/HeroSection';
-import { SpaceshipConsole } from './components/SpaceshipConsole';
-import { SubtitleEngineStudio } from './components/SubtitleEngineStudio';
-import { ShowcaseSection } from './components/ShowcaseSection';
-import { TryModal } from './components/TryModal';
-import { VideoModal } from './components/VideoModal';
 import { MagneticElement } from './components/MagneticElement';
-import { CosmicSpaceDock } from './components/CosmicSpaceDock';
 import { CosmicThemeMode } from './components/AudioCosmicControls';
 import { WarpSpeedTransition } from './components/WarpSpeedTransition';
 import { Cpu } from 'lucide-react';
 import { sound } from './utils/soundEffects';
 import { initLenis, destroyLenis } from './utils/lenis';
+
+// Lazy-loaded below-the-fold components (reduces initial bundle)
+const SpaceshipConsole = lazy(() => import('./components/SpaceshipConsole').then(m => ({ default: m.SpaceshipConsole })));
+const SubtitleEngineStudio = lazy(() => import('./components/SubtitleEngineStudio').then(m => ({ default: m.SubtitleEngineStudio })));
+const ShowcaseSection = lazy(() => import('./components/ShowcaseSection').then(m => ({ default: m.ShowcaseSection })));
+const TryModal = lazy(() => import('./components/TryModal').then(m => ({ default: m.TryModal })));
+const VideoModal = lazy(() => import('./components/VideoModal').then(m => ({ default: m.VideoModal })));
+const CosmicSpaceDock = lazy(() => import('./components/CosmicSpaceDock').then(m => ({ default: m.CosmicSpaceDock })));
+
+// Lightweight fallback for lazy components
+const LazyFallback = () => (
+  <div className="min-h-[200px] flex items-center justify-center">
+    <div className="w-8 h-8 border-2 border-cyan-400/30 border-t-cyan-400 rounded-full animate-spin" />
+  </div>
+);
 
 export default function App() {
   const [isTryModalOpen, setIsTryModalOpen] = useState(false);
@@ -90,24 +99,32 @@ export default function App() {
       />
 
       {/* 6. Spaceship AI Cockpit Console with Clean Single Ingest Area (No cluttered 3-video duplicates) */}
-      <SpaceshipConsole />
+      <Suspense fallback={<LazyFallback />}>
+        <SpaceshipConsole />
+      </Suspense>
 
       {/* 7. Subtitle Engine Studio with Word-by-Word, Line-by-Line, Bounce-Zoom & Hormozi, Minimal, Gamer Presets */}
-      <SubtitleEngineStudio />
+      <Suspense fallback={<LazyFallback />}>
+        <SubtitleEngineStudio />
+      </Suspense>
 
       {/* 8. High-Performance Architecture Telemetry with 3D Tilt & Orbital Radar Diagnostics */}
-      <ShowcaseSection />
+      <Suspense fallback={<LazyFallback />}>
+        <ShowcaseSection />
+      </Suspense>
 
       {/* 9. Minimalist, Zero-Clutter Unified Floating Space Dock at Bottom Right */}
-      <CosmicSpaceDock
-        currentTrackIndex={spaceTrackIndex}
-        onTrackSelect={(idx) => setSpaceTrackIndex(idx)}
-        isAutoCycle={isAutoCycle}
-        onToggleAutoCycle={() => setIsAutoCycle(!isAutoCycle)}
-        currentTheme={cosmicTheme}
-        onThemeChange={(newTheme) => setCosmicTheme(newTheme)}
-        onTriggerWarp={(label) => triggerWarp(label)}
-      />
+      <Suspense fallback={<LazyFallback />}>
+        <CosmicSpaceDock
+          currentTrackIndex={spaceTrackIndex}
+          onTrackSelect={(idx) => setSpaceTrackIndex(idx)}
+          isAutoCycle={isAutoCycle}
+          onToggleAutoCycle={() => setIsAutoCycle(!isAutoCycle)}
+          currentTheme={cosmicTheme}
+          onThemeChange={(newTheme) => setCosmicTheme(newTheme)}
+          onTriggerWarp={(label) => triggerWarp(label)}
+        />
+      </Suspense>
 
       {/* 10. Warp Speed Hyperspace Tunnel Transition */}
       <WarpSpeedTransition
@@ -183,15 +200,19 @@ export default function App() {
       </footer>
 
       {/* Interactive Modals */}
-      <TryModal
-        isOpen={isTryModalOpen}
-        onClose={() => setIsTryModalOpen(false)}
-      />
+      <Suspense fallback={null}>
+        <TryModal
+          isOpen={isTryModalOpen}
+          onClose={() => setIsTryModalOpen(false)}
+        />
+      </Suspense>
 
-      <VideoModal
-        isOpen={isVideoModalOpen}
-        onClose={() => setIsVideoModalOpen(false)}
-      />
+      <Suspense fallback={null}>
+        <VideoModal
+          isOpen={isVideoModalOpen}
+          onClose={() => setIsVideoModalOpen(false)}
+        />
+      </Suspense>
     </div>
   );
 }

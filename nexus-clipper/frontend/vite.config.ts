@@ -15,5 +15,17 @@ export default defineConfig(() => {
       port: 3000,
       host: '0.0.0.0',
     },
+    build: {
+      chunkSizeWarningLimit: 700,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'react-vendor': ['react', 'react-dom'],
+            'animation-vendor': ['motion', 'gsap', 'lenis'],
+            'icons': ['lucide-react'],
+          },
+        },
+      },
+    },
   };
 });
