@@ -1,45 +1,40 @@
-# ── NexuX V7.0 Backend Dependencies ──
+# ── NexuX V8.0 Backend Dependencies ──
 # Local-First: No cloud AI SDKs required.
-# Only direct dependencies are listed; pip resolves transitive deps.
+# Smart architecture: auto-captions + partial download = minimal deps needed.
 
-# ── API Server ──
+# ── CORE (Required — pipeline runs with just these) ──
 fastapi>=0.141,<1.0
 uvicorn[standard]>=0.52,<1.0
-websockets>=16.0
 python-multipart>=0.0.30
 pydantic>=2.13,<3.0
 pydantic-settings>=2.15,<3.0
-
-# ── Video Download ──
 yt-dlp>=2026.7
+httpx>=0.28
 
-# ── FFmpeg ──
-ffmpeg-python>=0.2
-
-# ── Local Transcription (Whisper) ──
+# ── TRANSCRIPTION (Required for whisper fallback) ──
+# If YouTube auto-captions available, these are NOT used (fast path)
 faster-whisper>=1.2
 ctranslate2>=4.8
 
-# ── Vision / Face Detection ──
-opencv-python-headless>=5.0
+# ── VISION / FACE DETECTION ──
+opencv-python-headless>=4.10,<5.0
 mediapipe>=1.0
-numpy>=2.0
-scipy>=1.18
-scikit-image>=0.26
-pillow>=12.0
+numpy>=1.26,<3.0
 
-# ── ML Backend ──
-torch>=2.13
-torchaudio>=2.11
+# ── ML BACKEND (Required by faster-whisper) ──
+torch>=2.5
 
-# ── Video Processing ──
-moviepy>=2.2
+# ── SYSTEM MONITORING ──
+psutil>=5.9
 
-# ── HTTP Client (webhooks) ──
-httpx>=0.28
+# ── OPTIONAL: Voice Cloning (agent_07) ──
+edge-tts>=6.1
 
-# ── Config ──
-python-dotenv>=1.2
+# ── OPTIONAL: Advanced diarization (whisper fallback) ──
+# whisperx is imported lazily — install only if needed:
+# pip install whisperx
+# openai-whisper is imported lazily — install only if needed:
+# pip install openai
 
-# ── Testing ──
-pytest>=9.0
+# ── TESTING ──
+pytest>=8.0

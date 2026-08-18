@@ -17,6 +17,7 @@ import logging
 from .constants import (
     OUTPUT_DIR, ASPECT_RATIOS, VIDEO_CODECS, AUDIO_CODECS, COLOR_GRADES,
 )
+from .creative_brain import get_transition_filter, get_zoom_filter, ZOOM_STYLES
 from .utils import (
     to_unix, rel_path, fmt_time, retry, run_ffmpeg,
 )
@@ -41,6 +42,7 @@ def render_clip(
     auto_zoom: bool = True,
     video_codec: str = "h264",
     audio_codec: str = "aac",
+    creative_config: Optional[Dict] = None,
 ) -> Path:
     """Render a single clip with full effects.
     
@@ -91,8 +93,13 @@ def render_clip(
         f"crop={w}:{h}",
     ]
 
-    # Smart zoom — V7.0: uses face tracking data instead of random
-    if auto_zoom and clip_dur > 3:
+    # Smart zoom — V8.0: uses creative brain zoom style if available
+    if creative_config and creative_config.get("zoom_style"):
+        zoom_style = creative_config.get("zoom_style", "subtle")
+        if auto_zoom and clip_dur > 3:
+            zoom_filter = get_zoom_filter(zoom_style, clip_dur, w, h)
+            vf_parts.append(zoom_filter)
+    elif auto_zoom and clip_dur > 3:
         zoom_filter = _build_smart_zoom(clip, face_data, w, h)
         vf_parts.append(zoom_filter)
 
@@ -106,6 +113,16 @@ def render_clip(
         vf_parts.append(grade_filter)
 
     vf = ",".join(vf_parts)
+
+    # ── Transition filter (V8.0: creative brain) ──
+    if creative_config and creative_config.get("transition"):
+        transition_filter = get_transition_filter(
+            creative_config.get("transition", "hard_cut"),
+            clip_dur, w, h
+        )
+        if transition_filter:
+            vf_parts.append(transition_filter)
+            vf = ",".join(vf_parts)
 
     # ── Build FFmpeg Command ──
     cmd = [

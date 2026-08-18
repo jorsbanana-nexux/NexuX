@@ -46,6 +46,7 @@ export interface GenerateRequest {
   voice_over_text?: string | null;
   voice_style?: string;
   publish_platforms?: string[] | null;
+  manual_ranges?: Array<{ start: number; end: number }> | null;
 }
 
 export interface RenderMeta {

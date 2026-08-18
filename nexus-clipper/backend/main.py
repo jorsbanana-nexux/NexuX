@@ -32,6 +32,7 @@ from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from pydantic import BaseModel, Field
 from urllib.parse import quote
 
+from engine.self_healer import check_system_health, auto_cleanup_old_jobs
 from engine import (
     run_pipeline, get_video_info, search_youtube,
     STYLE_PRESETS, ASPECT_RATIOS, COLOR_GRADES,
@@ -250,6 +251,7 @@ class GenerateRequest(BaseModel):
     voice_over_text: Optional[str] = None
     voice_style: Optional[str] = None
     publish_platforms: Optional[List[str]] = None
+    manual_ranges: Optional[List[Dict[str, float]]] = None
 
 class JobResponse(BaseModel):
     job_id: str
@@ -525,6 +527,7 @@ async def generate(req: GenerateRequest, bg: BackgroundTasks, request: Request, 
         "voice_over_text": req.voice_over_text,
         "voice_style": req.voice_style,
         "publish_platforms": req.publish_platforms,
+        "manual_ranges": req.manual_ranges,
     }
 
     bg.add_task(_process_job, jid, req.youtube_url, style_kwargs)

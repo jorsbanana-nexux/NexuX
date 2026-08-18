@@ -112,6 +112,10 @@ export const SpaceshipConsole: React.FC<SpaceshipConsoleProps> = () => {
   const [job, setJob] = useState<NexuXJob | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [generatedClips, setGeneratedClips] = useState<GeneratedClip[]>([]);
+  const [manualRanges, setManualRanges] = useState<Array<{ start: number; end: number }>>([]);
+  const [showManualRanges, setShowManualRanges] = useState(false);
+  const [rangeStart, setRangeStart] = useState('');
+  const [rangeEnd, setRangeEnd] = useState('');
   const stopPollingRef = useRef<(() => void) | null>(null);
 
   // Velocity blur telemetry state
@@ -187,25 +191,35 @@ export const SpaceshipConsole: React.FC<SpaceshipConsoleProps> = () => {
     setJob(null);
 
     try {
+      // V8.0: Use subtitleStore settings (from SubtitleEngineStudio) — NOT hardcoded
+      const fontSizeMap: Record<string, number> = { compact: 32, normal: 48, large: 60, huge: 72 };
+      const fontMap: Record<string, string> = { sans: 'Arial', display: 'Impact', mono: 'Courier New', serif: 'Georgia' };
+      const animMap: Record<string, string> = {
+        'word-by-word': 'pop', 'line-by-line': 'fade', 'bounce-zoom': 'bounce',
+        'typewriter-glitch': 'typewriter', 'kinetic-slide': 'slide', 'pulse-glow': 'glow',
+        'flip-rotate': 'flip', 'fade-drift': 'drift',
+      };
+
       const payload: GenerateRequest = {
         youtube_url: url,
         target_duration: durationMap[targetDuration] || 45,
         aspect_ratio: '9:16',
-        subtitle_style: captionThemeMap[captionTheme] || 'hormozi',
-        font: 'Arial',
-        font_size: 48,
+        subtitle_style: activeSubtitleConfig.visualPreset || 'hormozi',
+        font: fontMap[activeSubtitleConfig.fontFamily] || 'Arial',
+        font_size: fontSizeMap[activeSubtitleConfig.fontSize] || 48,
         primary_color: '#FFFFFF',
-        highlight_color: '#FFD700',
+        highlight_color: activeSubtitleConfig.highlightColor || '#FFD700',
         stroke_color: '#000000',
         stroke_width: 3,
-        position: 'center',
-        animation: 'pop',
+        position: activeSubtitleConfig.position || 'center',
+        animation: animMap[activeSubtitleConfig.animationStyle] || 'pop',
         auto_zoom: autoReframe,
         face_tracking: autoReframe,
         clip_count: clipCount,
         language: null,
         normalize_audio: true,
-        emoji_enabled: false,
+        emoji_enabled: activeSubtitleConfig.showEmojis || false,
+        manual_ranges: manualRanges.length > 0 ? manualRanges : null,
       };
 
       const created = await nexuxApi.generate(payload);
@@ -266,6 +280,22 @@ export const SpaceshipConsole: React.FC<SpaceshipConsoleProps> = () => {
     setJob(null);
     setErrorMsg('');
     setGeneratedClips([]);
+    setManualRanges([]);
+    setRangeStart('');
+    setRangeEnd('');
+  };
+
+  const handleAddRange = () => {
+    const start = parseFloat(rangeStart);
+    const end = parseFloat(rangeEnd);
+    if (isNaN(start) || isNaN(end) || start >= end || start < 0) return;
+    setManualRanges([...manualRanges, { start, end }]);
+    setRangeStart('');
+    setRangeEnd('');
+  };
+
+  const handleRemoveRange = (idx: number) => {
+    setManualRanges(manualRanges.filter((_, i) => i !== idx));
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -548,6 +578,67 @@ export const SpaceshipConsole: React.FC<SpaceshipConsoleProps> = () => {
                   </button>
                 </div>
 
+                {/* V8.0: Manual Time Range Selector */}
+                <div className="rounded-xl bg-white/5 border border-white/10 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Clock className="w-4 h-4 text-cyan-400" />
+                      <div>
+                        <p className="text-sm font-mono text-white">Manual Moment Selection</p>
+                        <p className="text-[11px] text-stone-400 font-mono">Select specific time ranges instead of AI auto-selection</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setShowManualRanges(!showManualRanges)}
+                      className={`relative w-12 h-6 rounded-full transition-colors ${showManualRanges ? 'bg-cyan-400' : 'bg-stone-700'}`}
+                    >
+                      <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform ${showManualRanges ? 'translate-x-6' : 'translate-x-0.5'}`} />
+                    </button>
+                  </div>
+
+                  {showManualRanges && (
+                    <div className="space-y-2 pt-2 border-t border-white/10">
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={rangeStart}
+                          onChange={(e) => setRangeStart(e.target.value)}
+                          placeholder="Start (e.g. 1:30 or 90)"
+                          className="flex-1 bg-black/60 border border-white/15 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-400"
+                        />
+                        <input
+                          type="text"
+                          value={rangeEnd}
+                          onChange={(e) => setRangeEnd(e.target.value)}
+                          placeholder="End (e.g. 2:00 or 120)"
+                          className="flex-1 bg-black/60 border border-white/15 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-cyan-400"
+                        />
+                        <button
+                          onClick={handleAddRange}
+                          className="px-3 py-2 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 border border-cyan-500/30 text-xs font-mono"
+                        >
+                          + Add
+                        </button>
+                      </div>
+                      {manualRanges.length > 0 && (
+                        <div className="space-y-1">
+                          {manualRanges.map((r, i) => (
+                            <div key={i} className="flex items-center justify-between bg-black/40 rounded-lg px-3 py-1.5 text-xs font-mono">
+                              <span className="text-cyan-300">
+                                Clip {i+1}: {Math.floor(r.start/60)}:{String(Math.floor(r.start%60)).padStart(2,'0')} → {Math.floor(r.end/60)}:{String(Math.floor(r.end%60)).padStart(2,'0')} ({Math.round(r.end-r.start)}s)
+                              </span>
+                              <button onClick={() => handleRemoveRange(i)} className="text-red-400 hover:text-red-300">✕</button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {manualRanges.length === 0 && (
+                        <p className="text-[10px] text-stone-500 font-mono">No ranges added — AI will auto-select moments</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
                 {/* Generate Button */}
                 <button
                   onClick={handleStartGeneration}
@@ -576,6 +667,9 @@ export const SpaceshipConsole: React.FC<SpaceshipConsoleProps> = () => {
                   progress={progress}
                   stageLabel={stageLabel}
                   onCancel={handleCancelJob}
+                  elapsedSeconds={(job as any)?._stages?.[stageLabel]?.elapsed_seconds}
+                  etaSeconds={(job as any)?._stages?.[stageLabel]?.eta_seconds}
+                  fastPath={(job as any)?._stages?.transcribing?.fast_path || (job as any)?._stages?.transcribing?.source === 'youtube_auto'}
                 />
               </motion.div>
             )}

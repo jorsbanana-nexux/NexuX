@@ -1,32 +1,47 @@
 import React from 'react';
 import { motion } from 'motion/react';
-import { Activity, X } from 'lucide-react';
-import { sound } from '../utils/soundEffects';
+import { Activity, X, Clock } from 'lucide-react';
 
 interface LoadingStateProps {
   progress: number;
   stageLabel: string;
   onCancel?: () => void;
+  etaSeconds?: number;
+  elapsedSeconds?: number;
+  fastPath?: boolean;
 }
 
-export const ProcessingLoadingState: React.FC<LoadingStateProps> = ({ progress, stageLabel, onCancel }) => {
-  // Display messages mapped to canonical pipeline stages
+export const ProcessingLoadingState: React.FC<LoadingStateProps> = ({
+  progress,
+  stageLabel,
+  onCancel,
+  etaSeconds,
+  elapsedSeconds,
+  fastPath,
+}) => {
   const getStageMessage = (stage: string): string => {
     const s = stage.toLowerCase();
-    if (s.includes('recon') || s.includes('queue')) return 'Fetching source video & captions...';
-    if (s.includes('candidate')) return 'Analyzing transcript for viral moments...';
-    if (s.includes('retriev')) return 'Downloading targeted video segments...';
-    if (s.includes('render') || s.includes('clips')) return 'Rendering clips with FFmpeg compositor...';
-    if (s.includes('vision') || s.includes('scene')) return 'Running vision analysis & face detection...';
-    if (s.includes('transcri')) return 'Transcribing audio with local Whisper...';
-    if (s.includes('editorial') || s.includes('rank')) return 'Applying editorial intelligence ranking...';
-    if (s.includes('caption')) return 'Generating kinetic subtitles...';
-    if (s.includes('quality') || s.includes('qa')) return 'Running render quality gate...';
+    if (s.includes('metadata')) return 'Fetching video info...';
+    if (s.includes('transcri')) return fastPath ? 'Fetching YouTube auto-captions (fast path!)...' : 'Transcribing audio with Whisper...';
+    if (s.includes('analy')) return 'AI selecting viral moments from transcript...';
+    if (s.includes('download')) return 'Downloading selected video sections (partial)...';
+    if (s.includes('render')) return 'Rendering clips in parallel with FFmpeg...';
+    if (s.includes('critique') || s.includes('quality')) return 'Running quality gate...';
+    if (s.includes('enhanc')) return 'Enhancing audio...';
+    if (s.includes('final')) return 'Assembling final output...';
+    if (s.includes('complete')) return 'Complete!';
+    if (s.includes('error')) return 'Pipeline error — check logs';
     return stage.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   };
 
   const displayText = getStageMessage(stageLabel);
   const displayProgress = Math.max(0, Math.min(100, progress));
+
+  const fmtTime = (s?: number): string => {
+    if (!s || s < 0) return '--';
+    if (s < 60) return `${Math.round(s)}s`;
+    return `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`;
+  };
 
   return (
     <motion.div
@@ -123,10 +138,26 @@ export const ProcessingLoadingState: React.FC<LoadingStateProps> = ({ progress, 
           />
         </div>
 
+        {/* Time info row */}
+        <div className="flex items-center justify-center gap-4 text-[10px] sm:text-[11px] font-mono text-stone-500">
+          {elapsedSeconds != null && (
+            <span className="flex items-center gap-1">
+              <Clock className="w-3 h-3" />
+              {fmtTime(elapsedSeconds)}
+            </span>
+          )}
+          {etaSeconds != null && etaSeconds > 0 && (
+            <span className="text-cyan-400/70">
+              ETA: {fmtTime(etaSeconds)}
+            </span>
+          )}
+        </div>
+
+        {/* Footer badges */}
         <div className="flex items-center justify-between text-[10px] sm:text-[11px] font-mono text-stone-500 max-w-md mx-auto px-1 pt-1">
-          <span>CANONICAL V6.4</span>
-          <span>LOCAL-FIRST</span>
-          <span className="text-cyan-400">NO B-ROLL</span>
+          <span>NEXUX V8.0</span>
+          <span>SMART DOWNLOAD</span>
+          <span className="text-cyan-400">{fastPath ? 'AUTO-CAPTIONS' : 'LOCAL-FIRST'}</span>
         </div>
 
         {/* Cancel button */}
