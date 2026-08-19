@@ -30,7 +30,7 @@ from .download import (
 )
 from .transcribe import transcribe
 from .analyze import analyze_content
-from .render import render_clip, concatenate_clips
+from .render_pro import render_clip_pro, concatenate_clips_pro
 from .critic import evaluate_clip, apply_revision_directives
 from .subtitle_quality import process_subtitle_quality
 from .audio_enhancer import enhance_audio
@@ -43,6 +43,37 @@ log = logging.getLogger("nexus.pipeline")
 async def _run_sync(func, *args, **kwargs):
     """Run a synchronous function in a thread to avoid blocking the event loop."""
     return await asyncio.to_thread(func, *args, **kwargs)
+
+
+def _generate_hook_text(clip: Dict, transcript: Dict, clip_idx: int) -> Optional[str]:
+    """Generate a hook text overlay from the first segment of the clip."""
+    cs = clip.get("start", 0)
+    ce = clip.get("end", cs + 60)
+    
+    segments = transcript.get("segments", [])
+    clip_segs = [s for s in segments if s.get("end", 0) > cs and s.get("start", 0) < ce]
+    
+    if not clip_segs:
+        return None
+    
+    # Use the first segment's text as hook (first 60 chars)
+    first_text = clip_segs[0].get("text", "").strip()
+    if len(first_text) > 60:
+        # Try to cut at a word boundary
+        cut = first_text[:60].rfind(" ")
+        if cut > 20:
+            first_text = first_text[:cut] + "..."
+        else:
+            first_text = first_text[:57] + "..."
+    
+    # Only show hook for first 2 clips
+    if clip_idx >= 2:
+        return None
+    
+    if not first_text:
+        return None
+    
+    return first_text.upper()
 
 
 async def run_pipeline(
@@ -272,12 +303,16 @@ async def run_pipeline(
         }
 
         async def _render_one(clip_idx: int, clip: Dict, section_path: Path) -> Dict:
-            """Render a single clip with creative brain decisions."""
+            """Render a single clip with PROFESSIONAL quality — 4-pass rendering."""
             try:
                 # Get per-clip creative decisions
                 clip_creative = creative_result["clip_decisions"][clip_idx] if clip_idx < len(creative_result["clip_decisions"]) else {}
+                
+                # Generate hook text from first segment of this clip
+                hook_text = _generate_hook_text(clip, transcript, clip_idx)
+                
                 out_path = await _run_sync(
-                    render_clip, section_path, job_id, clip, transcript,
+                    render_clip_pro, section_path, job_id, clip, transcript,
                     style_config, clip_idx,
                     None,  # face_data — not available for partial downloads
                     clip_creative.get("color_grade", kwargs.get("color_grade", "none")),
@@ -285,6 +320,8 @@ async def run_pipeline(
                     kwargs.get("video_codec", "h264"),
                     kwargs.get("audio_codec", "aac"),
                     clip_creative,  # creative config per clip
+                    hook_text,  # hook text overlay
+                    True,  # SFX enabled
                 )
                 return {
                     "clip_index": clip_idx,
