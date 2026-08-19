@@ -274,3 +274,69 @@ export function startJobPolling(
     if (timer) clearTimeout(timer);
   };
 }
+
+
+// ── Mode 2: Creative Compilation Engine ──
+
+export interface Mode2Request {
+  keyword: string;
+  style_preset?: string;
+  voice_enabled: boolean;
+  voice_name: string;
+  sfx_enabled: boolean;
+  bgm_enabled: boolean;
+  target_duration: number;
+  max_sources: number;
+}
+
+export interface Mode2Response {
+  status: 'success' | 'error';
+  job_id: string;
+  output_path?: string;
+  thumbnail_path?: string;
+  metadata?: {
+    title: string;
+    hashtags: string[];
+    description: string;
+    bgm_mood: string;
+    total_duration: number;
+    sources_used: number;
+    keyword: string;
+    processing_time: number;
+    mode: string;
+    sources_found: number;
+    moments_found: number;
+    clips_downloaded: number;
+  };
+  error?: string;
+}
+
+export interface Mode2Voice {
+  id: string;
+  name: string;
+  lang: string;
+}
+
+export interface Mode2Job {
+  job_id: string;
+  status: string;
+  has_video: boolean;
+  has_thumbnail: boolean;
+  keyword: string;
+  title: string;
+  hashtags: string[];
+  total_duration: number;
+  sources_used: number;
+}
+
+export const mode2Api = {
+  generate: (payload: Mode2Request) =>
+    request<Mode2Response>('/api/mode2/generate', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  jobs: () => request<{ jobs: Mode2Job[] }>('/api/mode2/jobs'),
+
+  voices: () => request<{ voices: Mode2Voice[] }>('/api/mode2/voices'),
+};

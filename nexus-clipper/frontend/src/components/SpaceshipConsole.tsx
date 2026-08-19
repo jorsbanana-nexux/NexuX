@@ -27,6 +27,7 @@ import { useScrollVelocityBlur, VelocityTelemetry } from '../utils/useScrollVelo
 import { subtitleStore } from '../utils/subtitleStore';
 import { SubtitleConfig } from '../types/subtitles';
 import { VideoModal } from './VideoModal';
+import { Mode2Console } from './Mode2Console';
 import { nexuxApi, buildOutputUrl, startJobPolling, type NexuXJob, type GenerateRequest } from '../api/nexuxApi';
 
 interface SpaceshipConsoleProps {
@@ -97,6 +98,7 @@ function mapJobToClips(job: NexuXJob): GeneratedClip[] {
 }
 
 export const SpaceshipConsole: React.FC<SpaceshipConsoleProps> = () => {
+  const [mode, setMode] = useState<'mode1' | 'mode2'>('mode1');
   const [stage, setStage] = useState<'input' | 'loading' | 'results' | 'error'>('input');
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
@@ -388,6 +390,21 @@ export const SpaceshipConsole: React.FC<SpaceshipConsoleProps> = () => {
           <AnimatePresence mode="wait">
             {/* STAGE 1: INPUT STATE */}
             {stage === 'input' && (
+              <>
+                <div className="flex items-center justify-center gap-3 mb-6">
+                  <button
+                    onClick={() => setMode('mode1')}
+                    className={`px-5 py-2 rounded-full text-sm font-medium transition-all ${mode === 'mode1' ? 'bg-gradient-to-r from-cyan-500/20 to-blue-500/20 border border-cyan-500/30 text-cyan-300' : 'text-gray-500 hover:text-white border border-transparent'}`}
+                  >
+                    🎙️ Mode 1 — Podcast Pro
+                  </button>
+                  <button
+                    onClick={() => setMode('mode2')}
+                    className={`px-5 py-2 rounded-full text-sm font-medium transition-all ${mode === 'mode2' ? 'bg-gradient-to-r from-purple-500/20 to-pink-500/20 border border-purple-500/30 text-purple-300' : 'text-gray-500 hover:text-white border border-transparent'}`}
+                  >
+                    ✨ Mode 2 — Creative Viral
+                  </button>
+                </div>
               <motion.div
                 key="input-stage"
                 initial={{ opacity: 0 }}
@@ -652,6 +669,7 @@ export const SpaceshipConsole: React.FC<SpaceshipConsoleProps> = () => {
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </motion.div>
+              </>
             )}
 
             {/* STAGE 2: LOADING STATE — REAL PROGRESS FROM API */}

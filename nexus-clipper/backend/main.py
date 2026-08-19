@@ -838,6 +838,124 @@ async def download_clips(job_id: str, request: Request):
 
 # ── WebSocket ──
 
+
+
+# ── Mode 2: Creative Compilation Engine ──
+
+class Mode2Request(BaseModel):
+    """Mode 2: Keyword-driven multi-source video compilation."""
+    keyword: str  # Just a keyword — no URL needed
+    style_preset: Optional[str] = "hormozi"
+    voice_enabled: bool = True
+    voice_name: str = "id-ID-ArdiNeural"
+    sfx_enabled: bool = True
+    bgm_enabled: bool = True
+    target_duration: int = 60
+    max_sources: int = 10
+
+
+@app.post("/api/mode2/generate")
+async def mode2_generate(req: Mode2Request, _=Depends(_require_auth)):
+    """Mode 2: AI creative compilation.
+    
+    User types ONE keyword → AI:
+    1. Searches YouTube for 10 related videos
+    2. Finds relevant moments in each
+    3. Downloads only those moments (partial download)
+    4. Writes narrative script (LLM)
+    5. Compiles into one viral video with SFX, text, transitions
+    6. Generates thumbnail + title + hashtags
+    """
+    from engine.mode2_pipeline import run_mode2_pipeline
+    import uuid
+    
+    job_id = f"mode2_{uuid.uuid4().hex[:8]}"
+    
+    style_config = {
+        "preset": req.style_preset or "hormozi",
+        "font_size": 52,
+        "primary": "#FFFFFF",
+        "highlight": "#FFD700",
+        "stroke": "#000000",
+        "stroke_width": 4,
+        "bold": True,
+        "position": "bottom",
+    }
+    
+    result = await run_mode2_pipeline(
+        keyword=req.keyword,
+        style_config=style_config,
+        voice_enabled=req.voice_enabled,
+        voice_name=req.voice_name,
+        sfx_enabled=req.sfx_enabled,
+        bgm_enabled=req.bgm_enabled,
+        target_duration=req.target_duration,
+        max_sources=req.max_sources,
+        job_id=job_id,
+    )
+    
+    if "error" in result:
+        return {"status": "error", "error": result["error"], "job_id": job_id}
+    
+    return {
+        "status": "success",
+        "job_id": result["job_id"],
+        "output_path": result.get("output_path"),
+        "thumbnail_path": result.get("thumbnail_path"),
+        "metadata": result.get("metadata", {}),
+    }
+
+
+@app.get("/api/mode2/jobs")
+async def mode2_jobs(_=Depends(_require_auth)):
+    """List all Mode 2 jobs."""
+    from engine.constants import OUTPUT_DIR
+    import os
+    
+    jobs = []
+    mode2_dir = OUTPUT_DIR
+    for item in mode2_dir.iterdir():
+        if not item.is_dir() or not item.name.startswith("mode2_"):
+            continue
+        has_output = (item / "final_output.mp4").exists()
+        has_thumb = (item / "thumbnail.jpg").exists()
+        metadata_path = item / "metadata.json"
+        meta = {}
+        if metadata_path.exists():
+            try:
+                import json
+                meta = json.loads(metadata_path.read_text())
+            except Exception:
+                pass
+        
+        jobs.append({
+            "job_id": item.name,
+            "status": "completed" if has_output else "processing",
+            "has_video": has_output,
+            "has_thumbnail": has_thumb,
+            "keyword": meta.get("keyword", ""),
+            "title": meta.get("title", ""),
+            "hashtags": meta.get("hashtags", []),
+            "total_duration": meta.get("total_duration", 0),
+            "sources_used": meta.get("sources_used", 0),
+        })
+    
+    return {"jobs": jobs}
+
+
+@app.get("/api/mode2/voices")
+async def mode2_voices(_=Depends(_require_auth)):
+    """List available TTS voices for Mode 2."""
+    return {
+        "voices": [
+            {"id": "id-ID-ArdiNeural", "name": "Ardi (Indonesia, Pria)", "lang": "id-ID"},
+            {"id": "id-ID-GadisPratiwiNeural", "name": "Gadis (Indonesia, Wanita)", "lang": "id-ID"},
+            {"id": "en-US-GuyNeural", "name": "Guy (English, Male)", "lang": "en-US"},
+            {"id": "en-US-JennyNeural", "name": "Jenny (English, Female)", "lang": "en-US"},
+            {"id": "en-AU-WilliamNeural", "name": "William (English AU, Male)", "lang": "en-AU"},
+        ]
+    }
+
 @app.websocket("/ws")
 async def ws_endpoint(websocket: WebSocket):
     await ws.connect(websocket)
