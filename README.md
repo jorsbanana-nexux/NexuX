@@ -1,8 +1,10 @@
-# 🚀 NexuX V7.0 — Autonomous AI Video Repurposing Engine
+# 🚀 NexuX V9.0 — Autonomous AI Video Repurposing Engine
 
 > **Local-first, zero cloud cost, production-ready.** Transform long-form videos into viral clips that surpass Opus Clip — entirely on your own machine.
+>
+> **V9.0:** Full timeline editor with drag-and-drop overlays, undo/redo, keyboard shortcuts, real-time FFmpeg preview, self-repair system, and more.
 
-[![Version](https://img.shields.io/badge/version-7.0.0-cyan)]()
+[![Version](https://img.shields.io/badge/version-9.0.0-cyan)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)]()
 [![Python](https://img.shields.io/badge/Python-3.11+-yellow)]()
 [![React](https://img.shields.io/badge/React-19-black)]()
@@ -311,6 +313,15 @@ http://127.0.0.1:8000
 | POST | `/api/publish/{id}/{platform}` | Prepare for platform |
 | GET | `/api/analytics/{id}` | Job analytics |
 | GET | `/api/download/{id}` | Download clips |
+| POST | `/api/rerender/{job_id}/{clip_index}` | Re-render clip with personalization |
+| POST | `/api/rerender/{job_id}/all` | Batch re-render all clips |
+| POST | `/api/rerender/{job_id}/{clip_index}/overlays` | Re-render with draggable overlay elements |
+| POST | `/api/preview-render/{job_id}/{clip_index}` | Real-time FFmpeg preview (480p) |
+| POST | `/api/preview-frame/{job_id}/{clip_index}` | Single preview frame PNG |
+| GET | `/api/repair/diagnose` | Run system diagnostics |
+| POST | `/api/repair/fix/{issue_id}` | Fix specific issue |
+| POST | `/api/repair/fix-all` | Auto-fix all detected issues |
+| GET | `/api/repair/health` | Quick health check |
 | WS | `/ws` | WebSocket for real-time progress |
 
 ### Example: Generate Clips
@@ -493,6 +504,29 @@ Make sure `NEXUX_ALLOWED_ORIGINS` in `.env` matches your frontend URL.
 ---
 
 ## 📝 Changelog
+
+### V9.0 (August 2026)
+- **Timeline Editor Studio** — Full Opus-Clip-style editor with multi-track timeline, drag-and-drop text overlays, transcript panel with inline word correction, right icon rail (AI Enhance, Caption, Text, Upload, Transitions, AI Hook, B-Roll, Music, Layers)
+- **Undo/Redo** — 50-step history tree (not just linear undo)
+- **Keyboard Shortcuts** — Space (play/pause), Ctrl+Z (undo), Ctrl+Shift+Z (redo), Ctrl+D (duplicate), Del (delete), T (add text), arrows (nudge), Ctrl+E (export), Esc (deselect)
+- **Real-time FFmpeg Preview** — 480p preview with overlays burned in (not just CSS overlay)
+- **Self-Repair System** — 13+ auto-diagnostics (FFmpeg, Python, disk, memory, Whisper, SQLite, ports, GPU, temp files, broken jobs, dependencies, network, yt-dlp) with auto-fix
+- **Overlay Burn-in Pipeline** — Drag text elements + position + animation + timing burned into video via FFmpeg drawtext
+- **Background Render Queue** — Keep editing while exporting
+- **Layers Panel** — Z-index, lock/hide per element
+- **Voice Isolation** — Per-speaker mute + isolate from transcript panel
+- **Snap-to-Grid** — Alignment guides while dragging elements
+- **Settings Modal** — 5 tabs: Export, Project, Shortcuts, Advanced, Repair
+
+### V8.5 (August 2026)
+- **Post-Render Personalization Editor (ClipEditorStudio)** — 8-tab editor: Captions, Templates (12 creator presets), Effects, Trim, Audio, Layout, Branding, Export
+- **Re-Render Pipeline** — Backend pipeline converts 28+ editor settings to FFmpeg render config
+- **Virality Score Engine** — 8-dimension 0-100 scoring
+- **Caption Engine v2** — Kinetic typography with word-by-word animation
+- **Hook Detection** — 9 archetypes with auto-shift clip start
+- **Auto-Reframe** — Face tracking for vertical conversion
+- **Multi-Platform Auto-Posting** — 6 platforms (TikTok, YouTube Shorts, Instagram, Facebook, Twitter, LinkedIn)
+- **Cross-Platform Analytics** — Virality prediction + hook performance tracking
 
 ### V7.0.0 (2026-08-16)
 - **SQLite persistent job storage** — Jobs survive server restarts

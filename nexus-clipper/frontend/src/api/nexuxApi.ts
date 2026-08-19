@@ -218,6 +218,50 @@ export const nexuxApi = {
     const base = `${API_BASE}/api/download/${encodeURIComponent(jobId)}`;
     return API_KEY ? `${base}?key=${encodeURIComponent(API_KEY)}` : base;
   },
+  // V8.5: Re-render clip with personalization settings from ClipEditorStudio
+  rerenderClip: (jobId: string, clipIndex: number, settings: Record<string, unknown>) =>
+    request<NexuXJob>(`/api/rerender/${encodeURIComponent(jobId)}/${clipIndex}`, {
+      method: 'POST',
+      body: JSON.stringify(settings),
+    }),
+  // V8.5: Virality scores
+  virality: (jobId: string) =>
+    request<Record<string, unknown>>(`/api/virality/${encodeURIComponent(jobId)}`),
+  // V8.5: Caption quality
+  captionQuality: (jobId: string) =>
+    request<Record<string, unknown>>(`/api/caption-quality/${encodeURIComponent(jobId)}`),
+  // V8.5: Hook analysis
+  hooks: (jobId: string) =>
+    request<Record<string, unknown>>(`/api/hooks/${encodeURIComponent(jobId)}`),
+  // V8.5: Auto-reframe
+  reframe: (jobId: string) =>
+    request<Record<string, unknown>>(`/api/reframe/${encodeURIComponent(jobId)}`),
+  // V8.5: Supported platforms
+  platforms: () =>
+    request<{ platforms: Record<string, unknown>[] }>('/api/platforms'),
+
+  // V9.0: Re-render with draggable overlay elements (TimelineEditorStudio)
+  rerenderWithOverlays: (jobId: string, clipIndex: number, payload: Record<string, unknown>) =>
+    request<{ status: string; output_url: string; changes_applied: string[] }>(
+      `/api/rerender/${encodeURIComponent(jobId)}/${clipIndex}/overlays`,
+      { method: 'POST', body: JSON.stringify(payload) },
+    ),
+
+  // V9.0: Repair / self-heal diagnostics
+  repairDiagnose: () =>
+    request<{ issues: { id: string; label: string; status: string; detail: string }[] }>('/api/repair/diagnose'),
+  repairFixAll: () =>
+    request<{ fixed: number; results: { id: string; label: string; status: string; detail: string }[] }>(
+      '/api/repair/fix-all',
+      { method: 'POST' },
+    ),
+
+  // V9.0: Real-time FFmpeg preview
+  previewRender: (jobId: string, clipIndex: number, payload: Record<string, unknown>) =>
+    request<{ preview_url: string; render_time: number }>(
+      `/api/preview-render/${encodeURIComponent(jobId)}/${clipIndex}`,
+      { method: 'POST', body: JSON.stringify(payload) },
+    ),
 };
 
 export function buildOutputUrl(outputPath: string | null): string | null {

@@ -5,7 +5,9 @@ import {
   Download, 
   CheckCircle2, 
   Sparkles,
-  FileArchive
+  FileArchive,
+  Wand2,
+  Clapperboard,
 } from 'lucide-react';
 import { VideoResultCard, GeneratedClip } from './VideoResultCard';
 import { sound } from '../utils/soundEffects';
@@ -15,9 +17,11 @@ interface ResultsMosaicProps {
   clips: GeneratedClip[];
   onReset: () => void;
   onPreviewClip: (clip: GeneratedClip) => void;
+  onPersonalize?: () => void;
+  onOpenTimelineEditor?: () => void;
 }
 
-export const ResultsMosaicGrid: React.FC<ResultsMosaicProps> = ({ clips, onReset, onPreviewClip }) => {
+export const ResultsMosaicGrid: React.FC<ResultsMosaicProps> = ({ clips, onReset, onPreviewClip, onPersonalize, onOpenTimelineEditor }) => {
   const [downloadToast, setDownloadToast] = useState(false);
 
   const handleDownloadAll = async () => {
@@ -75,6 +79,34 @@ export const ResultsMosaicGrid: React.FC<ResultsMosaicProps> = ({ clips, onReset
             <RotateCcw className="w-3.5 h-3.5" />
             <span>Generate Another</span>
           </button>
+
+          {onOpenTimelineEditor && (
+            <button
+              onClick={() => {
+                sound.playClick();
+                onOpenTimelineEditor();
+              }}
+              onMouseEnter={() => sound.playHover()}
+              className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-gradient-to-r from-cyan-500/20 to-blue-500/20 hover:from-cyan-500/30 hover:to-blue-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-mono font-bold transition-colors active:scale-95 shadow-[0_0_15px_rgba(34,211,238,0.15)]"
+            >
+              <Clapperboard className="w-3.5 h-3.5" />
+              <span>Open Timeline Editor</span>
+            </button>
+          )}
+
+          {onPersonalize && (
+            <button
+              onClick={() => {
+                sound.playClick();
+                onPersonalize();
+              }}
+              onMouseEnter={() => sound.playHover()}
+              className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-stone-300 border border-white/10 text-xs font-mono font-bold transition-colors active:scale-95"
+            >
+              <Wand2 className="w-3.5 h-3.5" />
+              <span>Quick Personalize</span>
+            </button>
+          )}
 
           <button
             onClick={handleDownloadAll}

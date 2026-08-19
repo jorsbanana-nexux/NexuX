@@ -28,6 +28,8 @@ import { subtitleStore } from '../utils/subtitleStore';
 import { SubtitleConfig } from '../types/subtitles';
 import { VideoModal } from './VideoModal';
 import { Mode2Console } from './Mode2Console';
+import { ClipEditorStudio } from './ClipEditorStudio';
+import { TimelineEditorStudio } from './TimelineEditorStudio';
 import { nexuxApi, buildOutputUrl, startJobPolling, type NexuXJob, type GenerateRequest } from '../api/nexuxApi';
 
 interface SpaceshipConsoleProps {
@@ -98,6 +100,10 @@ function mapJobToClips(job: NexuXJob): GeneratedClip[] {
 }
 
 export const SpaceshipConsole: React.FC<SpaceshipConsoleProps> = () => {
+  // V8.5: Post-render editor state
+  const [showEditor, setShowEditor] = useState(false);
+  // V9.0: Full timeline editor (Opus-Clip-style, more complete)
+  const [showTimelineEditor, setShowTimelineEditor] = useState(false);
   const [mode, setMode] = useState<'mode1' | 'mode2'>('mode1');
   const [stage, setStage] = useState<'input' | 'loading' | 'results' | 'error'>('input');
   const [isDragOver, setIsDragOver] = useState(false);
@@ -705,6 +711,8 @@ export const SpaceshipConsole: React.FC<SpaceshipConsoleProps> = () => {
                   clips={generatedClips}
                   onReset={handleResetToInput}
                   onPreviewClip={(clip) => setSelectedPreviewClip(clip)}
+                  onPersonalize={() => { sound.playClick(); setShowEditor(true); }}
+                  onOpenTimelineEditor={() => { sound.playClick(); setShowTimelineEditor(true); }}
                 />
               </motion.div>
             )}
@@ -744,6 +752,28 @@ export const SpaceshipConsole: React.FC<SpaceshipConsoleProps> = () => {
         isOpen={!!selectedPreviewClip}
         onClose={() => setSelectedPreviewClip(null)}
       />
+
+      {/* V8.5: Post-Render Personalization Editor */}
+      <AnimatePresence>
+        {showEditor && (
+          <ClipEditorStudio
+            clips={generatedClips}
+            jobId={(job as any)?.job_id || ''}
+            onClose={() => setShowEditor(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* V9.0: Full Timeline Editor (Opus-Clip-style + more) */}
+      <AnimatePresence>
+        {showTimelineEditor && (
+          <TimelineEditorStudio
+            clips={generatedClips}
+            jobId={(job as any)?.job_id || ''}
+            onClose={() => setShowTimelineEditor(false)}
+          />
+        )}
+      </AnimatePresence>
     </section>
   );
 };
