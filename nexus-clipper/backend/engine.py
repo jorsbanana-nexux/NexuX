@@ -537,7 +537,7 @@ def _build_ass(transcript, clip, style_config, job_id, idx, face_data, tw, th) -
     lines = [
         "[Script Info]",
         "Title: Nexus-Clipper AI v3",
-        "ScriptType: v4.00+", "WrapStyle: 0", "ScaledBorderAndShadow: yes",
+        "ScriptType: v8.00+", "WrapStyle: 0", "ScaledBorderAndShadow: yes",
         f"PlayResX: {tw}", f"PlayResY: {th}",
         "",
         "[V4+ Styles]",

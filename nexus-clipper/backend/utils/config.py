@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Nexus-Clipper AI Ultra"
-    PROJECT_VERSION: str = "3.0.0"
+    PROJECT_VERSION: str = "8.0.0"
     DEBUG: bool = False
     HOST: str = "0.0.0.0"
     PORT: int = 8000

@@ -1,9 +1,9 @@
 """
-NexuX V7.0 — FastAPI Backend (Production-Ready)
+NexuX V8.0 — FastAPI Backend (Production-Ready)
 ==================================================
-Canonical API matching the frontend V7.0 contract.
+Canonical API matching the frontend V8.0 contract.
 
-V7.0 upgrades from V6.4 (legacy):
+V8.0 upgrades from V7.0 (legacy):
 - SQLite persistent job storage (survives restarts)
 - API key authentication (optional, env-based)
 - Job history with pagination
@@ -48,18 +48,32 @@ logging.basicConfig(
 log = logging.getLogger("nexus.api")
 
 # ── Constants ──
-VERSION = "7.0.0"
+VERSION = "8.0.0"
 DB_PATH = Path(os.environ.get("NEXUX_DB_PATH", "nexux_jobs.db"))
 JOB_TTL_HOURS = int(os.environ.get("NEXUX_JOB_TTL_HOURS", "72"))
 API_KEY = os.environ.get("NEXUX_API_KEY", "")  # Empty = no auth (local dev)
 
 # ── SQLite Job Store ──
 
+import threading
+
+_db_local = threading.local()
+
 def _get_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    return conn
+    """Get a thread-local SQLite connection (thread-safe)."""
+    if not hasattr(_db_local, "conn"):
+        conn = sqlite3.connect(str(DB_PATH), check_same_thread=False, timeout=30.0)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
+        _db_local.conn = conn
+    return _db_local.conn
+
+def _close_db():
+    """Close thread-local connection."""
+    if hasattr(_db_local, "conn"):
+        _db_local.conn.close()
+        del _db_local.conn
 
 db = None
 
@@ -460,6 +474,30 @@ async def get_styles(_=Depends(_require_auth)):
         "video_codecs": ["h264", "h265"],
         "audio_codecs": ["aac", "mp3", "opus"],
         "broll": False,
+        "speed_ramps": [
+            {"id": "dramatic_slowmo", "name": "Dramatic Slow-Mo"},
+            {"id": "energy_build", "name": "Energy Build"},
+            {"id": "beat_drop", "name": "Beat Drop"},
+            {"id": "slow_intro", "name": "Slow Intro"},
+            {"id": "pulse", "name": "Pulse"},
+        ],
+        "broll_options": {
+            "enabled": False,
+            "intensities": ["subtle", "moderate", "aggressive"],
+            "sources": ["local", "unsplash", "pexels"],
+        },
+        "voiceover_voices": [
+            {"id": "en-US-AriaNeural", "name": "Aria (US Female)"},
+            {"id": "en-US-GuyNeural", "name": "Guy (US Male)"},
+            {"id": "en-GB-SoniaNeural", "name": "Sonia (UK Female)"},
+            {"id": "en-GB-RyanNeural", "name": "Ryan (UK Male)"},
+            {"id": "id-ID-ArdiNeural", "name": "Ardi (Indonesia Male)"},
+            {"id": "id-ID-GadisNeural", "name": "Gadis (Indonesia Female)"},
+            {"id": "en-AU-NatashaNeural", "name": "Natasha (AU Female)"},
+            {"id": "en-AU-WilliamNeural", "name": "William (AU Male)"},
+            {"id": "en-IN-NeerjaNeural", "name": "Neerja (India Female)"},
+            {"id": "en-IN-PrabhatNeural", "name": "Prabhat (India Male)"},
+        ],
     }
 
 @app.post("/api/preview")
@@ -471,7 +509,10 @@ async def preview(url: str, _=Depends(_require_auth)):
         raise HTTPException(400, f"Preview failed: {e}")
 
 @app.post("/api/search")
-async def search(req: SearchRequest, _=Depends(_require_auth)):
+async def search(req: SearchRequest, request: Request, _=Depends(_require_auth)):
+    rl = rate_limiter.check(request, "search")
+    if rl:
+        return rl
     try:
         results = search_youtube(req.query, req.max_results)
         return {"status": "ok", "results": results, "total": len(results)}
@@ -481,6 +522,11 @@ async def search(req: SearchRequest, _=Depends(_require_auth)):
 @app.post("/api/generate", response_model=JobResponse)
 async def generate(req: GenerateRequest, bg: BackgroundTasks, request: Request, _=Depends(_require_auth)):
     global active_count
+
+    # Rate limiting: 5 requests per minute
+    rl = rate_limiter.check(request, "generate")
+    if rl:
+        return rl
 
     if active_count >= MAX_CONCURRENT_JOBS:
         raise HTTPException(429, f"Max {MAX_CONCURRENT_JOBS} concurrent jobs. Try again shortly.")
@@ -528,6 +574,15 @@ async def generate(req: GenerateRequest, bg: BackgroundTasks, request: Request, 
         "voice_style": req.voice_style,
         "publish_platforms": req.publish_platforms,
         "manual_ranges": req.manual_ranges,
+        "speed_ramp": req.speed_ramp,
+        "broll_enabled": req.broll_enabled,
+        "broll_intensity": req.broll_intensity,
+        "broll_source": req.broll_source,
+        "voiceover_enabled": req.voiceover_enabled,
+        "voiceover_voice": req.voiceover_voice,
+        "voiceover_speed": req.voiceover_speed,
+        "voiceover_volume": req.voiceover_volume,
+        "voiceover_script": req.voiceover_script,
     }
 
     bg.add_task(_process_job, jid, req.youtube_url, style_kwargs)
@@ -596,7 +651,7 @@ async def cancel_job(job_id: str, _=Depends(_require_auth)):
     await ws.broadcast({"type": "job_cancelled", "job_id": job_id})
     return {"job_id": job_id, "status": "cancelled"}
 
-# ── V7.0 Advanced Endpoints ──
+# ── V8.0 Advanced Endpoints ──
 
 @app.get("/api/vision/{job_id}")
 async def get_vision(job_id: str, _=Depends(_require_auth)):
@@ -711,6 +766,30 @@ async def get_analytics(job_id: str, _=Depends(_require_auth)):
         "avg_score": round(sum(c.get("score", 0) for c in critiques) / max(len(critiques), 1), 3),
         "stages": list(stages.keys()),
         "broll": False,
+        "speed_ramps": [
+            {"id": "dramatic_slowmo", "name": "Dramatic Slow-Mo"},
+            {"id": "energy_build", "name": "Energy Build"},
+            {"id": "beat_drop", "name": "Beat Drop"},
+            {"id": "slow_intro", "name": "Slow Intro"},
+            {"id": "pulse", "name": "Pulse"},
+        ],
+        "broll_options": {
+            "enabled": False,
+            "intensities": ["subtle", "moderate", "aggressive"],
+            "sources": ["local", "unsplash", "pexels"],
+        },
+        "voiceover_voices": [
+            {"id": "en-US-AriaNeural", "name": "Aria (US Female)"},
+            {"id": "en-US-GuyNeural", "name": "Guy (US Male)"},
+            {"id": "en-GB-SoniaNeural", "name": "Sonia (UK Female)"},
+            {"id": "en-GB-RyanNeural", "name": "Ryan (UK Male)"},
+            {"id": "id-ID-ArdiNeural", "name": "Ardi (Indonesia Male)"},
+            {"id": "id-ID-GadisNeural", "name": "Gadis (Indonesia Female)"},
+            {"id": "en-AU-NatashaNeural", "name": "Natasha (AU Female)"},
+            {"id": "en-AU-WilliamNeural", "name": "William (AU Male)"},
+            {"id": "en-IN-NeerjaNeural", "name": "Neerja (India Female)"},
+            {"id": "en-IN-PrabhatNeural", "name": "Prabhat (India Male)"},
+        ],
     }
 
 @app.get("/api/download/{job_id}")

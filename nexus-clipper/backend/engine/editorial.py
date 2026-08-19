@@ -1,5 +1,5 @@
 """
-Nexus-Clipper V7.0 — Editorial Consciousness Engine
+NexuX V8.0 — Editorial Consciousness Engine
 =====================================================
 The brain that makes NexuX a conscious professional editor, not a rigid machine.
 

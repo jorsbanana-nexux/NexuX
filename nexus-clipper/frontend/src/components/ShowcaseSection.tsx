@@ -56,7 +56,7 @@ export const ShowcaseSection: React.FC = () => {
           </div>
           <div className="mt-6 pt-4 border-t border-white/5 flex items-center justify-between text-[11px] font-mono text-cyan-300">
             <span>ENGINE</span>
-            <span className="font-bold">V6.4 MULTIMODAL</span>
+            <span className="font-bold">V8.0 MULTIMODAL</span>
           </div>
         </TiltCard>
 
@@ -131,7 +131,7 @@ export const ShowcaseSection: React.FC = () => {
           </div>
           <div className="text-xs font-mono text-stone-400 flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span>Canonical V6.4 • No B-Roll • Zero Cloud Cost</span>
+            <span>Canonical V8.0 • No B-Roll • Zero Cloud Cost</span>
           </div>
         </div>
 

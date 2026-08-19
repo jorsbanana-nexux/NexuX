@@ -379,7 +379,7 @@ export const SpaceshipConsole: React.FC<SpaceshipConsoleProps> = () => {
                 <span>MOTION BLUR: <strong className="text-purple-300">{telemetry.blur} px</strong></span>
               </div>
               <div className="text-[11px] text-stone-400 font-mono">
-                ENGINE: <span className="text-stone-300">V6.4 CANONICAL</span>
+                ENGINE: <span className="text-stone-300">V8.0 CANONICAL</span>
               </div>
             </div>
           </div>

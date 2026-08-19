@@ -1,4 +1,4 @@
-"""AGENT_22_AUDIENCE_PREDICTOR - V7.0 Editorial Consciousness
+"""AGENT_22_AUDIENCE_PREDICTOR - V8.0 Editorial Consciousness
 ==============================================================
 Real virality prediction using editorial intelligence, not buzzword counting.
 
@@ -19,7 +19,7 @@ log = get_logger("agent_22")
 
 class AudiencePredictor:
     """
-    V7.0: Evidence-based audience prediction.
+    V8.0: Evidence-based audience prediction.
     
     Instead of counting buzzwords and adding fixed constants, this predictor
     uses the editorial consciousness scores to estimate how audiences will

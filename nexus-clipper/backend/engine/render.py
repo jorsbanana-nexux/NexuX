@@ -1,5 +1,5 @@
 """
-Nexus-Clipper V7.0 — Rendering Engine
+NexuX V8.0 — Rendering Engine
 ===============================================
 FFmpeg-powered clip rendering with:
 - ASS/SSA dynamic subtitles (per-word styling)
@@ -30,6 +30,89 @@ from .styles import (
 log = logging.getLogger("nexus.render")
 
 
+
+# ── Speed Ramp Presets (V8.0) ──
+SPEED_RAMP_PRESETS = {
+    'dramatic_slowmo': {
+        'segments': [(0.0, 0.7, 1.0), (0.7, 0.85, 0.5), (0.85, 1.0, 1.0)],
+        'description': 'Normal → slow-mo at key moment → normal',
+    },
+    'energy_build': {
+        'segments': [(0.0, 0.5, 0.8), (0.5, 0.8, 1.0), (0.8, 1.0, 1.3)],
+        'description': 'Gradual speed up to energetic finish',
+    },
+    'beat_drop': {
+        'segments': [(0.0, 0.8, 1.0), (0.8, 0.85, 0.0), (0.85, 1.0, 1.5)],
+        'description': 'Normal → freeze frame → burst',
+    },
+    'slow_intro': {
+        'segments': [(0.0, 0.3, 0.5), (0.3, 1.0, 1.0)],
+        'description': 'Slow dramatic intro → normal speed',
+    },
+    'pulse': {
+        'segments': [(0.0, 0.25, 1.0), (0.25, 0.30, 0.3), (0.30, 0.55, 1.0), (0.55, 0.60, 0.3), (0.60, 1.0, 1.0)],
+        'description': 'Pulsing speed changes on beat',
+    },
+}
+
+
+def get_speed_ramp_filter(preset_name: str, clip_duration: float) -> str:
+    """Generate FFmpeg setpts + atempo filter chain for speed ramping.
+    
+    Uses setpts for video speed and atempo for audio speed.
+    Each segment specifies start_ratio, end_ratio (of clip), and speed_multiplier.
+    """
+    preset = SPEED_RAMP_PRESETS.get(preset_name)
+    if not preset:
+        return ''
+    
+    segments = preset['segments']
+    filters = []
+    
+    for i, (start_ratio, end_ratio, speed) in enumerate(segments):
+        seg_start = start_ratio * clip_duration
+        seg_end = end_ratio * clip_duration
+        seg_dur = seg_end - seg_start
+        
+        if speed == 0:
+            # Freeze frame: use framestepper
+            filters.append(f"select='between(t,{seg_start},{seg_end})'")
+            continue
+        
+        # setpts for video: PTS = PTS / speed
+        # We use trim + setpts for each segment
+        pts_factor = 1.0 / speed
+        
+        # For audio: atempo can only handle 0.5-2.0 range
+        # Chain multiple atempo for extreme speeds
+        atempo_filters = []
+        remaining = speed
+        while remaining > 2.0:
+            atempo_filters.append('atempo=2.0')
+            remaining /= 2.0
+        while remaining < 0.5:
+            atempo_filters.append('atempo=0.5')
+            remaining /= 0.5
+        atempo_filters.append(f'atempo={remaining:.3f}')
+        atempo_chain = ','.join(atempo_filters)
+        
+        filters.append(f'trim=start={seg_start}:end={seg_end},setpts={pts_factor:.4f}*PTS,{atempo_chain}')
+    
+    if not filters:
+        return ''
+    
+    # Combine all segments with concat
+    n = len(filters)
+    filter_parts = []
+    for i, f in enumerate(filters):
+        filter_parts.append(f'[{i}:v]{f}[v{i}]')
+    
+    concat_inputs = ''.join(f'[v{i}]' for i in range(n))
+    filter_parts.append(f'{concat_inputs}concat=n={n}:v=1:a=0[vout]')
+    
+    return ';'.join(filter_parts)
+
+
 def render_clip(
     video_path: Path,
     job_id: str,
@@ -43,6 +126,7 @@ def render_clip(
     video_codec: str = "h264",
     audio_codec: str = "aac",
     creative_config: Optional[Dict] = None,
+    speed_ramp: str = None,
 ) -> Path:
     """Render a single clip with full effects.
     
@@ -124,6 +208,13 @@ def render_clip(
             vf_parts.append(transition_filter)
             vf = ",".join(vf_parts)
 
+    # ── Speed Ramp (V8.0) ──
+    speed_ramp_filter = ''
+    if speed_ramp and speed_ramp != 'none':
+        speed_ramp_filter = get_speed_ramp_filter(speed_ramp, clip_dur)
+        if speed_ramp_filter:
+            log.info(f"[Render] Speed ramp: {speed_ramp} for {clip_dur:.1f}s clip")
+
     # ── Build FFmpeg Command ──
     cmd = [
         "ffmpeg", "-y",
@@ -166,7 +257,7 @@ def _build_smart_zoom(
 ) -> str:
     """Build FFmpeg zoompan filter using face tracking data.
     
-    V7.0: Instead of random zoom, this tracks the speaker's face
+    V8.0: Instead of random zoom, this tracks the speaker's face
     and smoothly follows them. If no face data, falls back to
     a gentle, deterministic Ken Burns effect.
     """
@@ -268,8 +359,8 @@ def _build_ass(
     # ── ASS Header ──
     lines = [
         "[Script Info]",
-        "Title: Nexus-Clipper V7.0",
-        "ScriptType: v4.00+",
+        "Title: NexuX V8.0",
+        "ScriptType: v8.00+",
         "WrapStyle: 0",
         "ScaledBorderAndShadow: yes",
         f"PlayResX: {canvas_w}",

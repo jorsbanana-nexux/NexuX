@@ -1,5 +1,5 @@
 """
-Nexus-Clipper Premium v4.0 — Constants & Configuration
+NexuX V8.0 — Constants & Configuration
 =======================================================
 All tunable parameters, aspect ratios, codec presets,
 style definitions, and keyword databases.
@@ -127,3 +127,41 @@ TRANSITIONS = {
     "zoom_in":      "",
     "glitch":       "",
 }
+
+# ── B-Roll Configuration ──────────────────────────────
+BROLL_DEFAULT_ENABLED = False
+BROLL_DEFAULT_INTENSITY = "moderate"
+BROLL_DEFAULT_SOURCE = "local"
+BROLL_DEFAULT_MODE = "cutaway"
+BROLL_DEFAULT_TRANSITION = "fade"
+
+BROLL_INTENSITIES = {
+    "subtle": {
+        "max_overlays": 1,
+        "duration_range": (2.0, 3.0),
+        "min_interval": 12.0,
+        "description": "Brief, infrequent B-roll overlays",
+    },
+    "moderate": {
+        "max_overlays": 3,
+        "duration_range": (3.0, 4.0),
+        "min_interval": 7.0,
+        "description": "Balanced B-roll cutaways during key moments",
+    },
+    "aggressive": {
+        "max_overlays": 6,
+        "duration_range": (3.5, 5.0),
+        "min_interval": 4.0,
+        "description": "Frequent, dynamic B-roll transitions",
+    },
+}
+
+BROLL_OVERLAY_MODES = ["cutaway", "picture_in_picture", "split_screen"]
+BROLL_SOURCES = ["local", "unsplash", "pexels"]
+BROLL_TRANSITIONS = ["fade", "dissolve", "none"]
+
+BROLL_DIR = ASSETS_DIR / "broll"
+BROLL_DIR.mkdir(parents=True, exist_ok=True)
+
+UNSPLASH_API_KEY = os.environ.get("UNSPLASH_API_KEY", "")
+PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY", "")

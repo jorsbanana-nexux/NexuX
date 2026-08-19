@@ -1,5 +1,5 @@
 """
-Nexus-Clipper V7.0 — AI Content Analysis Engine
+NexuX V8.0 — AI Content Analysis Engine
 ==================================================
 Editorial-conscious viral clip selection with:
 - Editorial consciousness (narrative, emotion, coherence, hook intelligence)
@@ -7,7 +7,7 @@ Editorial-conscious viral clip selection with:
 - Critic revision loop integration
 - Multi-language support (EN, ID, ES)
 
-The old V4.0 approach was rigid keyword matching. V7.0 blends
+The old V7.0 approach was rigid keyword matching. V8.0 blends
 algorithmic signals with editorial consciousness for gold-standard results.
 """
 import json, os, re
@@ -39,14 +39,14 @@ def analyze_content(
 ) -> List[Dict]:
     """Analyze transcript to find best viral clip candidates.
     
-    V7.0 Multi-dimensional scoring:
+    V8.0 Multi-dimensional scoring:
     1. Hook Score (0-20): First 3 seconds impact (keyword-based)
     2. Pace Score (0-20): Words per second
     3. Keyword Score (0-25): Excitement keyword density
     4. Speaker Score (0-15): Speaker variety & interaction
     5. Face Score (0-10): Face visibility
     6. Position Score (0-10): Where in video
-    7. Editorial Consciousness (V7.0): Narrative, emotion, coherence, hook intelligence
+    7. Editorial Consciousness (V8.0): Narrative, emotion, coherence, hook intelligence
     
     Args:
         transcript: Whisper transcript with segments
@@ -236,11 +236,11 @@ def analyze_content(
         if len(result) >= max_clips * 2:  # Keep extras for critic replacement
             break
 
-    # ── V7.0: Natural Speech Boundary Adjustment ──
+    # ── V8.0: Natural Speech Boundary Adjustment ──
     log.info("[Analyze] Snapping to natural speech boundaries...")
     result = adjust_clip_boundaries(result, segments, total_duration, tolerance=5.0)
 
-    # ── V7.0: Editorial Consciousness Enrichment ──
+    # ── V8.0: Editorial Consciousness Enrichment ──
     if editorial_enrichment:
         log.info("[Analyze] Applying editorial consciousness scoring...")
         result = batch_editorial_analysis(result, segments, total_duration)

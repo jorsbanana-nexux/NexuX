@@ -1,4 +1,4 @@
-"""AGENT_08_EMOTION_CONTROLLER - V7.0 Editorial Consciousness
+"""AGENT_08_EMOTION_CONTROLLER - V8.0 Editorial Consciousness
 ==============================================================
 Real emotional arc analysis using the editorial consciousness engine.
 Replaces the old keyword-matching approach with multi-dimensional
@@ -19,7 +19,7 @@ log = get_logger("agent_08")
 
 class EmotionController:
     """
-    V7.0: Real emotional intelligence.
+    V8.0: Real emotional intelligence.
     
     Instead of keyword-substring matching, this controller uses the
     editorial consciousness engine's emotional arc analysis, which

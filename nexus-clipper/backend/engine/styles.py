@@ -1,5 +1,5 @@
 """
-Nexus-Clipper Premium v4.0 — Style System
+NexuX V8.0 — Style System
 ==========================================
 30+ subtitle style presets with full kinetic typography support.
 Each preset defines: font, size, colors, animation, position, stroke.
@@ -229,6 +229,50 @@ STYLE_PRESETS: Dict[str, Dict[str, Any]] = {
     },
 
     # ── Custom (user-defined) ──
+
+    # ── Frontend V8.0 Matching Presets ──
+    "minimal-aesthetic": {
+        "font": "Helvetica Neue", "font_size": 34,
+        "primary": "#CCCCCC", "highlight": "#FFFFFF", "stroke": "#000000",
+        "position": "bottom", "animation": "fade", "stroke_width": 1,
+        "bold": False, "highlight_words": False, "shadow": False,
+        "bg_bar": False, "bg_opacity": 0.0,
+    },
+    "gamer-comic": {
+        "font": "Bangers", "font_size": 54,
+        "primary": "#FFCC00", "highlight": "#FF0000", "stroke": "#000000",
+        "position": "center", "animation": "bounce", "stroke_width": 5,
+        "bold": True, "highlight_words": True, "shadow": True,
+        "bg_bar": False, "bg_opacity": 0.0,
+    },
+    "neon-cyberpunk": {
+        "font": "Orbitron", "font_size": 46,
+        "primary": "#00FFFF", "highlight": "#FF00FF", "stroke": "#1A0040",
+        "position": "center", "animation": "flicker", "stroke_width": 3,
+        "bold": True, "highlight_words": True, "shadow": True,
+        "bg_bar": False, "bg_opacity": 0.0,
+    },
+    "ali-abdaal": {
+        "font": "Inter", "font_size": 42,
+        "primary": "#1A1A1A", "highlight": "#FFD700", "stroke": "#FFFFFF",
+        "position": "center", "animation": "fade", "stroke_width": 0,
+        "bold": True, "highlight_words": True, "shadow": False,
+        "bg_bar": True, "bg_opacity": 0.90,
+    },
+    "iman-gadzhi": {
+        "font": "Playfair Display", "font_size": 44,
+        "primary": "#F5F5F5", "highlight": "#D4AF37", "stroke": "#0A0A0A",
+        "position": "bottom", "animation": "fade_slow", "stroke_width": 3,
+        "bold": True, "highlight_words": False, "shadow": True,
+        "bg_bar": True, "bg_opacity": 0.45,
+    },
+    "anime-impact": {
+        "font": "Anton", "font_size": 56,
+        "primary": "#FFFFFF", "highlight": "#FF6B00", "stroke": "#0A0A0A",
+        "position": "center", "animation": "pop_strong", "stroke_width": 6,
+        "bold": True, "highlight_words": True, "shadow": True,
+        "bg_bar": False, "bg_opacity": 0.0,
+    },
     "custom": {
         "font": None, "font_size": None,
         "primary": None, "highlight": None, "stroke": None,

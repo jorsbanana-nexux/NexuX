@@ -1,5 +1,5 @@
 """
-Nexus-Clipper Premium v4.0 — Test Suite
+NexuX V8.0 — Test Suite
 =========================================
 Tests for all engine modules.
 Run: python3 -m pytest tests/ -v

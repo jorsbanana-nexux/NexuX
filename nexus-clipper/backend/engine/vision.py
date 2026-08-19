@@ -1,5 +1,5 @@
 """
-Nexus-Clipper Premium v4.0 — Face & Scene Analysis
+NexuX V8.0 — Face & Scene Analysis
 ===================================================
 MediaPipe face detection, scene change detection,
 person tracking, screen share detection.

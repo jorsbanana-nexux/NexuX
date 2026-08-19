@@ -205,7 +205,7 @@ def render_ass(
                 events.append(f"Dialogue: 0,{_ts(start_time)},{_ts(end_time)},Caption,,0,0,{margin},,{text}")
 
     header = [
-        "[Script Info]", "ScriptType: v4.00+", f"PlayResX: {canvas_w}", f"PlayResY: {canvas_h}", "WrapStyle: 2", "ScaledBorderAndShadow: yes", "",
+        "[Script Info]", "ScriptType: v8.00+", f"PlayResX: {canvas_w}", f"PlayResY: {canvas_h}", "WrapStyle: 2", "ScaledBorderAndShadow: yes", "",
         "[V4+ Styles]",
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
         f"Style: Headline,{chosen_font},62,&H00FFFFFF,&H00FFFFFF,&H00000000,&H90000000,{1 if style['bold'] else 0},0,0,0,100,100,0,0,1,5,2,8,70,70,110,1",

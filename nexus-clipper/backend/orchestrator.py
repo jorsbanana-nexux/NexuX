@@ -1,5 +1,5 @@
 """
-Nexus-Clipper V7.0 — Pipeline Orchestrator
+NexuX V8.0 — Pipeline Orchestrator
 =============================================
 Real orchestration that coordinates the editorial pipeline.
 No longer a 12-line placeholder.
@@ -25,12 +25,12 @@ log = get_logger("orchestrator")
 
 class PipelineOrchestrator:
     """
-    V7.0: Real pipeline orchestration.
+    V8.0: Real pipeline orchestration.
     
     Coordinates the editorial pipeline:
     1. Pre-analysis: emotion mapping (agent_08), editorial scoring
     2. Pipeline execution: download → vision → transcribe → analyze → render
-    3. Post-render: critic revision loop (agent_20 + critic engine)
+    3. Post-render: critic revision loop (critic engine)
     4. Quality decisions: audience prediction (agent_22), improvement (agent_23)
     """
 
@@ -45,7 +45,7 @@ class PipelineOrchestrator:
         progress_callback: Optional[Callable] = None,
     ) -> Dict[str, Any]:
         """
-        Orchestrate the complete V7.0 pipeline.
+        Orchestrate the complete V8.0 pipeline.
         
         This delegates the heavy lifting to engine.pipeline.run_pipeline,
         but adds pre-analysis and post-quality layers that the engine
@@ -144,5 +144,5 @@ orchestrator = PipelineOrchestrator()
 
 async def start_orchestrator():
     """Start the orchestrator (compatibility with existing code)."""
-    log.info("[Orchestrator] V7.0 Pipeline Orchestrator initialized")
-    return {"status": "ok", "message": "V7.0 orchestrator ready"}
+    log.info("[Orchestrator] V8.0 Pipeline Orchestrator initialized")
+    return {"status": "ok", "message": "V8.0 orchestrator ready"}

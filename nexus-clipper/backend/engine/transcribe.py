@@ -1,5 +1,5 @@
 """
-NexuX V7.0 — Transcription Engine
+NexuX V8.0 — Transcription Engine
 ===================================================
 faster-whisper (primary, in requirements.txt) + whisperx fallback.
 Word-level timestamps, speaker diarization, language detection.

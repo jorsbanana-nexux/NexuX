@@ -1,7 +1,7 @@
-"""AGENT_01_MASTER_BRAIN - project orchestrator for the NexuX V7.0 engine.
+"""AGENT_01_MASTER_BRAIN - project orchestrator for the NexuX V8.0 engine.
 
 This agent owns project state but never fakes completion of media stages.
-The V7.0 engine pipeline (engine/pipeline.py) is the render engine.
+The V8.0 engine pipeline (engine/pipeline.py) is the render engine.
 """
 
 import asyncio
@@ -56,7 +56,7 @@ class VideoProject:
     retry_count: int = 0
 
 class MasterBrain:
-    """Project/state orchestrator; V7.0 engine owns actual media processing."""
+    """Project/state orchestrator; V8.0 engine owns actual media processing."""
 
     def __init__(self):
         self.active_projects: Dict[str, VideoProject] = {}
@@ -65,7 +65,7 @@ class MasterBrain:
     async def initialize(self):
         from utils.config import detect_hardware
         hw = detect_hardware()
-        return {"status": "initialized", "hardware": hw, "agent_count": 25, "role": "orchestrator", "engine_version": "7.0"}
+        return {"status": "initialized", "hardware": hw, "agent_count": 20, "role": "orchestrator", "engine_version": "8.0"}
 
     async def create_project(self, params):
         pid = f"nx-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{len(self.active_projects):04d}"
@@ -102,7 +102,7 @@ class MasterBrain:
         return {
             "project_id": pid,
             "status": "delegated",
-            "engine_version": "7.0",
+            "engine_version": "8.0",
             "entrypoint": "backend/main.py",
             "stages": {
                 "research": {"status": "delegated"},
@@ -111,7 +111,7 @@ class MasterBrain:
                 "execution": {"status": "delegated"},
                 "qa_distribution": {"status": "delegated"},
             },
-            "note": "No stage is reported completed by the orchestrator. Completion is owned by the V7.0 job pipeline and render QA.",
+            "note": "No stage is reported completed by the orchestrator. Completion is owned by the V8.0 job pipeline and render QA.",
         }
 
 master_brain = MasterBrain()

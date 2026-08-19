@@ -1,5 +1,5 @@
 """
-Nexus-Clipper Premium v4.0 — AI Thumbnail Generator
+NexuX V8.0 — AI Thumbnail Generator
 =====================================================
 Extract frames from video, generate thumbnail with:
 - AI-powered best frame detection (sharpness, faces, composition)

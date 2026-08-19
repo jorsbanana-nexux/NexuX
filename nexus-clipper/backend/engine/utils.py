@@ -1,5 +1,5 @@
 """
-Nexus-Clipper Premium v4.0 — Core Utilities
+NexuX V8.0 — Core Utilities
 ============================================
 Path normalization, FFmpeg helpers, retry logic, JSON cleaning.
 """

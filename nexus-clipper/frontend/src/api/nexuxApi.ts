@@ -37,7 +37,7 @@ export interface GenerateRequest {
   ai_scoring?: boolean;
   webhook_url?: string | null;
 
-  // Advanced V6+ fields
+  // Advanced V8+ fields
   clip_prompt?: string | null;
   genre?: string;
   remove_fillers_pauses?: boolean;
