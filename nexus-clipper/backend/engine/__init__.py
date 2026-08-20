@@ -1,28 +1,22 @@
 """
-NexuX V8.5 — Engine Package
+NexuX V9.5 — Engine Package
 ============================================
-Modular architecture:
-- constants.py: All configurations & presets
-- styles.py: 30+ subtitle style system
-- utils.py: Path/FFmpeg/retry helpers
-- download.py: yt-dlp video download
-- transcribe.py: WhisperX/Whisper transcription
-- vision.py: Face detection, scene analysis, screen detection
-- vision_quality.py: Render QA & visual quality assessment
-- analyze.py: Viral scoring with AI semantic analysis
-- render.py: FFmpeg rendering with ASS subtitles
-- render_pro.py: Professional multi-pass render engine
-- voiceover.py: Edge-TTS synthesis & audio mixing
-- pipeline.py: End-to-end orchestration
-- virality_score.py: 8-dimensional virality scoring (0-100)
-- caption_engine_v2.py: Advanced kinetic typography captions
-- subtitle_quality.py: CPS/readability validation
-- critic.py: Editorial critic & revision loop
-- creative_brain.py: Creative palette selection & memory
-- hook_detection.py: Intelligent hook detection & clip start optimization
-- reframe_engine.py: Face-tracking auto-reframe for vertical video
-- autopost_engine.py: Multi-platform auto-posting (TikTok, YT, IG, FB, X, LinkedIn)
-- analytics_engine.py: Cross-platform analytics & performance prediction
+Modular architecture with Opus Killer enhancements:
+
+V8.5 modules (existing):
+- constants, styles, utils, download, transcribe, vision, vision_quality
+- analyze, render, render_pro, voiceover, pipeline
+- virality_score, caption_engine_v2, subtitle_quality
+- critic, creative_brain, hook_detection, reframe_engine
+- autopost_engine, analytics_engine, repair_system
+- preview_renderer, rerender_pipeline
+
+V9.5 NEW modules:
+- opus_killer: Unified 8-dimension scoring that beats Opus Clip
+- podcast_analyzer: Podcast-specific clip detection (topic segmentation, punchlines, heat)
+- clip_titler: Auto-generate viral titles + hashtags + descriptions
+- keyword_expander: Expand keyword into related search terms (Mode 2)
+- mode_router: Clean mode selection between Podcast and Creative modes
 """
 from .constants import *
 from .styles import STYLE_PRESETS, resolve_style
@@ -73,6 +67,13 @@ from .rerender_pipeline import (
     apply_watermark, apply_audio_processing,
 )
 
+# ── V9.5 NEW ──
+from .opus_killer import score_with_opus_killer, OpusKillerScore
+from .podcast_analyzer import analyze_podcast, detect_filler_words
+from .clip_titler import generate_clip_titles, generate_hashtags, generate_description
+from .keyword_expander import expand_keyword, get_search_strategy
+from .mode_router import get_mode_config, get_all_modes, validate_mode_input, ModeConfig
+
 __all__ = [
     "STYLE_PRESETS", "resolve_style",
     "retry", "has_gpu", "get_device",
@@ -95,4 +96,10 @@ __all__ = [
     "collect_clip_metrics", "analyze_clip_performance", "analyze_job_performance",
     "clip_analytics_to_api_dict", "job_analytics_to_api_dict",
     "ClipMetrics", "ClipAnalytics", "JobAnalytics",
+    # V9.5
+    "score_with_opus_killer", "OpusKillerScore",
+    "analyze_podcast", "detect_filler_words",
+    "generate_clip_titles", "generate_hashtags", "generate_description",
+    "expand_keyword", "get_search_strategy",
+    "get_mode_config", "get_all_modes", "validate_mode_input", "ModeConfig",
 ]
