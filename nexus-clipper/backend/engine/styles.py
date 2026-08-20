@@ -273,6 +273,65 @@ STYLE_PRESETS: Dict[str, Dict[str, Any]] = {
         "bold": True, "highlight_words": True, "shadow": True,
         "bg_bar": False, "bg_opacity": 0.0,
     },
+
+    # ── V9.5 NEW: Trending Creator Templates ──
+    "kai-cenat": {
+        "font": "Impact", "font_size": 54,
+        "primary": "#FFFFFF", "highlight": "#FF4444", "stroke": "#000000",
+        "position": "center", "animation": "bounce", "stroke_width": 5,
+        "bold": True, "highlight_words": True, "shadow": True,
+        "bg_bar": False, "bg_opacity": 0.0,
+    },
+    "andrew-tate": {
+        "font": "Impact", "font_size": 52,
+        "primary": "#FFFFFF", "highlight": "#FFD700", "stroke": "#0A0A0A",
+        "position": "center", "animation": "pop", "stroke_width": 5,
+        "bold": True, "highlight_words": True, "shadow": True,
+        "bg_bar": False, "bg_opacity": 0.0,
+    },
+    "chris-williamson": {
+        "font": "Inter", "font_size": 42,
+        "primary": "#FFFFFF", "highlight": "#3B82F6", "stroke": "#0A0A0A",
+        "position": "bottom", "animation": "fade", "stroke_width": 3,
+        "bold": True, "highlight_words": True, "shadow": False,
+        "bg_bar": True, "bg_opacity": 0.40,
+    },
+    "lex-fridman": {
+        "font": "Georgia", "font_size": 40,
+        "primary": "#EEEEEE", "highlight": "#8888FF", "stroke": "#0A0A0A",
+        "position": "bottom", "animation": "fade_slow", "stroke_width": 3,
+        "bold": False, "highlight_words": False, "shadow": False,
+        "bg_bar": True, "bg_opacity": 0.55,
+    },
+    "indonesia-viral": {
+        "font": "Arial", "font_size": 50,
+        "primary": "#FFFFFF", "highlight": "#FF6B00", "stroke": "#000000",
+        "position": "center", "animation": "pop", "stroke_width": 4,
+        "bold": True, "highlight_words": True, "shadow": True,
+        "bg_bar": True, "bg_opacity": 0.30,
+    },
+    "deddy-corbusier": {
+        "font": "Impact", "font_size": 56,
+        "primary": "#FFD700", "highlight": "#FF0000", "stroke": "#000000",
+        "position": "center", "animation": "pop_strong", "stroke_width": 6,
+        "bold": True, "highlight_words": True, "shadow": True,
+        "bg_bar": False, "bg_opacity": 0.0,
+    },
+    "raditya-dika": {
+        "font": "Comic Sans MS", "font_size": 46,
+        "primary": "#FFFFFF", "highlight": "#FFD700", "stroke": "#000000",
+        "position": "center", "animation": "bounce", "stroke_width": 3,
+        "bold": True, "highlight_words": True, "shadow": False,
+        "bg_bar": True, "bg_opacity": 0.35,
+    },
+    "news-pro": {
+        "font": "Arial", "font_size": 44,
+        "primary": "#FFFFFF", "highlight": "#FF4444", "stroke": "#0A0A0A",
+        "position": "bottom", "animation": "fade", "stroke_width": 4,
+        "bold": True, "highlight_words": True, "shadow": False,
+        "bg_bar": True, "bg_opacity": 0.50,
+    },
+
     "custom": {
         "font": None, "font_size": None,
         "primary": None, "highlight": None, "stroke": None,
