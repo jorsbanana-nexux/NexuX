@@ -1,5 +1,5 @@
 """
-NexuX V8.0 — Mode 2: Complete Pipeline
+NexuX V9.5 — Mode 2: Complete Pipeline
 =======================================
 The full Mode 2 flow:
 1. User types keyword (no URL)

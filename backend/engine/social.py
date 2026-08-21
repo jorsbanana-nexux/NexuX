@@ -1,5 +1,5 @@
 """
-NexuX V8.0 — Social Media Integration
+NexuX V9.5 — Social Media Integration
 =======================================================
 Auto-post to TikTok, YouTube, Instagram, Twitter/X.
 Each platform has its own adapter with:

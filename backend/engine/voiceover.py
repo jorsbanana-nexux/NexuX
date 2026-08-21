@@ -1,5 +1,5 @@
 """
-NexuX V8.0 — Edge-TTS Voice-Over Engine
+NexuX V9.5 — Edge-TTS Voice-Over Engine
 ==========================================
 Dynamic voice-over synthesis with ON/OFF toggle, personalization,
 and FFmpeg audio mixing with original audio ducking.

@@ -1,5 +1,5 @@
 """
-NexuX V8.0 — Mode 2: Multi-Source Compilation Engine
+NexuX V9.5 — Mode 2: Multi-Source Compilation Engine
 ======================================================
 Takes downloaded moments from multiple videos + narrative plan
 and compiles them into one professional viral video.

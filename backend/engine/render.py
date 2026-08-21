@@ -1,5 +1,5 @@
 """
-NexuX V8.0 — Rendering Engine
+NexuX V9.5 — Rendering Engine
 ===============================================
 FFmpeg-powered clip rendering with:
 - ASS/SSA dynamic subtitles (per-word styling)

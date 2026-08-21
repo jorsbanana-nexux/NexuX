@@ -1,5 +1,5 @@
 """
-NexuX V8.5 — Hook Detection Engine
+NexuX V9.5 — Hook Detection Engine
 ====================================
 Intelligent hook detection that surpasses Opus Clip's hook finder.
 

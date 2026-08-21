@@ -1,5 +1,5 @@
 """
-NexuX V8.0 — Smart Download Engine
+NexuX V9.5 — Smart Download Engine
 ====================================
 Revolutionary two-phase download:
 1. Fast metadata + auto-caption fetch (no video download!)

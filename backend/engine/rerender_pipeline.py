@@ -1,5 +1,5 @@
 """
-NexuX V8.5 — Personalization Re-Render Pipeline
+NexuX V9.5 — Personalization Re-Render Pipeline
 ====================================================
 Takes editor state from ClipEditorStudio and re-renders a clip
 with new subtitle style, effects, zoom, color grade, speed ramp,

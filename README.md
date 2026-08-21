@@ -1,113 +1,187 @@
-# NexuX
+# 🚀 NexuX V9.5 — Autonomous AI Video Repurposing Engine
 
-**Local-first AI video repurposing engine.** Ubah satu video panjang (podcast, interview, webinar) menjadi klip short-form siap posting — berjalan sepenuhnya di mesin sendiri, tanpa biaya cloud, tanpa per-minute charge.
+> **Local-first, zero cloud cost, production-ready.** Transform long-form videos into viral clips — entirely on your own machine.
+>
+> **V9.5:** Dual-mode system — Podcast Mode (clip podcasts/interviews) + AI Creative Mode (keyword → multi-source compilation). Opus Killer scoring (8 dimensions), auto viral titles, keyword expansion, post-render editor.
 
-**Canonical engine: `backend/main.py` (FastAPI).** Ini satu-satunya sumber kebenaran API dan struktur.
+[![Version](https://img.shields.io/badge/version-9.5.2-cyan)]()
+[![License](https://img.shields.io/badge/license-MIT-blue)]()
+[![Python](https://img.shields.io/badge/Python-3.11+-yellow)]()
+[![React](https://img.shields.io/badge/React-19-black)]()
 
----
-
-## Daftar Isi
-
-1. [Apa itu NexuX](#apa-itu-nexux)
-2. [Fitur utama](#fitur-utama)
-3. [Arsitektur](#arsitektur)
-4. [Prasyarat](#prasyarat)
-5. [Instalasi](#instalasi)
-6. [Konfigurasi](#konfigurasi)
-7. [Referensi API](#referensi-api)
-8. [Frontend](#frontend)
-9. [Deployment produksi](#deployment-produksi)
-10. [Testing](#testing)
-11. [Troubleshooting](#troubleshooting)
+**Canonical engine: `backend/main.py` (FastAPI).** Satu-satunya sumber kebenaran API dan struktur.
 
 ---
 
-## Apa itu NexuX
+## 📋 Daftar Isi
 
-NexuX punya dua mode:
+1. [Apa itu NexuX?](#-apa-itu-nexux)
+2. [Dual-Mode System](#-dual-mode-system)
+3. [Fitur yang Melampaui Opus Clip](#-fitur-yang-melampaui-opus-clip)
+4. [Arsitektur](#-arsitektur)
+5. [Prasyarat](#-prasyarat)
+6. [Instalasi](#-instalasi)
+7. [Konfigurasi](#-konfigurasi)
+8. [Referensi API](#-referensi-api)
+9. [Frontend](#-frontend)
+10. [Deployment Produksi](#-deployment-produksi)
+11. [Testing](#-testing)
+12. [Troubleshooting](#-troubleshooting)
+13. [Changelog](#-changelog)
 
-- **Mode 1 — Podcast:** Ambil video panjang (YouTube / upload) → transkripsi → analisis konten → skor viral → deteksi hook → reframe 9:16 + caption → render → klip siap.
+---
+
+## 🎯 Apa itu NexuX?
+
+NexuX adalah **autonomous AI video repurposing engine** dengan dua mode:
+
+- **Mode 1 — Podcast:** Ambil video panjang (YouTube / upload lokal) → transkripsi → analisis podcast → skor viral → deteksi hook → reframe 9:16 + caption → render → klip siap posting.
 - **Mode 2 — AI Creative:** Satu keyword → cari momen relevan di banyak video → susun narasi → kompilasi satu video dengan TTS + SFX.
 
-Berbeda dari tools cloud:
+Berbeda dari tools cloud (Opus Clip, dsb.):
 
 - **100% pemrosesan lokal** — Whisper + OpenCV + FFmpeg. Tanpa API berbayar, tanpa upload ke cloud orang lain.
 - **Skor transparan** — Opus Killer 8 dimensi, bukan black-box satu angka.
+- **Editorial Consciousness** — critic bawaan mengevaluasi setiap klip dan me-revisi yang lemah.
 - **B-roll-free** — tidak menempelkan stock footage; konten asli yang bicara.
 - **SQLite persistence** — riwayat job bertahan saat restart.
+- **Auto Viral Titles** — 8 arketipe, 5 variasi per klip, bilingual EN+ID.
+- **Keyword Expansion** — 1 keyword → 15+ istilah pencarian (Mode 2).
 
-### Mode 1 — Podcast pipeline
+---
+
+## 🔀 Dual-Mode System
+
+### Mode 1 — Podcast Mode (🎙️)
+
+**Input:** YouTube URL atau upload lokal (podcast, interview, talk show)
+**Output:** Beberapa klip viral (20–90 detik)
 
 ```
-URL/upload → caption/whisper → podcast analysis → opus killer score →
+URL/upload → auto-caption/Whisper → podcast analysis → Opus Killer scoring →
 hook detection → partial download → render paralel → critic revision →
 auto titles → final assembly
 ```
 
 Kecerdasan khusus podcast: topic segmentation, punchline extraction, heat detection, story arc, Q&A pairing, filler word detection, speaker turn-taking.
 
-### Mode 2 — Creative pipeline
+Tahapan progress (via WebSocket `/ws`):
+
+```
+1. Smart Metadata (0-5%)     → yt-dlp fetch info (tanpa download)
+2. Caption Fetch (5-10%)     → YouTube auto-captions ATAU faster-whisper
+3. Podcast Analysis (10-20%) → segmentasi topik, punchline, heat
+4. Opus Killer Score (20%)   → scoring 8 dimensi + hook detection
+5. Partial Download (20-40%) → download HANYA segmen terpilih
+6. Parallel Render (40-85%)  → semua klip dirender bersamaan
+7. Critic Revision (85-95%)  → kritik multi-dimensi + auto-revisi
+8. Auto Titles (95-97%)      → 5 judul viral + hashtag per klip
+9. Final Assembly (97-100%)  → concat + audio enhancement
+```
+
+### Mode 2 — AI Creative Mode (✨)
+
+**Input:** Satu keyword (misal "peter parker", "game terbaik 2026", "motivasi")
+**Output:** Satu video kompilasi dengan narasi AI, SFX, dan teks overlay
 
 ```
 keyword → expand (15+ terms) → search multi-source → analisis transkrip →
-LLM narasi → partial download → compile (TTS+SFX+transisi) → auto metadata → score
+LLM narasi → partial download → compile (TTS+SFX+transisi) →
+auto metadata → Opus Killer score
+```
+
+Tahapan progress:
+
+```
+1. Keyword Expansion (3%)    → 1 keyword → 15+ istilah pencarian
+2. Multi-Source Search (8%)  → cari YouTube dengan istilah hasil expand
+3. Transcript Analysis (18%) → temukan momen relevan di 10+ video
+4. LLM Narrative (32%)       → AI menulis skrip hook → buildup → payoff
+5. Partial Download (45%)    → download hanya momen relevan
+6. Compile Video (65%)       → TTS + SFX + transisi + teks overlay
+7. Auto Metadata (85%)       → judul viral + hashtag + deskripsi SEO
+8. Opus Killer Score (90%)   → skor kompilasi final
+9. Final Output (100%)       → video + thumbnail + metadata
 ```
 
 ---
 
-## Fitur utama
+## 🏆 Fitur yang Melampaui Opus Clip
 
-| Fitur | Catatan |
-|-------|---------|
-| Skor viral 8 dimensi | hook, virality, editorial, conversation flow, retention, shareability, technical, competitor delta |
-| Hook detection | 9 pola arketipe (EN + ID) |
-| Auto viral titles | 8 arketipe, 5 variasi per klip, bilingual EN+ID |
-| Keyword expansion | 1 keyword → 15+ istilah pencarian (Mode 2) |
-| Local upload | `POST /api/upload` → token `local://` (tanpa cloud) |
-| 4K export | `output_resolution=uhd` |
-| Subtitle presets | puluhan preset creator, karaoke/kinetic |
-| Reframe 9:16 / 1:1 / 16:9 | face tracking (OpenCV + MediaPipe) |
-| Filler detection | tandai "um/uh/eh" untuk dipotong |
-| Voice-over TTS | edge-tts (ID: Ardi, Gadis; EN: Guy, Girl) |
-| Job persistence | SQLite, auto-cleanup via TTL |
-| Auth opsional | API key; kosong = tanpa auth untuk dev lokal |
+| Fitur | Opus Clip | NexuX V9.5 |
+|-------|-----------|------------|
+| **Biaya** | $19–$39/bulan | **Gratis selamanya** |
+| **Privasi** | Video diupload ke cloud | Tetap di mesin Anda |
+| **Hook Detection** | ~3 pola | **9 arketipe (EN + ID)** |
+| **Virality Scoring** | Black box, 1 angka | **8 dimensi, transparan** |
+| **Upload lokal** | Cloud | ✅ `POST /api/upload` → token `local://` |
+| **Subtitle Presets** | Template brand | ✅ 46+ preset creator |
+| **Emoji Injection** | Template | ✅ Auto emoji + emphasis (Caption Engine v2) |
+| **Filler Detection** | Berbayar | ✅ Tandai "um/uh/eh" word-level |
+| **Voice-over (TTS)** | Limit harian | ✅ Unlimited edge-tts |
+| **Conversation Flow** | ❌ | ✅ Analisis turn-taking pembicara |
+| **Retention Curve** | ❌ | ✅ Prediksi titik drop-off |
+| **Shareability** | ❌ | ✅ Quotability + meme potential |
+| **Competitor Delta** | ❌ | ✅ "Beats Opus by X points" |
+| **Podcast Mode** | Clipper generik | ✅ Segmentasi topik + punchline + heat |
+| **Creative Mode** | ❌ | ✅ Kompilasi multi-sumber dari keyword |
+| **Auto Titles** | Basic | ✅ 8 arketipe, 5 variasi, bilingual |
+| **Keyword Expansion** | ❌ | ✅ 15+ istilah (sinonim, trending, Q&A) |
+| **Face Tracking** | Basic | OpenCV + MediaPipe |
+| **Editorial Critic** | ❌ | Auto-revision loop multi-dimensi |
+| **B-Roll** | Stock footage | B-roll-free (orisinalitas terjaga) |
+| **Job Persistence** | Cloud | SQLite (bertahan saat restart) |
+| **API Auth** | Wajib | Opsional (dev lokal = tanpa auth) |
+| **Kustomisasi** | Terbatas | Full source code |
 
 ---
 
-## Arsitektur
+## 🏗 Arsitektur
 
 ```
-nexux/
-├── backend/                  # FastAPI — canonical API + engine
-│   ├── main.py               # entrypoint API
-│   ├── api_v95_editor.py     # editor post-render (preview, rerender, overlay)
-│   ├── api_v95_modes.py      # mode router (/api/v2/*)
-│   ├── engine/               # pipeline inti
-│   │   ├── transcribe.py     # faster-whisper
-│   │   ├── podcast_analyzer.py
-│   │   ├── opus_killer.py    # scoring 8 dimensi
-│   │   ├── hook_detection.py
-│   │   ├── reframe_engine.py
-│   │   ├── render.py / render_pro.py
-│   │   ├── clip_titler.py
-│   │   ├── keyword_expander.py
-│   │   └── ... (25 modul)
-│   ├── utils/                # config, logger, rate_limiter
-│   ├── tests/
+NexuX/
+├── backend/                       # FastAPI — canonical API + engine
+│   ├── main.py                    # entrypoint API + job store + workers
+│   ├── api_v95_modes.py           # dual-mode router (/api/v2/*)
+│   ├── api_v95_editor.py          # post-render editor router (/api/editor/*)
+│   ├── api_v95_extras.py          # extras router (virality, hooks, repair, rerender legacy)
+│   ├── engine/                    # pipeline inti (38 modul)
+│   │   ├── pipeline.py            # orchestrator Mode 1
+│   │   ├── transcribe.py          # faster-whisper (lazy)
+│   │   ├── podcast_analyzer.py    # segmentasi topik, punchline, heat
+│   │   ├── opus_killer.py         # scoring 8 dimensi
+│   │   ├── hook_detection.py      # 9 arketipe hook (EN+ID)
+│   │   ├── virality_score.py      # 8-dimension virality
+│   │   ├── reframe_engine.py      # face tracking → crop FFmpeg
+│   │   ├── render.py / render_pro.py  # render multi-pass, subtitle kinetik
+│   │   ├── caption_engine_v2.py   # kinetic typography
+│   │   ├── clip_titler.py         # judul viral bilingual
+│   │   ├── keyword_expander.py    # Mode 2 keyword expansion
+│   │   ├── mode2_*.py             # Mode 2: search, narrator, compiler, pipeline
+│   │   ├── critic.py              # editorial critique
+│   │   ├── self_healer.py         # pemulihan error 3 lapis
+│   │   ├── repair_system.py       # diagnosa + fix
+│   │   ├── preview_renderer.py    # preview FFmpeg realtime
+│   │   ├── rerender_pipeline.py   # re-render personalisasi + overlay burn-in
+│   │   └── ...
+│   ├── utils/                     # config, logger, rate_limiter
+│   ├── tests/                     # 55+ test (pytest)
 │   └── requirements.txt
-├── frontend/                 # React 19 + Vite 6 + Tailwind v4 + TypeScript
+├── frontend/                      # React 19 + Vite 6 + Tailwind v4 + TypeScript
 │   └── src/
-│       ├── api/              # nexuxApi.ts, editorApi.ts
-│       └── components/       # console, editor studio, subtitle studio, ...
-├── Dockerfile                # multi-stage backend image
+│       ├── api/                   # nexuxApi.ts, v2Api.ts, editorApi.ts
+│       └── components/            # PostRenderFlow, ModeSelector, consoles, studios...
+├── Dockerfile                     # multi-stage (backend + frontend)
 └── docker-compose.yml
 ```
 
 **Alur request:** Frontend (port 3000) ↔ HTTP API + WebSocket `/ws` ↔ FastAPI (port 8000) → engine → SQLite.
 
+**Job lifecycle (kedua mode):** `/api/v2/generate` mendaftarkan job ke store SQLite → worker background memproses → progress realtime via `/ws` + polling `/api/job/{id}` → hasil di `/api/download/{id}` → personalisasi ulang via `/api/editor/*`.
+
 ---
 
-## Prasyarat
+## ✅ Prasyarat
 
 | Kebutuhan | Minimum | Rekomendasi |
 |-----------|---------|-------------|
@@ -133,7 +207,7 @@ Verifikasi: `ffmpeg -version`, `python3.11 --version`, `node --version`.
 
 ---
 
-## Instalasi
+## 📝 Instalasi
 
 ### 1. Clone
 
@@ -169,7 +243,7 @@ Frontend di `http://localhost:3000`.
 
 ```bash
 curl http://127.0.0.1:8000/api/health
-# {"status":"healthy","canonical_runtime":true,...}
+# {"status":"healthy","canonical_runtime":true,"canonical_engine":"local-first-v9.5.2",...}
 
 curl http://127.0.0.1:8000/api/v2/modes
 # daftar mode podcast + creative
@@ -177,13 +251,24 @@ curl http://127.0.0.1:8000/api/v2/modes
 
 ### 5. Klip pertama (Mode 1)
 
+**Via UI:** buka `http://localhost:3000` → pilih **Podcast Mode** (🎙️) → tempel URL YouTube → atur durasi/jumlah klip → Generate → setelah render selesai, **editor personalisasi terbuka otomatis**.
+
+**Via API:**
+
 ```bash
 curl -X POST http://127.0.0.1:8000/api/v2/generate \
   -H "Content-Type: application/json" \
   -d '{"mode":"podcast","youtube_url":"https://www.youtube.com/watch?v=VIDEO_ID","target_duration":45,"clip_count":5}'
+
+# poll progress (job TERDAFTAR di store — bisa dipoll, dibatalkan, bertahan saat restart)
+curl http://127.0.0.1:8000/api/job/<job_id>
 ```
 
 ### 6. Video creative pertama (Mode 2)
+
+**Via UI:** pilih **AI Creative Mode** (✨) → ketik keyword → atur voice/SFX/BGM → Generate.
+
+**Via API:**
 
 ```bash
 # preview keyword expansion
@@ -196,7 +281,7 @@ curl -X POST http://127.0.0.1:8000/api/v2/generate \
 
 ---
 
-## Konfigurasi
+## ⚙ Konfigurasi
 
 Salin `.env.example` → `.env`.
 
@@ -230,7 +315,7 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 
 ---
 
-## Referensi API
+## 📡 Referensi API
 
 Base URL: `http://127.0.0.1:8000`. Referensi interaktif lengkap: `/docs`.
 
@@ -239,7 +324,7 @@ Base URL: `http://127.0.0.1:8000`. Referensi interaktif lengkap: `/docs`.
 | Method | Path | Deskripsi |
 |--------|------|-----------|
 | GET | `/api/v2/modes` | daftar mode + fitur |
-| POST | `/api/v2/generate` | mulai generasi (auto-detect mode) |
+| POST | `/api/v2/generate` | mulai generasi (auto-detect mode) → **job terdaftar & bisa dipoll** |
 | GET | `/api/v2/keyword/expand` | preview keyword expansion |
 | GET | `/api/v2/modes/{mode}/features` | detail mode |
 
@@ -247,13 +332,29 @@ Base URL: `http://127.0.0.1:8000`. Referensi interaktif lengkap: `/docs`.
 
 | Method | Path | Deskripsi |
 |--------|------|-----------|
-| GET | `/api/editor/templates` | template creator |
-| GET | `/api/editor/styles` | preset subtitle |
+| GET | `/api/editor/templates` | 12 template creator |
+| GET | `/api/editor/styles` | 46+ preset subtitle |
+| GET | `/api/editor/effects` | zoom, color grade, speed ramp, animasi |
 | GET | `/api/editor/clip/{job_id}/{idx}` | detail klip |
 | GET | `/api/editor/clip/{job_id}/{idx}/transcript` | transkrip word-level |
-| POST | `/api/editor/preview/{job_id}/{idx}` | preview FFmpeg cepat |
-| POST | `/api/editor/rerender/{job_id}/{idx}` | re-render dengan personalisasi |
+| POST | `/api/editor/preview/{job_id}/{idx}` | preview FFmpeg cepat (480p, 5s) |
+| POST | `/api/editor/rerender/{job_id}/{idx}` | re-render dengan personalisasi + overlay burn-in |
 | POST | `/api/editor/rerender/{job_id}/all` | batch re-render |
+
+### Analisis & Utilitas (V9.5 Extras)
+
+| Method | Path | Deskripsi |
+|--------|------|-----------|
+| GET | `/api/virality/{job_id}` | skor virality 8 dimensi per klip |
+| GET | `/api/hooks/{job_id}` | hasil hook detection per klip |
+| GET | `/api/caption-quality/{job_id}` | laporan kualitas caption per klip |
+| GET | `/api/reframe/{job_id}` | data auto-reframe per klip |
+| GET | `/api/platforms` | platform publish yang didukung |
+| GET | `/api/repair/diagnose` | diagnosa self-healing |
+| POST | `/api/repair/fix-all` | auto-fix semua masalah terdeteksi |
+| POST | `/api/preview-render/{job_id}/{idx}` | preview FFmpeg (legacy shape) |
+| POST | `/api/rerender/{job_id}/{idx}` | re-render personalisasi (legacy shape) |
+| POST | `/api/rerender/{job_id}/{idx}/overlays` | re-render + overlay burn-in (timeline editor) |
 
 ### Inti
 
@@ -266,15 +367,24 @@ Base URL: `http://127.0.0.1:8000`. Referensi interaktif lengkap: `/docs`.
 | POST | `/api/search` | cari YouTube |
 | POST | `/api/upload` | upload video lokal → token `local://` |
 | POST | `/api/generate` | mulai generasi (Mode 1 legacy) |
-| GET | `/api/job/{id}` | status job |
+| GET | `/api/job/{id}` | status job (bekerja untuk job v1 DAN v2) |
 | GET | `/api/jobs` | daftar job (paginasi) |
 | DELETE | `/api/job/{id}` | batalkan job |
+| GET | `/api/vision/{id}` | data analisis vision |
+| GET | `/api/render-qa/{id}` | QA hasil render |
+| GET | `/api/critic/{id}` | laporan kritik editorial |
+| GET | `/api/publish/{id}` | rencana publish |
+| POST | `/api/publish/{id}/{platform}` | persiapan platform |
+| GET | `/api/analytics/{id}` | analitik job |
 | GET | `/api/download/{id}` | unduh hasil |
+| POST | `/api/mode2/generate` | Mode 2 sinkron (legacy, satu-shot) |
+| GET | `/api/mode2/jobs` | daftar hasil Mode 2 dari disk |
+| GET | `/api/mode2/voices` | daftar suara TTS |
 | WS | `/ws` | progress realtime |
 
 ---
 
-## Frontend
+## 🎨 Frontend
 
 React 19 + Vite 6 + Tailwind v4 + TypeScript.
 
@@ -282,24 +392,25 @@ React 19 + Vite 6 + Tailwind v4 + TypeScript.
 
 | File | Dipakai untuk |
 |------|---------------|
-| `nexuxApi.ts` | endpoint inti (generate, job, download, upload) |
+| `nexuxApi.ts` | endpoint inti (generate, job, download, upload, rerender legacy, repair, platforms) |
+| `v2Api.ts` | endpoint dual-mode V9.5 (modes, generate, keyword expand) |
 | `editorApi.ts` | endpoint editor (templates, preview, re-render) |
 
 ### Komponen utama (`src/components/`)
 
 | Komponen | Fungsi |
 |----------|--------|
-| `SpaceshipConsole.tsx` | input Mode 1 + progress |
-| `Mode2Console.tsx` | input Mode 2 + settings |
-| `ClipEditorStudio.tsx` | personalisasi klip + re-render |
-| `TimelineEditorStudio.tsx` | timeline editor + overlay drag |
+| `PostRenderFlow.tsx` | Orchestrator dual-mode: seleksi mode → konsol (aktif di `App.tsx`) |
+| `ModeSelector.tsx` | UI seleksi mode (fetch `/api/v2/modes`, fallback offline) |
+| `SpaceshipConsole.tsx` | Mode 1 — input + progress, auto-open editor setelah render |
+| `Mode2Console.tsx` | Mode 2 — input keyword + settings |
+| `ClipEditorStudio.tsx` | personalisasi klip + re-render (undo/redo, shortcut keyboard) |
+| `TimelineEditorStudio.tsx` | timeline editor + overlay drag → burn-in via `/api/rerender/.../overlays` |
 | `SubtitleEngineStudio.tsx` | preview style subtitle |
-
-> Catatan: beberapa komponen dari versi lama (`ModeSelector`, `PostRenderFlow`, `v2Api.ts`) tidak diaktifkan di `App.tsx` dan sengaja dibuang saat konsolidasi. Jika ingin UI dual-mode terpadu, aktifkan kembali alur `/api/v2/*` lewat `nexuxApi`.
 
 ---
 
-## Deployment produksi
+## 🚀 Deployment Produksi
 
 ### Docker
 
@@ -324,20 +435,20 @@ gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000
 
 ---
 
-## Testing
+## 🧪 Testing
 
 ```bash
-cd backend && python -m pytest tests/ -v
-cd frontend && npm test        # unit
-cd frontend && npx tsc --noEmit  # typecheck
-cd frontend && npm run build   # build produksi
+cd backend && python -m pytest tests/ -v        # 55+ test
+cd frontend && npm test                          # unit (vitest)
+cd frontend && npx tsc --noEmit                  # typecheck
+cd frontend && npm run build                     # build produksi
 ```
 
 CI (`.github/workflows/ci.yml`) menjalankan backend compile+tests dan frontend typecheck+build.
 
 ---
 
-## Troubleshooting
+## 🔧 Troubleshooting
 
 **FFmpeg not found**
 ```bash
@@ -361,8 +472,57 @@ PORT=8001 python main.py
 
 **Mode 2 narasi terlalu sederhana** — itu fallback template. Set satu LLM key (`OPENAI_API_KEY` / `GEMINI_API_KEY` / `ANTHROPIC_API_KEY`).
 
+**Endpoint mengembalikan 404** — pastikan server versi terbaru; seluruh router (`api_v95_modes`, `api_v95_editor`, `api_v95_extras`) ter-mount otomatis di `main.py`. Cek log startup.
+
 ---
 
-## Lisensi
+## 📦 Changelog
+
+### V9.5.3 (Agustus 2026) — Rombakan Total: Rancangan ↔ Realita
+
+**Fixed (kritis):**
+- **`/api/v2/generate` sekarang mendaftarkan job sungguhan** ke store SQLite — sebelumnya job berjalan "hantu" tanpa registrasi sehingga `/api/job/{id}` selalu 404. Kedua mode kini punya progress realtime, WebSocket update, pembatalan, dan persistence penuh.
+- **Dead `_integrate_api.py` exec-loader dihapus** — fungsinya digantikan router proper `api_v95_extras.py` (virality, hooks, caption-quality, reframe, platforms, repair, rerender legacy + overlays) yang ter-mount di `main.py`.
+- Versi diseragamkan ke **9.5.2** di `main.py`, `utils/config.py`, `requirements.txt`, `package.json`, dan seluruh header modul engine.
+- `SyntaxWarning` invalid escape `\k` di docstring diperbaiki (raw docstrings).
+- `Settings` pydantic dimigrasi ke `SettingsConfigDict` (tanpa deprecation warning).
+
+**NEW:**
+- `PostRenderFlow.tsx` — orchestrator dual-mode aktif di `App.tsx`: seleksi mode → konsol podcast/kreatif.
+- `ModeSelector.tsx` — UI seleksi mode dengan fetch `/api/v2/modes` + fallback offline.
+- `v2Api.ts` — client frontend typed untuk `/api/v2/*`.
+- 20+ test baru: `tests/test_v95_extras.py` (backend) dan `src/test/v2Api.test.ts` (frontend).
+
+### V9.5.2 (Agustus 2026) — Router Mount + Stabilitas
+
+**Fixed:**
+- `editor_router` dan `modes_router` ter-mount di `main.py` (sebelumnya V9.5 endpoints 404).
+- Import relatif diperbaiki di `api_v95_editor.py` dan `api_v95_modes.py`.
+- `TimelineEditorStudio.tsx` useEffect block-scoped variable fix (TS2448).
+
+### V9.5.1 (Agustus 2026) — Post-Render Editor
+
+- `api_v95_editor.py` — 8 endpoint editor dengan preview FFmpeg nyata.
+- Auto-open editor setelah render selesai.
+- Undo/Redo + shortcut keyboard di ClipEditorStudio.
+- Overlay drag → burn-in via FFmpeg drawtext.
+- 12 template creator + 46+ preset subtitle.
+
+### V9.5 (Agustus 2026) — Opus Clip Killer Upgrade
+
+- `opus_killer.py` — scoring 8 dimensi terpadu.
+- `podcast_analyzer.py` — segmentasi topik, punchline, heat, Q&A, filler.
+- `clip_titler.py` — 5 judul viral per klip (8 arketipe, bilingual).
+- `keyword_expander.py` — 1 keyword → 15+ istilah.
+- `mode_router.py` + `mode2_enhanced.py` + `api_v95_modes.py`.
+
+### V9.0 / V8.0 (Sebelumnya)
+
+- Timeline editor, undo/redo, preview FFmpeg realtime, self-repair.
+- Mode 2 AI Creative, smart pipeline (auto-caption + partial download), render engine 4-pass, self-healer 32 tipe error.
+
+---
+
+## 📜 Lisensi
 
 MIT

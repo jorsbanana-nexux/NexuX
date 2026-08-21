@@ -17,7 +17,7 @@ import { sound } from './utils/soundEffects';
 import { initLenis, destroyLenis } from './utils/lenis';
 
 // Lazy-loaded below-the-fold components (reduces initial bundle)
-const SpaceshipConsole = lazy(() => import('./components/SpaceshipConsole').then(m => ({ default: m.SpaceshipConsole })));
+const PostRenderFlow = lazy(() => import('./components/PostRenderFlow').then(m => ({ default: m.PostRenderFlow })));
 const SubtitleEngineStudio = lazy(() => import('./components/SubtitleEngineStudio').then(m => ({ default: m.SubtitleEngineStudio })));
 const ShowcaseSection = lazy(() => import('./components/ShowcaseSection').then(m => ({ default: m.ShowcaseSection })));
 const TryModal = lazy(() => import('./components/TryModal').then(m => ({ default: m.TryModal })));
@@ -98,9 +98,9 @@ export default function App() {
         onOpenDemoVideo={() => setIsVideoModalOpen(true)}
       />
 
-      {/* 6. Spaceship AI Cockpit Console with Clean Single Ingest Area (No cluttered 3-video duplicates) */}
+      {/* 6. Dual-Mode Flow: Mode Selector → Podcast Console (Spaceship) or AI Creative Console (Mode 2) */}
       <Suspense fallback={<LazyFallback />}>
-        <SpaceshipConsole />
+        <PostRenderFlow />
       </Suspense>
 
       {/* 7. Subtitle Engine Studio with Word-by-Word, Line-by-Line, Bounce-Zoom & Hormozi, Minimal, Gamer Presets */}

@@ -1,5 +1,5 @@
 """
-NexuX V8.0 — Core Utilities
+NexuX V9.5 — Core Utilities
 ============================================
 Path normalization, FFmpeg helpers, retry logic, JSON cleaning.
 """

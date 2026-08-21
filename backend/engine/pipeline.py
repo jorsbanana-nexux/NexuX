@@ -1,5 +1,5 @@
 """
-NexuX V8.0 — Smart Pipeline Orchestrator
+NexuX V9.5 — Smart Pipeline Orchestrator
 ==========================================
 Revolutionary two-phase architecture:
 1. Fast metadata + auto-caption fetch (NO video download)

@@ -1,5 +1,5 @@
 """
-NexuX V8.0 — Face & Scene Analysis
+NexuX V9.5 — Face & Scene Analysis
 ===================================================
 MediaPipe face detection, scene change detection,
 person tracking, screen share detection.

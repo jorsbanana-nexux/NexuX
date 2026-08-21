@@ -1,5 +1,5 @@
 """
-NexuX V8.0 — Audio Enhancement Engine
+NexuX V9.5 — Audio Enhancement Engine
 ===============================================
 Professional audio processing for gold-standard output.
 

@@ -1,5 +1,5 @@
 """
-NexuX V8.0 — Mode 2: Multi-Source Search & Download
+NexuX V9.5 — Mode 2: Multi-Source Search & Download
 =====================================================
 Search YouTube for 10 related videos based on a keyword.
 Download only relevant MOMENTS (partial download) from each.

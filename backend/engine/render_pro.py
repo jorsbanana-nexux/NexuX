@@ -1,5 +1,5 @@
-"""
-NexuX V8.0 — Professional Render Engine
+r"""
+NexuX V9.5 — Professional Render Engine
 =========================================
 The engine that actually makes videos look like Opus Clip quality.
 
@@ -273,7 +273,7 @@ def _build_kinetic_ass(
     canvas_w: int,
     canvas_h: int,
 ) -> Path:
-    """Build ASS subtitle file with KINETIC word-by-word highlighting.
+    r"""Build ASS subtitle file with KINETIC word-by-word highlighting.
     
     Uses ASS \k (karaoke) tags for word-by-word color change within each line.
     The full sentence stays on screen, but each word highlights in sequence.

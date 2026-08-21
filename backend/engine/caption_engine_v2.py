@@ -1,5 +1,5 @@
-"""
-NexuX V8.5 — Advanced Caption Engine (Kinetic Typography v2)
+r"""
+NexuX V9.5 — Advanced Caption Engine (Kinetic Typography v2)
 ==============================================================
 Next-gen animated caption system that surpasses Opus Clip's caption quality.
 

@@ -1,5 +1,5 @@
 """
-NexuX V8.0 — Editorial Critic & Revision Loop
+NexuX V9.5 — Editorial Critic & Revision Loop
 =======================================================
 The quality gate that makes NexuX a discerning professional editor.
 

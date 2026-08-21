@@ -1,12 +1,18 @@
-"""Nexus-Clipper v3 — Configuration"""
+"""NexuX V9.5 — Configuration"""
 import os, platform
 from pathlib import Path
 from typing import Optional
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
-    PROJECT_NAME: str = "Nexus-Clipper AI Ultra"
-    PROJECT_VERSION: str = "8.0.0"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+    )
+
+    PROJECT_NAME: str = "NexuX"
+    PROJECT_VERSION: str = "9.5.2"
     DEBUG: bool = False
     HOST: str = "0.0.0.0"
     PORT: int = 8000
@@ -14,11 +20,6 @@ class Settings(BaseSettings):
     BASE_DIR: Path = Path(__file__).resolve().parent.parent
     OUTPUT_DIR: Path = BASE_DIR / "output"
     ASSETS_DIR: Path = BASE_DIR / "assets"
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
 
 _settings: Optional[Settings] = None
 

@@ -134,57 +134,51 @@ async def generate_v2(
     
     log.info(f"[API V2] Generate request: mode={mode}, job_id={job_id}")
     
+    # Deferred import: api_v95_modes is imported by main at startup,
+    # so main's helpers can only be imported at request time.
+    from main import start_pipeline_job, start_mode2_job
+
     if mode == "podcast":
-        # Start Mode 1 pipeline (delegates to existing run_pipeline)
-        from engine import run_pipeline
-        
-        async def run_mode1():
-            try:
-                result = await run_pipeline(
-                    req.youtube_url, job_id,
-                    target_duration=req.target_duration,
-                    clip_count=req.clip_count,
-                    aspect_ratio=req.aspect_ratio,
-                    subtitle_style=req.subtitle_style,
-                    auto_zoom=req.auto_zoom,
-                    face_tracking=req.face_tracking,
-                    language=req.language,
-                    remove_fillers_pauses=req.remove_fillers,
-                    color_grade=req.color_grade,
-                )
-                log.info(f"[API V2] Mode 1 job {job_id} completed")
-            except Exception as e:
-                log.error(f"[API V2] Mode 1 job {job_id} failed: {e}")
-        
-        background_tasks.add_task(run_mode1)
-        
+        # Register a REAL job in the store → progress, WebSocket updates,
+        # cancellation, and SQLite persistence all work exactly like /api/generate.
+        start_pipeline_job(
+            background_tasks,
+            req.youtube_url,
+            {
+                "target_duration": req.target_duration,
+                "clip_count": req.clip_count,
+                "aspect_ratio": req.aspect_ratio,
+                "subtitle_style": req.subtitle_style,
+                "auto_zoom": req.auto_zoom,
+                "face_tracking": req.face_tracking,
+                "language": req.language,
+                "remove_fillers_pauses": req.remove_fillers,
+                "color_grade": req.color_grade,
+            },
+            job_id=job_id,
+        )
+
         return GenerateV2Response(
             job_id=job_id, mode=mode, status="queued",
             message=f"🎙️ {config.name} started! Poll /api/job/{job_id} for progress."
         )
-    
+
     else:
-        # Start Mode 2 pipeline (enhanced)
-        from engine.mode2_enhanced import run_mode2_enhanced
-        
-        async def run_mode2():
-            try:
-                result = await run_mode2_enhanced(
-                    keyword=req.keyword,
-                    voice_enabled=req.voice_enabled,
-                    voice_name=req.voice_name,
-                    sfx_enabled=req.sfx_enabled,
-                    bgm_enabled=req.bgm_enabled,
-                    target_duration=req.target_duration,
-                    max_sources=req.max_sources,
-                    job_id=job_id,
-                )
-                log.info(f"[API V2] Mode 2 job {job_id} completed")
-            except Exception as e:
-                log.error(f"[API V2] Mode 2 job {job_id} failed: {e}")
-        
-        background_tasks.add_task(run_mode2)
-        
+        # Register a REAL Mode 2 job → pollable via /api/job/{job_id} like Mode 1.
+        start_mode2_job(
+            background_tasks,
+            {
+                "keyword": req.keyword,
+                "voice_enabled": req.voice_enabled,
+                "voice_name": req.voice_name,
+                "sfx_enabled": req.sfx_enabled,
+                "bgm_enabled": req.bgm_enabled,
+                "target_duration": req.target_duration,
+                "max_sources": req.max_sources,
+            },
+            job_id=job_id,
+        )
+
         return GenerateV2Response(
             job_id=job_id, mode=mode, status="queued",
             message=f"✨ {config.name} started! Poll /api/job/{job_id} for progress."

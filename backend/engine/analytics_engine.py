@@ -1,5 +1,5 @@
 """
-NexuX V8.5 — Cross-Platform Analytics Engine
+NexuX V9.5 — Cross-Platform Analytics Engine
 =================================================
 Unified analytics that tracks clip performance across all platforms
 and provides insights Opus Clip doesn't have:

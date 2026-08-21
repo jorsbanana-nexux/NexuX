@@ -1,5 +1,5 @@
 """
-NexuX V8.5 — Face Tracking Auto-Reframe Engine
+NexuX V9.5 — Face Tracking Auto-Reframe Engine
 ==================================================
 Intelligent face-tracking that keeps speakers in frame when
 converting horizontal video to vertical (9:16, 1:1, 4:5).

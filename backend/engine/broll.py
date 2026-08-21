@@ -1,5 +1,5 @@
 """
-NexuX V8.0 — B-Roll Engine (Optional, Toggleable)
+NexuX V9.5 — B-Roll Engine (Optional, Toggleable)
 
 B-roll support that can be toggled ON/OFF. When OFF (default),
 behavior stays exactly as the current B-roll-free policy.

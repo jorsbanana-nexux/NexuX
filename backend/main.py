@@ -1,9 +1,12 @@
 """
-NexuX V8.0 — FastAPI Backend (Production-Ready)
+NexuX V9.5 — FastAPI Backend (Production-Ready)
 ==================================================
-Canonical API matching the frontend V8.0 contract.
+Canonical API matching the frontend V9.5 contract.
 
-V8.0 upgrades from V7.0 (legacy):
+V9.5 feature set:
+- Dual-mode system: Podcast Mode + AI Creative Mode (/api/v2/*)
+- Opus Killer 8-dimension scoring, hook detection, auto viral titles
+- Post-render editor: templates, preview, re-render (/api/editor/*)
 - SQLite persistent job storage (survives restarts)
 - API key authentication (optional, env-based)
 - Job history with pagination
@@ -41,9 +44,10 @@ from engine import (
 )
 from engine.constants import MAX_CONCURRENT_JOBS, UPLOAD_DIR
 
-# ── V9.5 Editor & Modes API Routers ──
+# ── V9.5 Editor, Modes & Extras API Routers ──
 from api_v95_editor import router as editor_router
 from api_v95_modes import router as modes_router
+from api_v95_extras import router as extras_router
 
 
 # ── Logger ──
@@ -54,7 +58,7 @@ logging.basicConfig(
 log = logging.getLogger("nexus.api")
 
 # ── Constants ──
-VERSION = "9.0.0"
+VERSION = "9.5.2"
 DB_PATH = Path(os.environ.get("NEXUX_DB_PATH", "nexux_jobs.db"))
 JOB_TTL_HOURS = int(os.environ.get("NEXUX_JOB_TTL_HOURS", "72"))
 API_KEY = os.environ.get("NEXUX_API_KEY", "")  # Empty = no auth (local dev)
@@ -375,6 +379,47 @@ def _new_job(jid: str) -> dict:
         "_api_key_hash": None,
     }
 
+def start_pipeline_job(bg: BackgroundTasks, youtube_url: str, style_kwargs: dict,
+                       job_id: Optional[str] = None, request_data: Optional[dict] = None,
+                       api_key_hash: Optional[str] = None) -> str:
+    """Register a pipeline job in the store and queue its worker.
+
+    Shared by /api/generate and /api/v2/generate so both get identical
+    progress tracking, WebSocket updates, and SQLite persistence.
+    """
+    global active_count
+    if active_count >= MAX_CONCURRENT_JOBS:
+        raise HTTPException(429, f"Max {MAX_CONCURRENT_JOBS} concurrent jobs. Try again shortly.")
+
+    jid = job_id or f"nx-{uuid.uuid4().hex}"
+    job = _new_job(jid)
+    job["_request_data"] = request_data if request_data is not None else dict(style_kwargs)
+    job["_api_key_hash"] = api_key_hash
+    jobs[jid] = job
+    cancel_flags[jid] = False
+    active_count += 1
+    _save_job(job)
+
+    bg.add_task(_process_job, jid, youtube_url, style_kwargs)
+    return jid
+
+def start_mode2_job(bg: BackgroundTasks, params: dict, job_id: Optional[str] = None) -> str:
+    """Register a Mode 2 (creative) job in the store and queue its worker."""
+    global active_count
+    if active_count >= MAX_CONCURRENT_JOBS:
+        raise HTTPException(429, f"Max {MAX_CONCURRENT_JOBS} concurrent jobs. Try again shortly.")
+
+    jid = job_id or f"mode2_{uuid.uuid4().hex[:12]}"
+    job = _new_job(jid)
+    job["_request_data"] = dict(params)
+    jobs[jid] = job
+    cancel_flags[jid] = False
+    active_count += 1
+    _save_job(job)
+
+    bg.add_task(_process_mode2_job, jid, params)
+    return jid
+
 # ── App ──
 
 ALLOWED_ORIGINS = os.environ.get(
@@ -438,6 +483,7 @@ def _get_job(job_id: str) -> Optional[dict]:
 # ── Mount V9.5 API Routers ──
 app.include_router(editor_router)
 app.include_router(modes_router)
+app.include_router(extras_router)
 
 # ── Routes ──
 
@@ -584,18 +630,7 @@ async def generate(req: GenerateRequest, bg: BackgroundTasks, request: Request, 
     if rl:
         return rl
 
-    if active_count >= MAX_CONCURRENT_JOBS:
-        raise HTTPException(429, f"Max {MAX_CONCURRENT_JOBS} concurrent jobs. Try again shortly.")
-
     jid = f"nx-{uuid.uuid4().hex}"
-    job = _new_job(jid)
-    job["_request_data"] = req.model_dump()
-    job["_api_key_hash"] = _hash_key(API_KEY) if API_KEY else None
-    jobs[jid] = job
-    cancel_flags[jid] = False
-    active_count += 1
-    _save_job(job)
-
     style_kwargs = {
         "subtitle_style": req.subtitle_style,
         "font": req.font,
@@ -642,9 +677,14 @@ async def generate(req: GenerateRequest, bg: BackgroundTasks, request: Request, 
         "voiceover_script": req.voiceover_script,
     }
 
-    bg.add_task(_process_job, jid, req.youtube_url, style_kwargs)
+    start_pipeline_job(
+        bg, req.youtube_url, style_kwargs,
+        job_id=jid,
+        request_data=req.model_dump(),
+        api_key_hash=_hash_key(API_KEY) if API_KEY else None,
+    )
     log.info(f"Job {jid} queued: {req.youtube_url[:80]}")
-    return _job_to_response(job)
+    return _job_to_response(jobs[jid])
 
 @app.get("/api/job/{job_id}", response_model=JobResponse)
 async def get_job(job_id: str, _=Depends(_require_auth)):
@@ -1199,6 +1239,99 @@ async def _process_job(job_id: str, url: str, kwargs: dict):
     finally:
         active_count = max(0, active_count - 1)
 
+async def _process_mode2_job(job_id: str, params: dict):
+    """Worker for Mode 2 (creative) jobs registered via start_mode2_job."""
+    global active_count
+    job = jobs[job_id]
+    loop = asyncio.get_running_loop()
+
+    def _progress(pct: float, message: str = ""):
+        if cancel_flags.get(job_id):
+            raise asyncio.CancelledError()
+        job["stage"] = message or job["stage"]
+        job["progress"] = float(pct)
+        _save_job(job)
+        loop.create_task(ws.broadcast({
+            "type": "job_progress",
+            "job_id": job_id,
+            "stage": job["stage"],
+            "progress": job["progress"],
+        }))
+
+    try:
+        from engine.mode2_enhanced import run_mode2_enhanced
+
+        job["status"] = "processing"
+        _save_job(job)
+
+        result = await run_mode2_enhanced(
+            keyword=params.get("keyword", ""),
+            voice_enabled=params.get("voice_enabled", True),
+            voice_name=params.get("voice_name", "id-ID-ArdiNeural"),
+            sfx_enabled=params.get("sfx_enabled", True),
+            bgm_enabled=params.get("bgm_enabled", True),
+            target_duration=params.get("target_duration", 60),
+            max_sources=params.get("max_sources", 10),
+            job_id=job_id,
+            progress_callback=_progress,
+        )
+
+        if result.get("error"):
+            job["status"] = "failed"
+            job["error"] = result["error"]
+            _save_job(job)
+            await ws.broadcast({"type": "job_failed", "job_id": job_id, "error": result["error"]})
+            return
+
+        output_path = result.get("output_path")
+        clips = [output_path] if output_path else []
+        metadata = result.get("metadata", {})
+        opus = result.get("opus_killer_score") or {}
+
+        job.update(
+            status="completed",
+            progress=100,
+            stage="completed",
+            output_path=output_path,
+            clips=clips,
+            render_meta=[{
+                "candidate_id": f"{job_id}-c0",
+                "editorial_rank": 1,
+                "render": {"path": output_path},
+                "virality": opus.get("composite", 0),
+            }] if output_path else [],
+            analysis_bundle={
+                "mode": "creative",
+                "keyword": params.get("keyword"),
+                "metadata": metadata,
+                "titles": result.get("titles", []),
+                "hashtags": result.get("hashtags", []),
+                "description": result.get("description", ""),
+                "opus_killer_score": opus,
+                "thumbnail_path": result.get("thumbnail_path"),
+            },
+        )
+        _save_job(job)
+        await ws.broadcast({
+            "type": "job_completed",
+            "job_id": job_id,
+            "output_path": output_path,
+            "clips": clips,
+        })
+
+    except asyncio.CancelledError:
+        job["status"] = "cancelled"
+        job["error"] = "Cancelled by user"
+        _save_job(job)
+    except Exception as e:
+        job["status"] = "failed"
+        job["error"] = str(e)
+        _save_job(job)
+        log.error(f"[Mode2 Job {job_id}] Failed: {e}", exc_info=True)
+        await ws.broadcast({"type": "job_failed", "job_id": job_id, "error": str(e)})
+    finally:
+        active_count = max(0, active_count - 1)
+
 async def _send_webhook(url: str, job: dict):
     try:
         import httpx
@@ -1208,14 +1341,6 @@ async def _send_webhook(url: str, job: dict):
             })
     except Exception as e:
         log.warning(f"Webhook failed: {e}")
-
-# ── V8.5 + V9.0 API Integration ──
-# Load all API addition files (virality, hooks, reframe, autopost, analytics,
-# rerender, overlays, repair, preview) into the FastAPI app.
-try:
-    exec(open(os.path.join(os.path.dirname(__file__), "_integrate_api.py")).read(), globals())
-except Exception as e:
-    log.error(f"Failed to load API additions: {e}", exc_info=True)
 
 # ── Entry ──
 

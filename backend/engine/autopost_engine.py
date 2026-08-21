@@ -1,5 +1,5 @@
 """
-NexuX V8.5 — Multi-Platform Auto-Posting Engine
+NexuX V9.5 — Multi-Platform Auto-Posting Engine
 ====================================================
 Unified posting pipeline that auto-publishes clips to:
 - TikTok (Direct Post API)

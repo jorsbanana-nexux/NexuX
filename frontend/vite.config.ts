@@ -19,13 +19,17 @@ export default defineConfig(() => {
     server: {
       port: 3000,
       host: '0.0.0.0',
+      allowedHosts: [
+        '.prod-runtime.all-hands.dev',
+        'localhost',
+        '127.0.0.1',
+      ],
     },
     preview: {
       port: 12001,
       host: '0.0.0.0',
       allowedHosts: [
-        'work-1-jlvvraxqkzmdaiiu.prod-runtime.all-hands.dev',
-        'work-2-jlvvraxqkzmdaiiu.prod-runtime.all-hands.dev',
+        '.prod-runtime.all-hands.dev',
         'localhost',
         '127.0.0.1',
       ],

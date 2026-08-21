@@ -1,5 +1,5 @@
 """
-NexuX V8.0 — Constants & Configuration
+NexuX V9.5 — Constants & Configuration
 =======================================================
 All tunable parameters, aspect ratios, codec presets,
 style definitions, and keyword databases.

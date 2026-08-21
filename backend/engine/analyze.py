@@ -1,5 +1,5 @@
 """
-NexuX V8.0 — AI Content Analysis Engine
+NexuX V9.5 — AI Content Analysis Engine
 ==================================================
 Editorial-conscious viral clip selection with:
 - Editorial consciousness (narrative, emotion, coherence, hook intelligence)

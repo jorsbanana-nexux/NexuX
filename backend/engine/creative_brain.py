@@ -1,5 +1,5 @@
 """
-NexuX V8.0 — Creative Brain
+NexuX V9.5 — Creative Brain
 =============================
 The "thinking" layer that makes creative decisions like a human editor.
 

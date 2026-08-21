@@ -1,5 +1,5 @@
 """
-NexuX V8.0 — Subtitle Quality Engine
+NexuX V9.5 — Subtitle Quality Engine
 =============================================
 Professional subtitle rendering with readability guarantees.
 

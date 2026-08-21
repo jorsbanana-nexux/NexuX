@@ -1,5 +1,5 @@
 """
-NexuX V8.0 — Style System
+NexuX V9.5 — Style System
 ==========================================
 30+ subtitle style presets with full kinetic typography support.
 Each preset defines: font, size, colors, animation, position, stroke.

@@ -1,5 +1,5 @@
 """
-NexuX V8.0 — Mode 2: AI Narrative Engine
+NexuX V9.5 — Mode 2: AI Narrative Engine
 =========================================
 Uses LLM API (OpenAI/Anthropic/Gemini) to write compelling commentary
 that connects moments from multiple videos into one cohesive story.

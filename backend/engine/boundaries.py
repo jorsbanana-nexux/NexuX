@@ -1,5 +1,5 @@
 """
-NexuX V8.0 — Natural Speech Boundary Detection
+NexuX V9.5 — Natural Speech Boundary Detection
 =======================================================
 Clips should cut at natural speech boundaries (sentence endings, pauses,
 topic shifts), NOT at arbitrary window boundaries.

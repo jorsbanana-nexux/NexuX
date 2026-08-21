@@ -1,5 +1,5 @@
 """
-NexuX V8.0 — Self-Healing Engine (Intelligent Edition)
+NexuX V9.5 — Self-Healing Engine (Intelligent Edition)
 =========================================================
 TIDAK PERNAH menurunkan kualitas. Setiap fix mencari jalur alternatif
 yang mempertahankan atau MENINGKATKAN kualitas output.

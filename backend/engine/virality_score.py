@@ -1,5 +1,5 @@
 """
-NexuX V8.5 — Virality Score Engine
+NexuX V9.5 — Virality Score Engine
 ====================================
 Multi-dimensional virality prediction that scores clips 0-100,
 matching and exceeding Opus Clip's scoring system.
