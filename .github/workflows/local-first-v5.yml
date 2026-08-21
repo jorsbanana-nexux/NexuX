@@ -38,9 +38,12 @@ jobs:
           cache: "pip"
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
-      - name: Install local-first V5 dependencies
-        working-directory: nexus-clipper/local-first-v5
-        run: python -m pip install -r requirements-local.txt pytest
+      - name: Install local-first V5 + backend dependencies
+        working-directory: nexus-clipper
+        run: |
+          python -m pip install -r local-first-v5/requirements-local.txt pytest
+          # backend main.py imports require these (not covered by the legacy req file)
+          python -m pip install pydantic pydantic-settings
       - name: Verify canonical backend + legacy shim import cleanly
         run: |
           # Canonical API must import from nexus-clipper/backend with its own deps
