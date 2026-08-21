@@ -43,7 +43,7 @@ import { nexuxApi } from '../api/nexuxApi';
 // TYPES
 // ═══════════════════════════════════════════════════
 
-interface Speaker {
+export interface Speaker {
   id: string;
   name: string;
   color: string;
@@ -110,7 +110,7 @@ interface TimelineEditorProps {
 
 const SPEAKER_COLORS = ['#22D3EE', '#F472B6', '#A3E635', '#FBBF24', '#C084FC'];
 
-function buildMockSpeakers(): Speaker[] {
+export function buildMockSpeakers(): Speaker[] {
   return [
     { id: 'spk-1', name: 'Tanya', color: SPEAKER_COLORS[0], muted: false, isolated: false },
     { id: 'spk-2', name: 'Tomas', color: SPEAKER_COLORS[1], muted: false, isolated: false },
@@ -118,9 +118,9 @@ function buildMockSpeakers(): Speaker[] {
 }
 
 // ── Real diarized data from the job (whisperx speaker labels) ──
-type RawSegment = { start: number; end: number; text: string; speaker?: string };
+export type RawSegment = { start: number; end: number; text: string; speaker?: string };
 
-function buildRealSpeakers(segments: RawSegment[]): Speaker[] | null {
+export function buildRealSpeakers(segments: RawSegment[]): Speaker[] | null {
   if (!segments.length) return null;
   const ids = [...new Set(segments.map(s => s.speaker || 'SPEAKER_00'))].sort();
   if (ids.length === 0) return null;
@@ -135,7 +135,7 @@ function buildRealSpeakers(segments: RawSegment[]): Speaker[] | null {
   }));
 }
 
-function buildRealTranscript(
+export function buildRealTranscript(
   segments: RawSegment[],
   clipStart: number,
   clipEnd: number,
