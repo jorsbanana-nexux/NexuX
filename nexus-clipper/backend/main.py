@@ -53,7 +53,7 @@ logging.basicConfig(
 log = logging.getLogger("nexus.api")
 
 # ── Constants ──
-VERSION = "8.0.0"
+VERSION = "9.0.0"
 DB_PATH = Path(os.environ.get("NEXUX_DB_PATH", "nexux_jobs.db"))
 JOB_TTL_HOURS = int(os.environ.get("NEXUX_JOB_TTL_HOURS", "72"))
 API_KEY = os.environ.get("NEXUX_API_KEY", "")  # Empty = no auth (local dev)
@@ -1158,6 +1158,14 @@ async def _send_webhook(url: str, job: dict):
             })
     except Exception as e:
         log.warning(f"Webhook failed: {e}")
+
+# ── V8.5 + V9.0 API Integration ──
+# Load all API addition files (virality, hooks, reframe, autopost, analytics,
+# rerender, overlays, repair, preview) into the FastAPI app.
+try:
+    exec(open(os.path.join(os.path.dirname(__file__), "_integrate_api.py")).read(), globals())
+except Exception as e:
+    log.error(f"Failed to load API additions: {e}", exc_info=True)
 
 # ── Entry ──
 
