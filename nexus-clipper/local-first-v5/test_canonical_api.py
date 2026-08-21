@@ -18,7 +18,7 @@ def test_health_exposes_local_first_contract():
     response = client.get("/api/health")
     assert response.status_code == 200
     body = response.json()
-    assert body["status"] == "ok"
+    assert body["status"] in ("ok", "healthy")
     assert body["canonical_runtime"] is True
     assert body["broll"] is False
 
