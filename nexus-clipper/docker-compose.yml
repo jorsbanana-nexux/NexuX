@@ -16,6 +16,9 @@ services:
       - NEXUX_DB_PATH=/data/nexux_jobs.db
       - WHISPER_MODEL=${WHISPER_MODEL:-small}
       - NEXUX_AI_ENABLED=0
+      # Mode 2 LLM (optional - uncomment one)
+      # - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      # - GEMINI_API_KEY=${GEMINI_API_KEY:-}
     volumes:
       - nexux-data:/data
       - nexux-output:/app/backend/output

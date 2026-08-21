@@ -75,6 +75,16 @@ from .keyword_expander import expand_keyword, get_search_strategy
 from .mode_router import get_mode_config, get_all_modes, validate_mode_input, ModeConfig
 
 __all__ = [
+    # ── Constants (from .constants import *) ──
+    "ASPECT_RATIOS", "ASSETS_DIR", "AUDIO_CODECS", "BASE_DIR",
+    "BROLL_DEFAULT_ENABLED", "BROLL_DEFAULT_INTENSITY", "BROLL_DEFAULT_MODE",
+    "BROLL_DEFAULT_SOURCE", "BROLL_DEFAULT_TRANSITION", "BROLL_DIR",
+    "BROLL_INTENSITIES", "BROLL_OVERLAY_MODES", "BROLL_SOURCES", "BROLL_TRANSITIONS",
+    "COLOR_GRADES", "DOWNLOAD_TIMEOUT", "EXCITEMENT_KEYWORDS", "HOOK_PATTERNS",
+    "JOB_TIMEOUT_MINUTES", "MAX_CONCURRENT_JOBS", "MAX_RETRIES",
+    "OUTPUT_DIR", "PEXELS_API_KEY", "RENDER_TIMEOUT", "RETENTION_TRIGGERS",
+    "TEMP_DIR", "TRANSITIONS", "UNSPLASH_API_KEY", "VIDEO_CODECS",
+
     "STYLE_PRESETS", "resolve_style",
     "retry", "has_gpu", "get_device",
     "download_youtube", "get_video_info", "search_youtube",
