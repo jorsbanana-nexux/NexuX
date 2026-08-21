@@ -396,6 +396,238 @@ def apply_audio_processing(
     return video_path
 
 
+
+# ── Overlay Filter Builder ───────────────────────────
+
+def build_overlay_filters(
+    overlays: List[Dict],
+    video_width: int,
+    video_height: int,
+    clip_start: float,
+) -> str:
+    """
+    Build FFmpeg drawtext filter chain string for draggable text overlay elements.
+
+    Args:
+        overlays: List of overlay element dicts (position, font, color, timing, animation, etc.)
+        video_width: Video canvas width in pixels
+        video_height: Video canvas height in pixels
+        clip_start: Start timestamp of the clip in source video seconds
+
+    Returns:
+        Comma-separated FFmpeg filter string for drawtext overlays, or "" if none valid.
+    """
+    if not overlays:
+        return ""
+
+    # Filter out invisible or locked elements
+    valid_elements = []
+    for el in overlays:
+        # Skip invisible
+        visible = el.get("visible", True)
+        if visible in (False, "false", "False", 0):
+            continue
+
+        # Skip locked
+        locked = el.get("locked", False)
+        if locked in (True, "true", "True", 1):
+            continue
+
+        # Skip non-text if type specified
+        el_type = el.get("type", "text")
+        if el_type and el_type not in ("text", "title", "caption") and not el.get("content"):
+            continue
+
+        valid_elements.append(el)
+
+    if not valid_elements:
+        return ""
+
+    # Sort by zIndex / z_index ascending (lower drawn first = behind higher)
+    sorted_elements = sorted(
+        valid_elements,
+        key=lambda e: int(e.get("zIndex", e.get("z_index", 0)))
+    )
+
+    drawtext_filters = []
+
+    for el in sorted_elements:
+        content = str(el.get("content", ""))
+        if not content:
+            continue
+
+        # Handle text content with newlines (replace \n with actual newlines in drawtext)
+        content = content.replace("\\n", " ")
+
+        # Escape colons, single quotes, backslashes, percents for drawtext
+        safe_content = (
+            content.replace('\\', '\\\\')
+                   .replace(':', '\\:')
+                   .replace("'", '\\')
+                   .replace('%', '\\%')
+        )
+
+        # Timing conversion: convert absolute start/end to relative within clip
+        el_start = float(el.get("start", 0))
+        el_end = float(el.get("end", 999999))
+
+        if el_start >= clip_start:
+            rel_start = el_start - clip_start
+            rel_end = el_end - clip_start
+        elif el_end > clip_start:
+            rel_start = max(0.0, el_start - clip_start)
+            rel_end = el_end - clip_start
+        else:
+            # Check if timing was already relative within the clip
+            if el_start >= 0 and el_end > el_start:
+                rel_start = el_start
+                rel_end = el_end
+            else:
+                # Outside clip time range
+                continue
+
+        if rel_end <= rel_start or rel_end <= 0:
+            continue
+
+        dur = rel_end - rel_start
+
+        # Percentage positions (x, y are 0-100) -> pixel expressions
+        x_val = float(el.get("x", 50.0))
+        y_val = float(el.get("y", 50.0))
+
+        x_expr = f"w*{x_val}/100-tw/2"
+        y_expr = f"h*{y_val}/100-th/2"
+
+        # Entry/exit animations (fade, slide-up, pop, bounce)
+        anim_in = str(el.get("animationIn", el.get("animation_in", "fade"))).lower()
+        anim_out = str(el.get("animationOut", el.get("animation_out", "fade"))).lower()
+
+        if anim_in == "slide-up":
+            y_expr = f"h*{y_val}/100-th/2+if(lt(t-{rel_start:.2f},0.3),(1-(t-{rel_start:.2f})/0.3)*60,0)"
+        elif anim_in == "bounce":
+            y_expr = f"h*{y_val}/100-th/2+if(lt(t-{rel_start:.2f},0.3),sin((t-{rel_start:.2f})/0.3*3.14159)*-20,0)"
+
+        fade_in_dur = 0.15 if anim_in == "pop" else (min(0.5, max(0.1, dur * 0.2)) if anim_in == "fade" else 0.0)
+        fade_out_dur = min(0.5, max(0.1, dur * 0.2)) if anim_out == "fade" else 0.0
+
+        alpha_expr = ""
+        if fade_in_dur > 0 and fade_out_dur > 0:
+            alpha_expr = (
+                f":alpha='if(lt(t,{rel_start + fade_in_dur:.2f}),"
+                f"(t-{rel_start:.2f})/{fade_in_dur:.2f},"
+                f"if(gt(t,{rel_end - fade_out_dur:.2f}),"
+                f"({rel_end:.2f}-t)/{fade_out_dur:.2f},1))'"
+            )
+        elif fade_in_dur > 0:
+            alpha_expr = f":alpha='if(lt(t,{rel_start + fade_in_dur:.2f}),(t-{rel_start:.2f})/{fade_in_dur:.2f},1)'"
+        elif fade_out_dur > 0:
+            alpha_expr = f":alpha='if(gt(t,{rel_end - fade_out_dur:.2f}),({rel_end:.2f}-t)/{fade_out_dur:.2f},1)'"
+
+        # Font size relative to video canvas
+        raw_fs = float(el.get("fontSize", el.get("font_size", 24)))
+        font_size = max(10, int(raw_fs * (video_width / 400.0)))
+
+        # Colors
+        fontcolor = str(el.get("color", "#FFFFFF"))
+        fc = fontcolor.replace("#", "0x") if fontcolor.startswith("#") else fontcolor
+        if not fc:
+            fc = "0xFFFFFF"
+
+        # Background color box
+        bg = str(el.get("bgColor", el.get("bg_color", el.get("bg", "transparent"))))
+        box_str = ""
+        if bg and bg.lower() not in ("transparent", "none", ""):
+            bgc = bg.replace("#", "0x") if bg.startswith("#") else bg
+            box_str = f":box=1:boxcolor={bgc}@0.85:boxborderw=8"
+
+        drawtext = (
+            f"drawtext=text='{safe_content}':"
+            f"x='{x_expr}':y='{y_expr}':"
+            f"fontsize={font_size}:"
+            f"fontcolor={fc}"
+            f":borderw=2:bordercolor=0x000000"
+            f"{box_str}"
+            f":enable='between(t,{rel_start:.2f},{rel_end:.2f})'"
+            f"{alpha_expr}"
+        )
+        drawtext_filters.append(drawtext)
+
+    return ",".join(drawtext_filters)
+
+
+# ── Overlay Burn-in Application ──────────────────────
+
+def apply_overlays_to_video(
+    input_path: Path,
+    output_path: Path,
+    overlays: List[Dict],
+    video_w: int,
+    video_h: int,
+    clip_start: float,
+    clip_end: float,
+) -> Path:
+    """
+    Build overlay filter chain and burn in draggable overlay elements into video using FFmpeg.
+
+    Args:
+        input_path: Path to source/rendered video
+        output_path: Path to write output video with overlays
+        overlays: List of overlay dicts
+        video_w: Video width
+        video_h: Video height
+        clip_start: Clip start time in source video
+        clip_end: Clip end time in source video
+
+    Returns:
+        Path to output video with overlays burned in (or input_path if no overlays applied)
+    """
+    if not input_path or not input_path.exists():
+        log.warning(f"[Overlay] Input path does not exist: {input_path}")
+        return input_path
+
+    if not overlays:
+        log.info("[Overlay] No overlays provided, skipping overlay burn-in")
+        return input_path
+
+    filter_chain = build_overlay_filters(
+        overlays=overlays,
+        video_width=video_w,
+        video_height=video_h,
+        clip_start=clip_start,
+    )
+
+    if not filter_chain:
+        log.info("[Overlay] No active or visible overlay filters built, skipping")
+        return input_path
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", str(input_path),
+        "-vf", filter_chain,
+        "-c:v", "libx264", "-preset", "medium", "-crf", "23",
+        "-c:a", "copy",
+        "-movflags", "+faststart",
+        str(output_path),
+    ]
+
+    try:
+        log.info(f"[Overlay] Running FFmpeg overlay burn-in on {input_path.name}")
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+        if r.returncode == 0 and output_path.exists() and output_path.stat().st_size > 0:
+            log.info(f"[Overlay] Successfully burned in overlays -> {output_path.name}")
+            return output_path
+        else:
+            err = r.stderr[-500:] if r.stderr else "Unknown error"
+            log.warning(f"[Overlay] FFmpeg failed (returncode {r.returncode}): {err}")
+    except Exception as e:
+        log.error(f"[Overlay] Failed to apply overlays: {e}", exc_info=True)
+
+    return input_path
+
+
+
 # ── Main Re-Render Function ──────────────────────────
 
 def rerender_clip_with_personalization(
@@ -405,6 +637,7 @@ def rerender_clip_with_personalization(
     source_video_path: Optional[Path] = None,
     transcript: Optional[Dict] = None,
     face_data: Optional[List[Dict]] = None,
+    overlays: Optional[List[Dict]] = None,
     use_pro: bool = True,
 ) -> Dict:
     """
@@ -602,6 +835,30 @@ def rerender_clip_with_personalization(
             )
             changes.append(f"Watermark: '{branding['watermark_text']}'")
 
+        # 14. Apply overlay burn-in
+        if overlays is None:
+            overlays = editor_state.get("overlays") or editor_state.get("elements")
+
+        if overlays:
+            clip_start = adjusted_clip.get("start", 0)
+            clip_end = adjusted_clip.get("end", clip_start + 45)
+            overlay_out = output_path.with_suffix(f".overlays{output_path.suffix}")
+
+            log.info(f"[ReRender] Burning in {len(overlays)} overlays for clip {clip_index}")
+
+            burned_path = apply_overlays_to_video(
+                input_path=output_path,
+                output_path=overlay_out,
+                overlays=overlays,
+                video_w=w,
+                video_h=h,
+                clip_start=clip_start,
+                clip_end=clip_end,
+            )
+            if burned_path != output_path and burned_path.exists():
+                output_path = burned_path
+                changes.append(f"Overlays burned in: {len(overlays)} elements")
+
         # 14. Verify output
         if not output_path.exists():
             return {
@@ -657,6 +914,7 @@ def rerender_all_clips(
     source_video_path: Optional[Path] = None,
     transcript: Optional[Dict] = None,
     face_data: Optional[List[Dict]] = None,
+    overlays: Optional[List[Dict]] = None,
 ) -> List[Dict]:
     """
     Re-render ALL clips in a job with the same personalization settings.
@@ -675,6 +933,7 @@ def rerender_all_clips(
             source_video_path=source_video_path,
             transcript=transcript,
             face_data=face_data,
+            overlays=overlays,
         )
         results.append(result)
 
@@ -689,6 +948,7 @@ def rerender_with_reframe(
     editor_state: Dict,
     source_video_path: Optional[Path] = None,
     face_data: Optional[List[Dict]] = None,
+    overlays: Optional[List[Dict]] = None,
 ) -> Dict:
     """
     Re-render a clip with aspect ratio change + auto-reframe.
@@ -705,6 +965,7 @@ def rerender_with_reframe(
         editor_state=editor_state,
         source_video_path=source_video_path,
         face_data=face_data,
+        overlays=overlays,
     )
 
     if result["status"] != "success":

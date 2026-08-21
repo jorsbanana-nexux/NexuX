@@ -289,25 +289,82 @@ async def preview_render(
     req: PreviewRequest,
 ):
     """
-    Quick preview render (first 5 seconds only).
+    Quick FFmpeg preview render (5-second segment at 480p).
     Returns a preview URL that can be displayed in the editor.
+    
+    Uses the real FFmpeg preview renderer to burn in color grade,
+    zoom, overlays, and watermark — NOT just a CSS preview.
     """
     from .engine.preview_renderer import generate_preview
     
     try:
+        # Find source video path from job
+        import sqlite3
+        DB_PATH = Path(os.environ.get("NEXUX_DB_PATH", "nexux_jobs.db"))
+        source_video_path = None
+        
+        if DB_PATH.exists():
+            conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT * FROM jobs WHERE job_id = ?", (job_id,)).fetchone()
+            conn.close()
+            if row:
+                clips = json.loads(row["clips"] or "[]")
+                if clip_idx < len(clips):
+                    clip_url = clips[clip_idx]
+                    # Try to resolve path
+                    if os.path.isabs(clip_url):
+                        source_video_path = Path(clip_url)
+                    else:
+                        source_video_path = Path(clip_url)
+                # Also check output_path
+                if not source_video_path or not source_video_path.exists():
+                    out = row["output_path"] if "output_path" in row.keys() else None
+                    if out and os.path.exists(out):
+                        source_video_path = Path(out)
+        
+        if not source_video_path or not source_video_path.exists():
+            # Fallback: try common output locations
+            for candidate in [
+                Path("output") / f"{job_id}_clip_{clip_idx}.mp4",
+                Path("output") / f"{job_id}/clip_{clip_idx}.mp4",
+                Path(OUTPUT_DIR) / f"{job_id}_clip_{clip_idx}.mp4",
+            ]:
+                if candidate.exists():
+                    source_video_path = candidate
+                    break
+        
+        if not source_video_path or not source_video_path.exists():
+            raise HTTPException(404, f"Source video not found for job {job_id} clip {clip_idx}")
+        
+        # Build editor_state from request
+        editor_state = {
+            "subtitle_style": req.subtitle_style,
+            "zoom_style": req.zoom_style,
+            "color_grade": req.color_grade,
+            "aspect_ratio": req.aspect_ratio,
+            "elements": [],  # No overlays for quick preview
+            "layout_mode": "Fill",
+            "show_watermark": False,
+        }
+        
         result = await asyncio.to_thread(
             generate_preview,
             job_id, clip_idx,
-            style_name=req.subtitle_style,
-            zoom_style=req.zoom_style,
-            color_grade=req.color_grade,
-            aspect_ratio=req.aspect_ratio,
-            preview_duration=req.preview_duration,
+            editor_state,
+            source_video_path,
+            0.0,  # current_time
         )
-        return {
-            "preview_url": result.preview_url if hasattr(result, 'preview_url') else str(result),
-            "render_time": result.render_time if hasattr(result, 'render_time') else 0,
-        }
+        
+        if result.success:
+            return {
+                "preview_url": result.output_url or str(result.output_path or ""),
+                "render_time": round(result.render_time, 2),
+            }
+        else:
+            raise HTTPException(500, f"Preview render failed: {result.error or 'Unknown error'}")
+    except HTTPException:
+        raise
     except Exception as e:
         log.error(f"[Editor] Preview render failed: {e}")
         raise HTTPException(500, f"Preview render failed: {str(e)}")

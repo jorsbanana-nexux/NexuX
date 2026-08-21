@@ -32,6 +32,8 @@ import {
   Maximize2, Minimize2, RotateCw, Crop,
   // Status
   Loader2, AlertCircle, CheckCircle2,
+  // History & Overlays
+  Undo, Redo, Plus, Trash2, Move, Lock, Unlock, EyeOff,
 } from 'lucide-react';
 import { sound } from '../utils/soundEffects';
 import { MagneticElement } from './MagneticElement';
@@ -45,6 +47,7 @@ import {
 } from '../types/subtitles';
 import { GeneratedClip } from './VideoResultCard';
 import { nexuxApi, buildOutputUrl } from '../api/nexuxApi';
+import { editorApi } from '../api/editorApi';
 
 // ── Types ──────────────────────────────────────────
 
@@ -476,40 +479,227 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
   const [renderResult, setRenderResult] = useState<{ success: boolean; message: string; changes?: string[] } | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
+  // Undo / Redo History State
+  const historyRef = useRef<{ past: EditorState[]; future: EditorState[] }>({ past: [], future: [] });
+  const [historyVersion, setHistoryVersion] = useState(0);
+
+  // Overlay state & drag tracking
+  const [overlays, setOverlays] = useState<Array<{
+    id: string;
+    type: string;
+    content: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    rotation: number;
+    fontSize: number;
+    color: string;
+    bgColor: string;
+    start: number;
+    end: number;
+    animationIn: string;
+    animationOut: string;
+    locked: boolean;
+    visible: boolean;
+    zIndex: number;
+  }>>([]);
+  const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
+  const [draggingOverlayId, setDraggingOverlayId] = useState<string | null>(null);
+  const dragStartPos = useRef<{ mouseX: number; mouseY: number; overlayX: number; overlayY: number }>({ mouseX: 0, mouseY: 0, overlayX: 0, overlayY: 0 });
+  const previewContainerRef = useRef<HTMLDivElement>(null);
+
+  // FFmpeg Preview state
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
   const selectedClip = clips[selectedClipIndex];
 
-  // Update state helper
-  const update = useCallback(<K extends keyof EditorState>(key: K, value: EditorState[K]) => {
-    setEditorState(prev => ({ ...prev, [key]: value }));
+  // History functions
+  const pushHistory = useCallback((state: EditorState) => {
+    historyRef.current.past.push(state);
+    historyRef.current.future = [];
+    setHistoryVersion(v => v + 1);
+  }, []);
+
+  const undo = useCallback(() => {
+    if (historyRef.current.past.length === 0) return;
+    const previous = historyRef.current.past.pop()!;
+    setEditorState(current => {
+      historyRef.current.future.push(current);
+      return previous;
+    });
     setHasChanges(true);
+    setHistoryVersion(v => v + 1);
     sound.playClick();
   }, []);
 
-  // Apply a creator template
+  const redo = useCallback(() => {
+    if (historyRef.current.future.length === 0) return;
+    const next = historyRef.current.future.pop()!;
+    setEditorState(current => {
+      historyRef.current.past.push(current);
+      return next;
+    });
+    setHasChanges(true);
+    setHistoryVersion(v => v + 1);
+    sound.playClick();
+  }, []);
+
+  // Update state helper with undo/redo history
+  const update = useCallback(<K extends keyof EditorState>(key: K, value: EditorState[K]) => {
+    setEditorState(prev => {
+      pushHistory(prev);
+      return { ...prev, [key]: value };
+    });
+    setHasChanges(true);
+    sound.playClick();
+  }, [pushHistory]);
+
+  // Apply a creator template with undo/redo history
   const applyTemplate = useCallback((template: CreatorTemplate) => {
-    setEditorState(prev => ({
-      ...prev,
-      captionStyle: template.preset,
-      animation: template.animation,
-      fontSize: template.fontSize,
-      fontFamily: template.fontFamily,
-      glowStyle: template.glowStyle,
-      primaryColor: template.primaryColor,
-      highlightColor: template.highlightColor,
-      position: template.position,
-      showEmojis: template.showEmojis,
-      zoomStyle: template.zoomStyle,
-      colorGrade: template.colorGrade,
-      speedRamp: template.speedRamp,
-      speedRampType: template.speedRampType,
-    }));
+    setEditorState(prev => {
+      pushHistory(prev);
+      return {
+        ...prev,
+        captionStyle: template.preset,
+        animation: template.animation,
+        fontSize: template.fontSize,
+        fontFamily: template.fontFamily,
+        glowStyle: template.glowStyle,
+        primaryColor: template.primaryColor,
+        highlightColor: template.highlightColor,
+        position: template.position,
+        showEmojis: template.showEmojis,
+        zoomStyle: template.zoomStyle,
+        colorGrade: template.colorGrade,
+        speedRamp: template.speedRamp,
+        speedRampType: template.speedRampType,
+      };
+    });
     setHasChanges(true);
     sound.playSuccess();
+  }, [pushHistory]);
+
+  // Overlay management functions
+  const addTextOverlay = useCallback(() => {
+    const newOverlay = {
+      id: `overlay_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      type: 'text',
+      content: 'New Text Overlay',
+      x: 50,
+      y: 50,
+      width: 200,
+      height: 50,
+      rotation: 0,
+      fontSize: 24,
+      color: '#ffffff',
+      bgColor: 'rgba(0, 0, 0, 0.6)',
+      start: 0,
+      end: 10,
+      animationIn: 'fade',
+      animationOut: 'fade',
+      locked: false,
+      visible: true,
+      zIndex: overlays.length + 1,
+    };
+    setOverlays(prev => [...prev, newOverlay]);
+    setSelectedOverlayId(newOverlay.id);
+    setHasChanges(true);
+    sound.playClick();
+  }, [overlays.length]);
+
+  const updateOverlay = useCallback((id: string, props: Partial<(typeof overlays)[0]>) => {
+    setOverlays(prev => prev.map(o => o.id === id ? { ...o, ...props } : o));
+    setHasChanges(true);
   }, []);
+
+  const removeOverlay = useCallback((id: string) => {
+    setOverlays(prev => prev.filter(o => o.id !== id));
+    if (selectedOverlayId === id) setSelectedOverlayId(null);
+    setHasChanges(true);
+    sound.playClick();
+  }, [selectedOverlayId]);
+
+  const selectOverlay = useCallback((id: string | null) => {
+    setSelectedOverlayId(id);
+  }, []);
+
+  const handleOverlayMouseDown = (e: React.MouseEvent, overlay: (typeof overlays)[0]) => {
+    if (overlay.locked || !overlay.visible) return;
+    e.stopPropagation();
+    selectOverlay(overlay.id);
+    setDraggingOverlayId(overlay.id);
+    dragStartPos.current = {
+      mouseX: e.clientX,
+      mouseY: e.clientY,
+      overlayX: overlay.x,
+      overlayY: overlay.y,
+    };
+  };
+
+  // Drag tracking mouse listeners
+  useEffect(() => {
+    if (!draggingOverlayId) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!previewContainerRef.current) return;
+      const rect = previewContainerRef.current.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+
+      const deltaXPixels = e.clientX - dragStartPos.current.mouseX;
+      const deltaYPixels = e.clientY - dragStartPos.current.mouseY;
+
+      const deltaXPercent = (deltaXPixels / rect.width) * 100;
+      const deltaYPercent = (deltaYPixels / rect.height) * 100;
+
+      const newX = Math.max(0, Math.min(100, dragStartPos.current.overlayX + deltaXPercent));
+      const newY = Math.max(0, Math.min(100, dragStartPos.current.overlayY + deltaYPercent));
+
+      setOverlays(prev => prev.map(o => o.id === draggingOverlayId ? { ...o, x: Math.round(newX * 10) / 10, y: Math.round(newY * 10) / 10 } : o));
+      setHasChanges(true);
+    };
+
+    const handleMouseUp = () => {
+      setDraggingOverlayId(null);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [draggingOverlayId]);
+
+  // Generate FFmpeg Preview
+  const generatePreview = async () => {
+    setPreviewLoading(true);
+    try {
+      const res = await editorApi.previewRender(jobId, selectedClipIndex, {
+        subtitle_style: editorState.captionStyle,
+        zoom_style: editorState.zoomStyle,
+        color_grade: editorState.colorGrade,
+        aspect_ratio: editorState.aspectRatio,
+        preview_duration: 5,
+      });
+      if (res && res.preview_url) {
+        setPreviewUrl(buildOutputUrl(res.preview_url));
+        sound.playSuccess();
+      } else {
+        setPreviewUrl(null);
+      }
+    } catch (err) {
+      console.warn('FFmpeg preview render failed, falling back to CSS preview:', err);
+      setPreviewUrl(null);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
 
   // Sync subtitle store with editor state
   useEffect(() => {
-    subtitleStore.update({
+    subtitleStore.set({
       animationStyle: editorState.animation,
       visualPreset: editorState.captionStyle,
       position: editorState.position,
@@ -569,17 +759,16 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
       return;
     }
 
-    // Call API to re-render with all personalization settings
+    // Call editorApi to re-render with all personalization settings including overlays
     try {
-      const result = await nexuxApi.rerenderClip(jobId, selectedClipIndex, {
+      const settings = {
         subtitle_style: editorState.captionStyle,
-        animation: editorState.animation,
-        font_size: editorState.fontSize,
-        font_family: editorState.fontFamily,
-        position: editorState.position,
-        glow_style: editorState.glowStyle,
+        font: editorState.fontFamily,
+        font_size: { compact: 42, normal: 52, large: 64, huge: 78 }[editorState.fontSize] ?? 64,
         primary_color: editorState.primaryColor,
         highlight_color: editorState.highlightColor,
+        position: editorState.position,
+        animation: editorState.animation,
         show_emojis: editorState.showEmojis,
         zoom_style: editorState.zoomStyle,
         zoom_level: editorState.zoomLevel,
@@ -601,8 +790,11 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
         outro_enabled: editorState.outroEnabled,
         trim_start: editorState.trimStart,
         trim_end: editorState.trimEnd,
-      });
-      setRenderResult({ success: true, message: 'Re-render complete!', changes: (result as any).changes_applied });
+        overlays: overlays as any,
+      };
+
+      const result = await editorApi.reRenderClip(jobId, selectedClipIndex, settings);
+      setRenderResult({ success: true, message: 'Re-render complete!', changes: result.changes_applied });
       setHasChanges(false);
       sound.playSuccess();
     } catch (e) {
@@ -612,6 +804,100 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
 
     setIsReRendering(false);
   };
+
+  // Keyboard Shortcuts Listener
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isInput = target && (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable
+      );
+
+      // Ctrl+Z or Cmd+Z = undo
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+        return;
+      }
+
+      // Ctrl+Shift+Z or Ctrl+Y = redo
+      if (
+        ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'z') ||
+        ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y')
+      ) {
+        e.preventDefault();
+        redo();
+        return;
+      }
+
+      // Ctrl+S = handleReRender
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        handleReRender();
+        return;
+      }
+
+      // Escape = onClose
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+        return;
+      }
+
+      if (isInput) return;
+
+      // Space = togglePlay (prevent default scroll)
+      if (e.code === 'Space' || e.key === ' ') {
+        e.preventDefault();
+        togglePlay();
+        return;
+      }
+
+      // ArrowLeft = skipTime(-5)
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        skipTime(-5);
+        return;
+      }
+
+      // ArrowRight = skipTime(+5)
+      if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        skipTime(5);
+        return;
+      }
+
+      // Tab = cycle to next tab (prevent default)
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const tabKeys = EDITOR_TABS.map(t => t.id);
+        setActiveTab(prevTab => {
+          const currentIndex = tabKeys.indexOf(prevTab);
+          const nextIndex = (currentIndex + 1) % tabKeys.length;
+          return tabKeys[nextIndex];
+        });
+        return;
+      }
+
+      // 1-8 = switch tab by index
+      if (e.key >= '1' && e.key <= '8') {
+        const index = parseInt(e.key, 10) - 1;
+        if (index >= 0 && index < EDITOR_TABS.length) {
+          e.preventDefault();
+          setActiveTab(EDITOR_TABS[index].id);
+          return;
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [undo, redo, togglePlay, skipTime, handleReRender, onClose]);
 
   // Aspect ratio dimensions
   const aspectDims: Record<AspectRatio, { w: number; h: number }> = {
@@ -668,12 +954,32 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
             <span>Clips</span>
           </button>
           <button
-            onClick={() => { sound.playClick(); setEditorState(DEFAULT_EDITOR_STATE); setHasChanges(false); }}
+            onClick={() => { sound.playClick(); pushHistory(editorState); setEditorState(DEFAULT_EDITOR_STATE); setHasChanges(false); }}
             onMouseEnter={() => sound.playHover()}
             className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-stone-400 hover:text-white border border-white/10 text-xs font-mono transition-colors"
           >
             <RotateCcw className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Reset</span>
+          </button>
+          <button
+            onClick={undo}
+            disabled={historyRef.current.past.length === 0}
+            onMouseEnter={() => sound.playHover()}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-stone-400 hover:text-white border border-white/10 text-xs font-mono transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Undo (Ctrl+Z)"
+          >
+            <Undo className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Undo</span>
+          </button>
+          <button
+            onClick={redo}
+            disabled={historyRef.current.future.length === 0}
+            onMouseEnter={() => sound.playHover()}
+            className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-stone-400 hover:text-white border border-white/10 text-xs font-mono transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Redo (Ctrl+Shift+Z)"
+          >
+            <Redo className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Redo</span>
           </button>
           <button
             onClick={handleReRender}
@@ -730,6 +1036,8 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
         <div className="flex-1 flex flex-col items-center justify-center min-w-0 relative bg-gradient-to-b from-black/80 to-stone-950/80 p-4">
           {/* Video Preview Container with aspect ratio */}
           <div
+            ref={previewContainerRef}
+            onClick={() => selectOverlay(null)}
             className="relative bg-black rounded-2xl overflow-hidden border border-white/10 shadow-2xl"
             style={{
               aspectRatio: `${currentAspect.w} / ${currentAspect.h}`,
@@ -739,8 +1047,17 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
               height: editorState.aspectRatio === '16:9' ? 'auto' : '100%',
             }}
           >
-            {/* Actual video */}
-            {selectedClip?.videoUrl && (
+            {/* FFmpeg Preview video or standard video */}
+            {previewUrl ? (
+              <video
+                src={previewUrl}
+                className="w-full h-full object-contain"
+                autoPlay
+                loop
+                muted
+                playsInline
+              />
+            ) : selectedClip?.videoUrl ? (
               <video
                 ref={videoRef}
                 src={selectedClip.videoUrl}
@@ -751,10 +1068,32 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
                 muted
                 playsInline
               />
+            ) : null}
+
+            {/* Loading spinner for FFmpeg preview */}
+            {previewLoading && (
+              <div className="absolute inset-0 z-40 bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center gap-3">
+                <Loader2 className="w-10 h-10 text-cyan-400 animate-spin" />
+                <span className="text-xs font-mono text-cyan-200">Rendering FFmpeg Preview...</span>
+              </div>
+            )}
+
+            {/* FFmpeg Preview indicator badge */}
+            {previewUrl && (
+              <div className="absolute top-3 left-3 z-30 flex items-center gap-2 px-2.5 py-1 rounded-full bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 text-[10px] font-mono">
+                <span>FFmpeg Preview (5s)</span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setPreviewUrl(null); }}
+                  className="hover:text-white"
+                  title="Switch back to live CSS preview"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
             )}
 
             {/* Color grade overlay */}
-            {editorState.colorGrade !== 'none' && (
+            {editorState.colorGrade !== 'none' && !previewUrl && (
               <div
                 className="absolute inset-0 pointer-events-none mix-blend-overlay"
                 style={{
@@ -772,17 +1111,15 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
             )}
 
             {/* Zoom indicator */}
-            {editorState.zoomLevel > 1.0 && (
+            {editorState.zoomLevel > 1.0 && !previewUrl && (
               <div
                 className="absolute inset-0 pointer-events-none"
                 style={{ transform: `scale(${editorState.zoomLevel})`, transformOrigin: 'center' }}
-              >
-                {/* This would apply the zoom in real implementation */}
-              </div>
+              />
             )}
 
-            {/* Cinematic bars (for cinematic color grade) */}
-            {editorState.colorGrade === 'cinematic' && (
+            {/* Cinematic bars */}
+            {editorState.colorGrade === 'cinematic' && !previewUrl && (
               <>
                 <div className="absolute top-0 left-0 right-0 h-[8%] bg-black z-10 pointer-events-none" />
                 <div className="absolute bottom-0 left-0 right-0 h-[8%] bg-black z-10 pointer-events-none" />
@@ -790,21 +1127,61 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
             )}
 
             {/* Live subtitle preview overlay */}
-            <div className={`absolute left-0 right-0 z-20 pointer-events-none ${
-              editorState.position === 'top' ? 'top-[10%]' :
-              editorState.position === 'center' ? 'top-1/2 -translate-y-1/2' :
-              'bottom-[12%]'
-            }`}>
-              <LiveSubtitleRenderer
-                line={previewLine}
-                wordIndex={Math.floor(currentTime * 3) % previewLine.words.length}
-                config={subtitleStore.get()}
-                isActive={true}
-              />
-            </div>
+            {!previewUrl && (
+              <div className={`absolute left-0 right-0 z-20 pointer-events-none ${
+                editorState.position === 'top' ? 'top-[10%]' :
+                editorState.position === 'center' ? 'top-1/2 -translate-y-1/2' :
+                'bottom-[12%]'
+              }`}>
+                <LiveSubtitleRenderer
+                  currentLine={previewLine}
+                  lineIndex={0}
+                  wordIndex={Math.floor(currentTime * 3) % previewLine.words.length}
+                  config={subtitleStore.get()}
+                />
+              </div>
+            )}
+
+            {/* Draggable Overlays */}
+            {overlays.filter(o => o.visible).map(overlay => {
+              const isSelected = overlay.id === selectedOverlayId;
+              return (
+                <div
+                  key={overlay.id}
+                  onMouseDown={(e) => handleOverlayMouseDown(e, overlay)}
+                  onClick={(e) => { e.stopPropagation(); selectOverlay(overlay.id); }}
+                  className={`absolute select-none transition-shadow ${
+                    overlay.locked ? 'cursor-not-allowed' : 'cursor-move'
+                  } ${
+                    isSelected ? 'ring-2 ring-cyan-400 ring-offset-1 ring-offset-black' : 'hover:ring-1 hover:ring-white/50'
+                  }`}
+                  style={{
+                    left: `${overlay.x}%`,
+                    top: `${overlay.y}%`,
+                    transform: `translate(-50%, -50%) rotate(${overlay.rotation || 0}deg)`,
+                    zIndex: overlay.zIndex || 25,
+                    color: overlay.color,
+                    backgroundColor: overlay.bgColor,
+                    fontSize: `${overlay.fontSize}px`,
+                    padding: '4px 12px',
+                    borderRadius: '6px',
+                    whiteSpace: 'nowrap',
+                    fontWeight: 600,
+                  }}
+                >
+                  {overlay.content}
+                  {isSelected && (
+                    <div className="absolute -top-6 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded bg-cyan-500 text-[9px] font-mono text-black font-bold flex items-center gap-1 pointer-events-none">
+                      <span>{Math.round(overlay.x)}%, {Math.round(overlay.y)}%</span>
+                      {overlay.locked && <Lock className="w-2.5 h-2.5" />}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
 
             {/* Progress bar */}
-            {editorState.progressbar && (
+            {editorState.progressbar && !previewUrl && (
               <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/10 z-20">
                 <div
                   className="h-full bg-cyan-400 transition-all"
@@ -816,7 +1193,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
             )}
 
             {/* Watermark */}
-            {editorState.showWatermark && editorState.watermarkText && (
+            {editorState.showWatermark && editorState.watermarkText && !previewUrl && (
               <div className={`absolute z-20 pointer-events-none ${
                 editorState.watermarkPosition === 'top-left' ? 'top-3 left-3' :
                 editorState.watermarkPosition === 'top-right' ? 'top-3 right-3' :
@@ -830,7 +1207,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
             )}
 
             {/* No video placeholder */}
-            {!selectedClip?.videoUrl && (
+            {!selectedClip?.videoUrl && !previewUrl && (
               <div className="absolute inset-0 flex flex-col items-center justify-center text-stone-500">
                 <Film className="w-12 h-12 mb-3 opacity-40" />
                 <span className="text-sm font-mono">No video preview available</span>
@@ -1268,6 +1645,97 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
 
                 <ToggleRow label="Intro Animation" value={editorState.introEnabled} onChange={(v) => update('introEnabled', v)} />
                 <ToggleRow label="Outro Animation" value={editorState.outroEnabled} onChange={(v) => update('outroEnabled', v)} />
+
+                {/* Overlays Management Section */}
+                <div className="pt-3 border-t border-white/10 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-mono font-bold text-white uppercase tracking-wider">Overlays ({overlays.length})</span>
+                    <button
+                      onClick={addTextOverlay}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-mono transition-colors"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Add Text Overlay</span>
+                    </button>
+                  </div>
+
+                  {overlays.length === 0 ? (
+                    <div className="p-3 rounded-xl bg-white/5 border border-dashed border-white/10 text-center text-stone-500 text-xs font-mono">
+                      No text overlays. Click "Add Text Overlay" and drag it on the video preview canvas.
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                      {overlays.map(overlay => (
+                        <div
+                          key={overlay.id}
+                          onClick={() => selectOverlay(overlay.id)}
+                          className={`p-2.5 rounded-xl border transition-all text-xs font-mono space-y-2 ${
+                            selectedOverlayId === overlay.id
+                              ? 'bg-cyan-950/40 border-cyan-500/50 text-white'
+                              : 'bg-white/5 border-white/10 text-stone-300 hover:bg-white/10'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <input
+                              type="text"
+                              value={overlay.content}
+                              onChange={(e) => updateOverlay(overlay.id, { content: e.target.value })}
+                              onClick={(e) => e.stopPropagation()}
+                              className="flex-1 px-2 py-1 rounded bg-black/50 border border-white/10 text-xs text-white focus:outline-none focus:border-cyan-400"
+                            />
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); updateOverlay(overlay.id, { visible: !overlay.visible }); }}
+                                className={`p-1 rounded ${overlay.visible ? 'text-cyan-400' : 'text-stone-600'}`}
+                                title={overlay.visible ? 'Hide' : 'Show'}
+                              >
+                                {overlay.visible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); updateOverlay(overlay.id, { locked: !overlay.locked }); }}
+                                className={`p-1 rounded ${overlay.locked ? 'text-amber-400' : 'text-stone-600'}`}
+                                title={overlay.locked ? 'Unlock drag' : 'Lock position'}
+                              >
+                                {overlay.locked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); removeOverlay(overlay.id); }}
+                                className="p-1 rounded text-stone-500 hover:text-red-400"
+                                title="Remove overlay"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                          {selectedOverlayId === overlay.id && (
+                            <div className="grid grid-cols-2 gap-2 pt-1 border-t border-white/10">
+                              <div>
+                                <label className="text-[10px] text-stone-400 block mb-1">Color</label>
+                                <input
+                                  type="color"
+                                  value={overlay.color}
+                                  onChange={(e) => updateOverlay(overlay.id, { color: e.target.value })}
+                                  className="w-full h-6 rounded bg-transparent cursor-pointer"
+                                />
+                              </div>
+                              <div>
+                                <label className="text-[10px] text-stone-400 block mb-1">Font Size ({overlay.fontSize}px)</label>
+                                <input
+                                  type="range"
+                                  min="12"
+                                  max="72"
+                                  value={overlay.fontSize}
+                                  onChange={(e) => updateOverlay(overlay.id, { fontSize: parseInt(e.target.value, 10) })}
+                                  className="w-full"
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </motion.div>
             )}
 
@@ -1285,17 +1753,31 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
                   </div>
                 )}
 
-                <button
-                  onClick={handleReRender}
-                  disabled={isReRendering}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 text-white text-sm font-mono font-bold transition-colors disabled:opacity-50 shadow-[0_0_20px_rgba(34,211,238,0.3)]"
-                >
-                  {isReRendering ? (
-                    <><Loader2 className="w-4 h-4 animate-spin" /> Re-rendering...</>
-                  ) : (
-                    <><Sparkles className="w-4 h-4" /> Apply & Re-render</>
-                  )}
-                </button>
+                <div className="space-y-2">
+                  <button
+                    onClick={generatePreview}
+                    disabled={previewLoading}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600/30 hover:bg-purple-600/40 text-purple-200 border border-purple-500/40 text-xs font-mono font-bold transition-colors disabled:opacity-50"
+                  >
+                    {previewLoading ? (
+                      <><Loader2 className="w-4 h-4 animate-spin text-purple-300" /> Generating FFmpeg Preview...</>
+                    ) : (
+                      <><Sparkles className="w-4 h-4 text-purple-300" /> Generate FFmpeg Preview (5s)</>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={handleReRender}
+                    disabled={isReRendering}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 text-white text-sm font-mono font-bold transition-colors disabled:opacity-50 shadow-[0_0_20px_rgba(34,211,238,0.3)]"
+                  >
+                    {isReRendering ? (
+                      <><Loader2 className="w-4 h-4 animate-spin" /> Re-rendering...</>
+                    ) : (
+                      <><Sparkles className="w-4 h-4" /> Apply & Re-render</>
+                    )}
+                  </button>
+                </div>
 
                 <div className="space-y-2">
                   <button className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-stone-300 border border-white/10 text-xs font-mono transition-colors">

@@ -17,6 +17,7 @@ import {
   AlertTriangle,
   Download,
   RotateCcw,
+  Loader2,
 } from 'lucide-react';
 import { ProcessingLoadingState } from './ProcessingLoadingState';
 import { ResultsMosaicGrid } from './ResultsMosaicGrid';
@@ -125,6 +126,7 @@ export const SpaceshipConsole: React.FC<SpaceshipConsoleProps> = () => {
   const [rangeStart, setRangeStart] = useState('');
   const [rangeEnd, setRangeEnd] = useState('');
   const stopPollingRef = useRef<(() => void) | null>(null);
+  const autoEditorOpenedRef = useRef(false);
 
   // Velocity blur telemetry state
   const [telemetry, setTelemetry] = useState<VelocityTelemetry>({
@@ -149,6 +151,18 @@ export const SpaceshipConsole: React.FC<SpaceshipConsoleProps> = () => {
       if (stopPollingRef.current) stopPollingRef.current();
     };
   }, []);
+
+  useEffect(() => {
+    // Auto-open editor when render completes and clips are ready
+    if (stage === 'results' && generatedClips.length > 0 && !autoEditorOpenedRef.current && !showEditor) {
+      const timer = setTimeout(() => {
+        sound.playClick();
+        setShowEditor(true);
+        autoEditorOpenedRef.current = true;
+      }, 2000); // 2 second delay to let user see the results grid first
+      return () => clearTimeout(timer);
+    }
+  }, [stage, generatedClips.length, showEditor]);
 
   const consoleContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -282,6 +296,7 @@ export const SpaceshipConsole: React.FC<SpaceshipConsoleProps> = () => {
       stopPollingRef.current();
       stopPollingRef.current = null;
     }
+    autoEditorOpenedRef.current = false;
     setStage('input');
     setUploadedFile(null);
     setInputUrl('');
@@ -774,6 +789,17 @@ export const SpaceshipConsole: React.FC<SpaceshipConsoleProps> = () => {
           />
         )}
       </AnimatePresence>
+
+      {stage === 'results' && generatedClips.length > 0 && !autoEditorOpenedRef.current && !showEditor && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="fixed bottom-8 left-1/2 -translate-x-1/2 z-40 px-5 py-3 rounded-xl bg-black/80 border border-cyan-500/30 backdrop-blur-xl flex items-center gap-3"
+        >
+          <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />
+          <span className="text-sm text-cyan-300 font-mono">Opening editor...</span>
+        </motion.div>
+      )}
     </section>
   );
 };

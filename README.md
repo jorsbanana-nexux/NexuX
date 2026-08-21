@@ -693,6 +693,30 @@ app.include_router(v2_router)
 
 ## 📦 Changelog
 
+### V9.5.1 (August 2026) — Post-Render Editor Upgrade
+
+**NEW:**
+- `PostRenderFlow.tsx` — Flow orchestrator: input → processing → results → auto-open editor
+- `editorApi.ts` — Frontend API client for editor endpoints (templates, styles, effects, preview, re-render)
+- `api_v95_editor.py` — 8 backend editor endpoints with real FFmpeg preview
+- Auto-open editor after render completes (2s delay, with "Opening editor..." notification)
+- Undo/Redo in ClipEditorStudio (history stack, Ctrl+Z / Ctrl+Shift+Z)
+- Keyboard shortcuts in editor: Space=play/pause, ←/→=skip 5s, Tab=next tab, 1-8=tab index, Esc=close, Ctrl+S=re-render
+- Draggable text overlays on video canvas → burned into video via FFmpeg drawtext
+- Real-time FFmpeg preview rendering (480p, 5-second segment, <3s render)
+- `preview_renderer.py` — FFmpeg preview with color grade, zoom, overlays, watermark
+- `rerender_pipeline.py` — Updated with overlay burn-in support (build_overlay_filters, apply_overlays_to_video)
+- 12 creator templates synced between frontend and backend
+- 46+ subtitle style presets
+- 8 new trending creator styles (Kai Cenat, Andrew Tate, Chris Williamson, Lex Fridman, Indonesia Viral, Deddy Corbusier, Raditya Dika, News Pro)
+
+**Updated:**
+- `ClipEditorStudio.tsx` — Added undo/redo, keyboard shortcuts, overlay drag, FFmpeg preview, 12 templates (1490+ lines)
+- `SpaceshipConsole.tsx` — Auto-open editor after render, "Opening editor..." notification
+- `api_v95_editor.py` — Fixed preview endpoint to use real FFmpeg preview renderer, 12 templates synced
+- `styles.py` — 46+ presets (was 38+), added trending creator styles
+- `README.md` — Updated with editor flow, keyboard shortcuts, overlay burn-in docs
+
 ### V9.5 (August 2026) — Opus Clip Killer Upgrade
 
 **NEW:**
