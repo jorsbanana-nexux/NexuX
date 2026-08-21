@@ -24,7 +24,7 @@ from typing import Optional, List, Dict, Any
 
 from fastapi import (
     FastAPI, WebSocket, WebSocketDisconnect, BackgroundTasks,
-    HTTPException, Request, Depends, Query,
+    HTTPException, Request, Depends, Query, UploadFile, File,
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -33,12 +33,13 @@ from pydantic import BaseModel, Field
 from urllib.parse import quote
 
 from engine.self_healer import check_system_health, auto_cleanup_old_jobs
+from utils.rate_limiter import rate_limiter
 from engine import (
     run_pipeline, get_video_info, search_youtube,
     STYLE_PRESETS, ASPECT_RATIOS, COLOR_GRADES,
     OUTPUT_DIR,
 )
-from engine.constants import MAX_CONCURRENT_JOBS
+from engine.constants import MAX_CONCURRENT_JOBS, UPLOAD_DIR
 
 # ── V9.5 Editor & Modes API Routers ──
 from api_v95_editor import router as editor_router
@@ -239,6 +240,7 @@ class GenerateRequest(BaseModel):
     youtube_url: str = Field(..., min_length=10, max_length=500)
     target_duration: int = Field(45, ge=20, le=60)
     aspect_ratio: str = Field("9:16")
+    output_resolution: str = Field("hd")  # sd | hd | uhd (4K)
     subtitle_style: str = Field("hormozi")
     font: str = Field("Arial")
     font_size: int = Field(48, ge=20, le=80)
@@ -271,6 +273,15 @@ class GenerateRequest(BaseModel):
     voice_style: Optional[str] = None
     publish_platforms: Optional[List[str]] = None
     manual_ranges: Optional[List[Dict[str, float]]] = None
+    speed_ramp: bool = Field(False)
+    broll_enabled: bool = Field(False)  # default off — B-roll-free policy
+    broll_intensity: float = Field(0.0, ge=0.0, le=1.0)
+    broll_source: Optional[str] = None
+    voiceover_enabled: bool = Field(False)
+    voiceover_voice: Optional[str] = None
+    voiceover_speed: float = Field(1.0, ge=0.5, le=2.0)
+    voiceover_volume: int = Field(100, ge=0, le=200)
+    voiceover_script: Optional[str] = None
 
 class JobResponse(BaseModel):
     job_id: str
@@ -528,6 +539,42 @@ async def search(req: SearchRequest, request: Request, _=Depends(_require_auth))
     except Exception as e:
         raise HTTPException(400, f"Search failed: {e}")
 
+# ── Local Video Upload (V9.5) ──
+UPLOAD_MAX_MB = int(os.environ.get("NEXUX_UPLOAD_MAX_MB", "4096"))
+UPLOAD_EXTENSIONS = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
+
+@app.post("/api/upload")
+async def upload_video(file: UploadFile = File(...), request: Request = None, _=Depends(_require_auth)):
+    """Accept a local video file; returns a local:// token usable as youtube_url."""
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in UPLOAD_EXTENSIONS:
+        raise HTTPException(400, f"Unsupported file type '{ext}'. Allowed: {sorted(UPLOAD_EXTENSIONS)}")
+
+    stored_name = f"{uuid.uuid4().hex}{ext}"
+    dest = UPLOAD_DIR / stored_name
+    total = 0
+    try:
+        with dest.open("wb") as out:
+            while chunk := await file.read(1024 * 1024):
+                total += len(chunk)
+                if total > UPLOAD_MAX_MB * 1024 * 1024:
+                    dest.unlink(missing_ok=True)
+                    raise HTTPException(413, f"File exceeds {UPLOAD_MAX_MB} MB limit")
+                out.write(chunk)
+    except HTTPException:
+        raise
+    except Exception as e:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(500, f"Upload failed: {e}")
+
+    log.info(f"[Upload] {file.filename} → {stored_name} ({total / 1024**2:.1f} MB)")
+    return {
+        "status": "ok",
+        "local_url": f"local://{stored_name}",
+        "original_name": file.filename,
+        "size_mb": round(total / 1024**2, 1),
+    }
+
 @app.post("/api/generate", response_model=JobResponse)
 async def generate(req: GenerateRequest, bg: BackgroundTasks, request: Request, _=Depends(_require_auth)):
     global active_count
@@ -560,6 +607,7 @@ async def generate(req: GenerateRequest, bg: BackgroundTasks, request: Request, 
         "position": req.position,
         "animation": req.animation,
         "aspect_ratio": req.aspect_ratio,
+        "output_resolution": req.output_resolution,
         "target_duration": req.target_duration,
         "clip_count": req.clip_count,
         "auto_zoom": req.auto_zoom,
@@ -1056,6 +1104,8 @@ async def _process_job(job_id: str, url: str, kwargs: dict):
                 "analyze": stages.get("analyze", {}),
                 "subtitle_qa": stages.get("subtitle_qa", {}),
                 "critique": stages.get("critique", {}),
+                "clip_candidates": result.get("clip_candidates", []),
+                "transcript_segments": result.get("transcript_segments", []),
             }
 
             critique_summary = {

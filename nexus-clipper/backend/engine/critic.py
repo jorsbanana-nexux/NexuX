@@ -57,7 +57,7 @@ MAX_REVISIONS = 3
 class CritiqueResult:
     """Result of critic evaluation of a single clip."""
     clip_index: int
-    verdict: str  # "GOLD", "ACCEPTABLE", "NEEDS_REVISION", "REJECT"
+    verdict: str = "REJECT"  # "GOLD", "ACCEPTABLE", "NEEDS_REVISION", "REJECT"
     dimensions: Dict[str, float] = field(default_factory=dict)
     issues: List[str] = field(default_factory=list)
     revision_directives: List[str] = field(default_factory=list)
@@ -99,6 +99,8 @@ def evaluate_clip(
         CritiqueResult with verdict and improvement directives
     """
     result = CritiqueResult(clip_index=clip_index, revision_count=revision_count)
+    if isinstance(output_path, str):
+        output_path = Path(output_path)
     
     # ── Editorial Evaluation ──
     clip_segs = [

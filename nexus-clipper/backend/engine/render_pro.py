@@ -38,6 +38,16 @@ SFX_TYPES = {
     "riser": {"freq_start": 100, "freq_end": 2000, "duration": 0.5, "volume": 0.2},
 }
 
+# Export resolution presets — base ASPECT_RATIOS are 1080p; uhd doubles to 4K.
+RESOLUTION_MULTIPLIERS = {
+    "sd": 0.5,
+    "hd": 1.0,
+    "uhd": 2.0,
+    "480p": 0.5,
+    "1080p": 1.0,
+    "4k": 2.0,
+}
+
 
 def render_clip_pro(
     video_path: Path,
@@ -54,6 +64,7 @@ def render_clip_pro(
     creative_config: Optional[Dict] = None,
     hook_text: Optional[str] = None,
     sfx_enabled: bool = True,
+    output_resolution: str = "hd",
 ) -> Path:
     """Render a single clip with PROFESSIONAL quality — Opus Clip level.
     
@@ -67,8 +78,12 @@ def render_clip_pro(
     out_dir.mkdir(parents=True, exist_ok=True)
     output_path = out_dir / f"clip_{clip_idx:02d}.mp4"
     
-    ar = "9:16"
+    ar = (style_config or {}).get("aspect_ratio", "9:16") or "9:16"
     w, h = ASPECT_RATIOS.get(ar, (1080, 1920))
+    res_mult = RESOLUTION_MULTIPLIERS.get(output_resolution, 1.0)
+    if res_mult != 1.0:
+        w, h = int(w * res_mult), int(h * res_mult)
+        w, h = w - w % 2, h - h % 2  # keep even dimensions for h264
     clip_start = float(clip.get("start", 0))
     clip_end = float(clip.get("end", clip_start + 60))
     clip_dur = clip_end - clip_start
