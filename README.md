@@ -2,7 +2,9 @@
 
 > **Local-first, zero cloud cost, production-ready.** Transform long-form videos into viral clips that surpass Opus Clip — entirely on your own machine.
 >
-> **V9.5:** Dual-mode system — Podcast Mode (clip podcasts/interviews) + AI Creative Mode (keyword → multi-source compilation). Opus Killer scoring (8 dimensions), auto viral titles, keyword expansion.
+> **V9.5 (current `main`):** Dual-mode system — Podcast Mode (clip podcasts/interviews) + AI Creative Mode (keyword → multi-source compilation). Opus Killer scoring (8 dimensions), auto viral titles, keyword expansion, **local video upload**, **4K export**, **speaker isolation**, **+13 self-repair diagnostics**.
+>
+> **Quality gate in GitHub Actions passes** (CI green on PR #33). Comparison: [`COMPARISON_OPUS_CLIP.md`](./COMPARISON_OPUS_CLIP.md).
 
 [![Version](https://img.shields.io/badge/version-9.5.0-cyan)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)]()
@@ -42,8 +44,12 @@ Unlike Opus Clip and similar cloud-based tools:
 - **Editorial Consciousness** — A built-in critic evaluates every clip and auto-revises weak ones
 - **B-Roll Free Policy** — No stock footage overlay; the original content speaks for itself
 - **SQLite Persistence** — Job history survives restarts
-- **Auto Viral Titles** — 8 archetype templates, 5 variations per clip, bilingual EN+ID
+- **Auto Viral Titles** — 11 archetype templates, 5 variations per clip, bilingual EN+ID
 - **Keyword Expansion** — 1 keyword → 15+ search terms for Mode 2
+- **Local Video Upload** ✓ NEW — `POST /api/upload` → `local://` token, no cloud
+- **4K / UHD Export** ✓ NEW — `output_resolution=uhd` renders 2160×3840
+- **Speaker Isolation** ✓ NEW — mute / isolate per-speaker via whisperx diarization
+- **Self-Repair** — 13 diagnostics + auto-fix (`/api/repair/diagnose`, `/api/repair/fix-all`)
 
 ---
 
@@ -332,26 +338,27 @@ cd NexuX/nexus-clipper
 ### Step 3: Set Up the Backend
 
 ```bash
-# Navigate to backend directory
 cd backend
 
-# Create Python virtual environment
+# Create & activate Python virtual environment
 python3.11 -m venv venv
-
-# Activate virtual environment
-source venv/bin/activate
-# Windows (WSL2): source venv/bin/activate
-# Windows (native): venv\Scripts\activate
+source venv/bin/activate            # Windows (native): venv\Scripts\activate
 
 # Install Python dependencies
 pip install -r requirements.txt
 
-# Copy environment configuration
-cp ../.env.example ../.env
+# Backend env file lives HERE (not the repo root) — secrets never committed
+cp ../.env.example .env
 
-# (Optional) Edit .env for Mode 2 LLM support
-# nano ../.env
-# Add: OPENAI_API_KEY=sk-... or ANTHROPIC_API_KEY=sk-... or GEMINI_API_KEY=...
+# Optional Mode 2 AI narration (fallback = template if empty):
+# nano .env
+#   OPENAI_API_KEY=sk-...
+#   ANTHROPIC_API_KEY=sk-...
+#   GEMINI_API_KEY=...
+# Optional whisperx speaker diarization (speaker isolation in editor):
+#   HF_TOKEN=hf_...
+# Optional whisper model (default: small):
+#   WHISPER_MODEL=small
 
 # Start the backend
 python main.py
@@ -362,57 +369,82 @@ python main.py
 ### Step 4: Set Up the Frontend (in a new terminal)
 
 ```bash
-# Navigate to frontend directory
 cd NexuX/nexus-clipper/frontend
 
 # Install Node.js dependencies
 npm install
 
+# (Optional) point to a custom backend:
+# VITE_NEXUX_API_URL=http://localhost:8000 npm run dev
+
 # Start the development server
 npm run dev
 ```
 
-✅ Frontend berjalan di `http://localhost:3000`
+✅ Frontend berjalan di `http://localhost:3000` (default `API_BASE` = `http://127.0.0.1:8000`)
 
-### Step 5: Verify Everything Works
+### Step 5: Run Tests (recommended before first generate)
 
 ```bash
-# Check backend health
-curl http://127.0.0.1:8000/api/health
+# Backend — 41/41 expected
+cd backend && source venv/bin/activate
+python -m pytest tests/ -q
 
-# Expected response:
-{
-  "status": "healthy",
-  "canonical_runtime": true,
-  "canonical_engine": "local-first-v9.5.0",
-  "broll": false,
-  "auth_enabled": false,
-  "db_connected": true
-}
+# Frontend — 13/13 expected
+cd ../frontend
+npm test
 
-# Check V9.5 modes
-curl http://127.0.0.1:8000/api/v2/modes
-
-# Expected response:
-[
-  {
-    "mode": "podcast",
-    "name": "Podcast Mode",
-    "icon": "🎙️",
-    "requires_url": true,
-    "features": [...]
-  },
-  {
-    "mode": "creative",
-    "name": "AI Creative Mode",
-    "icon": "✨",
-    "requires_keyword": true,
-    "features": [...]
-  }
-]
+# Sanity: lint & build
+npx tsc --noEmit
+npm run build
 ```
 
-### Step 6: Generate Your First Clip (Mode 1 — Podcast)
+### Step 6: Verify Everything Works
+
+```bash
+# 1) Health check
+curl http://127.0.0.1:8000/api/health
+
+# 2) Modes
+curl http://127.0.0.1:8000/api/v2/modes
+
+# 3) Self-repair (13 diagnostics)
+curl http://127.0.0.1:8000/api/repair/diagnose
+
+# 4) NEW — Local video upload (returns local:// token for /api/generate):
+curl -X POST http://127.0.0.1:8000/api/upload -F "file=@my-video.mp4"
+# {"status":"ok","local_url":"local://abc123.mp4","original_name":"my-video.mp4","size_mb":12.5}
+
+# 5) NEW — Generate with 4K output:
+curl -X POST http://127.0.0.1:8000/api/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "youtube_url": "https://youtu.be/example",
+    "output_resolution": "uhd",
+    "target_duration": 45,
+    "clip_count": 3
+  }'
+# Rendered clip will be 2160×3840 (UHD) — verified by backend test test_uhd_doubles_base_aspect_to_4k.
+
+# 6) NEW — Preview a local video before generating:
+curl -X POST "http://127.0.0.1:8000/api/preview?url=local://abc123.mp4"
+# (local files probed via ffprobe → duration/resolution available instantly)
+```
+
+### Step 6b: Speaker Isolation (NEW — mute/isolate per speaker)
+
+When a job has whisperx diarization enabled, the Timeline Editor receives real
+speaker data (`transcript_segments` in the job's `analysis_bundle`). In the
+editor you can:
+
+- **Mute** a speaker → rendered with `volume=0` during their segments
+- **Isolate** a speaker → other speakers are ducked to 15% volume
+
+The backend applies the FFmpeg filters at render time via
+`/api/rerender/{job_id}/{clip_index}/overlays` with payload:
+`muted_speakers`, `isolated_speaker`, `speaker_segments` (clip-relative).
+
+### Step 7: Generate Your First Clip (Mode 1 — Podcast)
 
 **Via UI:**
 1. Open `http://localhost:3000` in your browser
@@ -436,7 +468,7 @@ curl -X POST http://127.0.0.1:8000/api/v2/generate \
   }'
 ```
 
-### Step 7: Generate Your First Creative Video (Mode 2 — AI Creative)
+### Step 8: Generate Your First Creative Video (Mode 2 — AI Creative)
 
 **Via UI:**
 1. Open `http://localhost:3000`
