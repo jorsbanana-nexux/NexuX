@@ -154,12 +154,15 @@ def render_clip_pro(
         transcript, clip, style_config, job_id, clip_idx, w, h
     )
     
-    ass_rel = str(ass_path).replace(os.getcwd() + "/", "")
-    if not os.path.isabs(ass_rel):
-        ass_rel = ass_path.name  # Use just the filename if relative
-    
-    # Escape colons in path for FFmpeg
-    ass_escaped = ass_rel.replace(":", "\\:")
+    # FFmpeg's ass filter resolves relative paths against the process CWD,
+    # NOT the clip's output dir. Always pass an absolute path and escape the
+    # characters the filter-graph parser treats specially.
+    ass_abs = str(ass_path.resolve())
+    ass_escaped = (
+        ass_abs.replace("\\", "/")
+        .replace(":", "\\:")
+        .replace("'", "\\'")
+    )
     
     cmd2 = [
         "ffmpeg", "-y",

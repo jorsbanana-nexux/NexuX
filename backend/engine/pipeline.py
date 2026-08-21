@@ -411,7 +411,7 @@ async def run_pipeline(
                                 section_path = Path(r["path"])
 
                             revised_render = await _run_sync(
-                                render_clip, section_path, job_id, revised_clip,
+                                render_clip_pro, section_path, job_id, revised_clip,
                                 transcript, style_config, r["clip_index"],
                                 None, kwargs.get("color_grade", "none"),
                                 kwargs.get("auto_zoom", True),
@@ -506,11 +506,10 @@ async def run_pipeline(
             # Single clip — just use it directly
             final_path = final_clips[0]
         else:
-            # Multiple clips — concatenate
+            # Multiple clips — concatenate (concatenate_clips_pro takes
+            # clip_paths as-is; codec selection happens inside each render).
             final_path = await _run_sync(
-                concatenate_clips, final_clips, job_id,
-                kwargs.get("video_codec", "h264"),
-                kwargs.get("audio_codec", "aac"),
+                concatenate_clips_pro, job_id, [Path(c) for c in final_clips],
             )
 
         result["output_path"] = final_path
