@@ -7,6 +7,7 @@ from story_plan import StoryPlan
 def compile_story_plan(plan: StoryPlan, candidate_index: dict[str, dict[str, Any]]) -> dict[str, Any]:
     plan.validate()
     ordered: list[dict[str, Any]] = []
+    used_ids: set[str] = set()
     roles = [("opening", plan.opening), ("setup", *plan.setup), ("escalation", *plan.escalation), ("core", *plan.core), ("revelation", plan.revelation), ("payoff", plan.payoff), ("ending", plan.ending)]
     for role_entry in roles:
         role = role_entry[0]
@@ -14,10 +15,16 @@ def compile_story_plan(plan: StoryPlan, candidate_index: dict[str, dict[str, Any
             if not node:
                 continue
             cid = str(node.get("candidate_id", ""))
+            # Reusing the same candidate for two roles would overlap at render time —
+            # keep the first occurrence (story books can lean on a candidate multiple
+            # times conceptually, but the render plan cannot burn it twice).
+            if cid in used_ids:
+                continue
             source = candidate_index.get(cid)
             if source is None:
                 raise ValueError(f"StoryPlan references unknown candidate: {cid}")
             ordered.append({"role": role, "candidate_id": cid, "start": float(source.get("start", 0.0)), "end": float(source.get("end", 0.0)), "duration": float(source.get("duration", 0.0)), "text": str(source.get("text", ""))})
+            used_ids.add(cid)
     return {"schema_version": "1.0", "plan_id": plan.plan_id, "job_id": plan.job_id, "decision": plan.decision, "duration": sum(x["duration"] for x in ordered), "segments": ordered, "evidence": dict(plan.evidence)}
 
 

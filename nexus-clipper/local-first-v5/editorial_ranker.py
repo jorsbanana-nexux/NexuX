@@ -197,7 +197,7 @@ def select_diverse(candidates: list[dict[str, Any]], *, limit: int = 10, target_
                     combined += 4.0
                 elif verdict == "REFINE":
                     combined += 1.5
-            ai_items.append((combined, signals, judged))
+            ai_items.append((combined, signals, candidate))
         _, signals, winner = max(ai_items, key=lambda item: item[0] * (0.85 + 0.15 * item[1].confidence))
         chosen = dict(winner)
         chosen["editorial_rank"] = round(signals.total, 2)
@@ -213,7 +213,11 @@ def select_diverse(candidates: list[dict[str, Any]], *, limit: int = 10, target_
             "ai_rejudge_active": bool(chosen.get("ai_rejudge_active")),
         }
         selected.append(chosen)
-        remaining.remove(next(item[2] for item in ai_items if item[2].get("id") == chosen.get("id")))
+        winner = next(
+            (item[2] for item in ai_items if item[2].get("id") == chosen.get("id")),
+            remaining[-1],  # defensive fallback if the winner is not in the candidate list
+        )
+        remaining.remove(winner)
     return selected
 
 
