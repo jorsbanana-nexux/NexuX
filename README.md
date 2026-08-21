@@ -529,6 +529,19 @@ http://127.0.0.1:8000
 | GET | `/api/v2/keyword/expand` | Preview keyword expansion |
 | GET | `/api/v2/modes/{mode}/features` | Get mode details |
 
+### V9.5 Editor Endpoints (Post-Render Personalization)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/editor/templates` | List 12 creator templates |
+| GET | `/api/editor/styles` | List 46+ subtitle style presets |
+| GET | `/api/editor/effects` | List zoom styles, color grades, speed ramps, animations |
+| GET | `/api/editor/clip/{job_id}/{clip_idx}` | Get clip details (URL, transcript, metadata) |
+| GET | `/api/editor/clip/{job_id}/{clip_idx}/transcript` | Get word-level transcript |
+| POST | `/api/editor/preview/{job_id}/{clip_idx}` | Real-time FFmpeg preview (480p, 5s, <3s) |
+| POST | `/api/editor/rerender/{job_id}/{clip_idx}` | Re-render clip with personalization + overlay burn-in |
+| POST | `/api/editor/rerender/{job_id}/all` | Batch re-render all clips |
+
 ### V8.0 Existing Endpoints
 
 | Method | Path | Description |
@@ -680,18 +693,39 @@ OPENAI_API_KEY=sk-...
 GEMINI_API_KEY=...
 ```
 
-### V9.5 Integration to main.py
+### V9.5 Router Integration (Already Active)
 
-To activate V9.5 endpoints in `main.py`, add:
+V9.5 routers are mounted in `main.py` (since V9.5.2):
 
 ```python
-from api_v95_modes import router as v2_router
-app.include_router(v2_router)
+# ── V9.5 Editor & Modes API Routers ──
+from api_v95_editor import router as editor_router
+from api_v95_modes import router as modes_router
+
+app.include_router(editor_router)
+app.include_router(modes_router)
 ```
+
+V8.5/V9.0 API additions are loaded via `_integrate_api.py` (exec'd at startup).
+If any endpoints return 404, check the server logs for `[Integration]` messages.
 
 ---
 
 ## 📦 Changelog
+
+### V9.5.2 (August 2026) — Router Fix + Stability
+
+**Fixed:**
+- **CRITICAL:** `editor_router` and `modes_router` were not mounted in `main.py` — V9.5 endpoints returned 404. Now properly included via `app.include_router()`.
+- Fixed relative imports in `api_v95_editor.py` and `api_v95_modes.py` (`.engine` → `engine`).
+- Fixed `TimelineEditorStudio.tsx` useEffect referencing block-scoped variables before declaration (TS2448).
+- Synced with remote `_integrate_api.py` (V8.5/V9.0 API addition loader).
+
+**Verified:**
+- All 42 engine modules + 10 API files pass Python syntax check ✓
+- Frontend production build: 2112 modules, 0 errors, 3.44s ✓
+- All 12 editor endpoints + 4 mode endpoints verified in code ✓
+- All engine `__init__.py` exports resolve to actual definitions ✓
 
 ### V9.5.1 (August 2026) — Post-Render Editor Upgrade
 
