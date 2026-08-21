@@ -40,6 +40,11 @@ from engine import (
 )
 from engine.constants import MAX_CONCURRENT_JOBS
 
+# ── V9.5 Editor & Modes API Routers ──
+from api_v95_editor import router as editor_router
+from api_v95_modes import router as modes_router
+
+
 # ── Logger ──
 import logging
 logging.basicConfig(
@@ -418,6 +423,10 @@ def _get_job(job_id: str) -> Optional[dict]:
     if job_id in jobs:
         return jobs[job_id]
     return _load_job(job_id)
+
+# ── Mount V9.5 API Routers ──
+app.include_router(editor_router)
+app.include_router(modes_router)
 
 # ── Routes ──
 

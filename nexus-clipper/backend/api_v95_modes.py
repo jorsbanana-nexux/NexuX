@@ -19,11 +19,11 @@ from logging import getLogger
 from fastapi import APIRouter, HTTPException, Request, BackgroundTasks
 from pydantic import BaseModel, Field
 
-from .engine.mode_router import get_mode_config, get_all_modes, validate_mode_input
-from .engine.opus_killer import score_with_opus_killer
-from .engine.podcast_analyzer import analyze_podcast
-from .engine.clip_titler import generate_clip_titles, generate_hashtags, generate_description
-from .engine.keyword_expander import expand_keyword, get_search_strategy
+from engine.mode_router import get_mode_config, get_all_modes, validate_mode_input
+from engine.opus_killer import score_with_opus_killer
+from engine.podcast_analyzer import analyze_podcast
+from engine.clip_titler import generate_clip_titles, generate_hashtags, generate_description
+from engine.keyword_expander import expand_keyword, get_search_strategy
 
 log = getLogger("nexus.api_v2")
 
@@ -165,7 +165,7 @@ async def generate_v2(
     
     else:
         # Start Mode 2 pipeline (enhanced)
-        from .engine.mode2_enhanced import run_mode2_enhanced
+        from engine.mode2_enhanced import run_mode2_enhanced
         
         async def run_mode2():
             try:

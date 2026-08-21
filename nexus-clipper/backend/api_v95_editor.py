@@ -23,8 +23,8 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from .engine.styles import STYLE_PRESETS, resolve_style
-from .engine.constants import OUTPUT_DIR, ASPECT_RATIOS, COLOR_GRADES
+from engine.styles import STYLE_PRESETS, resolve_style
+from engine.constants import OUTPUT_DIR, ASPECT_RATIOS, COLOR_GRADES
 
 log = logging.getLogger("nexus.api.editor")
 
@@ -295,7 +295,7 @@ async def preview_render(
     Uses the real FFmpeg preview renderer to burn in color grade,
     zoom, overlays, and watermark — NOT just a CSS preview.
     """
-    from .engine.preview_renderer import generate_preview
+    from engine.preview_renderer import generate_preview
     
     try:
         # Find source video path from job
@@ -382,7 +382,7 @@ async def rerender_clip(
     This is the main endpoint that powers the post-render editor.
     Takes all personalization settings and produces a new rendered clip.
     """
-    from .engine.rerender_pipeline import rerender_clip_with_personalization
+    from engine.rerender_pipeline import rerender_clip_with_personalization
     
     # If template_id is set, apply template settings
     if req.template_id:
@@ -447,7 +447,7 @@ async def rerender_all_clips(
     req: PersonalizationRequest,
 ):
     """Batch re-render all clips in a job with the same personalization settings."""
-    from .engine.rerender_pipeline import rerender_all_clips
+    from engine.rerender_pipeline import rerender_all_clips
     
     # Apply template if set
     if req.template_id:

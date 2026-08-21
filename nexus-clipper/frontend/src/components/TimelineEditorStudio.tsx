@@ -360,59 +360,6 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
     };
   }, [snapToGrid]);
 
-  // ── Keyboard Shortcuts ──
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      // Don't trigger if typing in input/textarea
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-      if (editingWord) return; // don't intercept while editing transcript
-
-      const cmd = e.ctrlKey || e.metaKey;
-
-      if (e.code === 'Space') {
-        e.preventDefault();
-        togglePlay();
-      } else if (cmd && e.key === 'z' && !e.shiftKey) {
-        e.preventDefault();
-        undo();
-      } else if (cmd && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
-        e.preventDefault();
-        redo();
-      } else if (cmd && e.key === 'd') {
-        e.preventDefault();
-        if (selectedElement) {
-          pushHistory(elements);
-          const dup: TimelineElement = { ...selectedElement, id: `el-${Date.now()}`, x: selectedElement.x + 5, y: selectedElement.y + 5, zIndex: elements.length + 1 };
-          setElements(prev => [...prev, dup]);
-          setSelectedElementId(dup.id);
-        }
-      } else if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (selectedElementId) {
-          e.preventDefault();
-          pushHistory(elements);
-          deleteElement(selectedElementId);
-        }
-      } else if (e.key === 't' || e.key === 'T') {
-        e.preventDefault();
-        addTextElement();
-      } else if (e.key === 'ArrowLeft') {
-        e.preventDefault();
-        seekTo(currentTime - (e.shiftKey ? 1 : 1 / 30));
-      } else if (e.key === 'ArrowRight') {
-        e.preventDefault();
-        seekTo(currentTime + (e.shiftKey ? 1 : 1 / 30));
-      } else if (cmd && e.key === 'e') {
-        e.preventDefault();
-        startExport();
-      } else if (e.key === 'Escape') {
-        setSelectedElementId(null);
-        setEditingWord(null);
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [togglePlay, undo, redo, selectedElement, selectedElementId, elements, editingWord, currentTime, addTextElement, startExport, pushHistory, deleteElement]);
 
   // ── Transcript editing ──
   const startEditWord = (segId: string, wordIdx: number, current: string) => {
@@ -624,6 +571,61 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
       }, 400);
     }
   };
+
+  // ── Keyboard Shortcuts ──
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // Don't trigger if typing in input/textarea
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (editingWord) return; // don't intercept while editing transcript
+
+      const cmd = e.ctrlKey || e.metaKey;
+
+      if (e.code === 'Space') {
+        e.preventDefault();
+        togglePlay();
+      } else if (cmd && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if (cmd && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        redo();
+      } else if (cmd && e.key === 'd') {
+        e.preventDefault();
+        if (selectedElement) {
+          pushHistory(elements);
+          const dup: TimelineElement = { ...selectedElement, id: `el-${Date.now()}`, x: selectedElement.x + 5, y: selectedElement.y + 5, zIndex: elements.length + 1 };
+          setElements(prev => [...prev, dup]);
+          setSelectedElementId(dup.id);
+        }
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedElementId) {
+          e.preventDefault();
+          pushHistory(elements);
+          deleteElement(selectedElementId);
+        }
+      } else if (e.key === 't' || e.key === 'T') {
+        e.preventDefault();
+        addTextElement();
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        seekTo(currentTime - (e.shiftKey ? 1 : 1 / 30));
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        seekTo(currentTime + (e.shiftKey ? 1 : 1 / 30));
+      } else if (cmd && e.key === 'e') {
+        e.preventDefault();
+        startExport();
+      } else if (e.key === 'Escape') {
+        setSelectedElementId(null);
+        setEditingWord(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [togglePlay, undo, redo, selectedElement, selectedElementId, elements, editingWord, currentTime, addTextElement, startExport, pushHistory, deleteElement]);
+
 
   const rightRailItems: { id: RightPanelId; label: string; icon: typeof Sparkles }[] = [
     { id: 'ai-enhance', label: 'AI enhance', icon: Sparkles },
