@@ -24,3 +24,22 @@ Local-first AI video repurposing engine (V9.5.2). Dual-mode: Podcast Mode (long 
 - pydantic v2: use `SettingsConfigDict`, not class Config.
 - Docstrings containing `\k` (e.g. karaoke) must be raw docstrings (r"""...""") to avoid SyntaxWarning.
 - TestClient runs BackgroundTasks synchronously — stub `main._process_job`/`_process_mode2_job` in tests and decrement `main.active_count` in the stub's finally (module state persists across tests; reset `main.jobs`/`cancel_flags`/`active_count` per test).
+
+## Progres Sesi Benchmark E2E (2026-08-21)
+
+### Bug yang sudah diperbaiki & ter-push
+1. `907ff78` — NameError render_clip/concatenate_clips → *_pro; path ASS pass2 harus absolut (libass resolve vs CWD, bukan output dir).
+2. `bb7b2a9` — **Bug 261 byte**: section file dari yt-dlp --download-sections mulai dari t=0, tapi pipeline mengoper clip.start absolut sebagai ffmpeg -ss. Fix: parameter section_offset di render_clip_pro; guard output < 1KB.
+
+### Cara menjalankan benchmark
+cd backend && . .venv/bin/activate && python benchmark_e2e.py "<youtube_url>" 30 3
+Log: /tmp/benchmark_e2e*.log. Output: engine/output/bench_e2e/.
+
+### Catatan environment sandbox
+- ffmpeg bisa HILANG setelah sandbox reset → reinstall: sudo apt-get update && sudo apt-get install -y ffmpeg
+- Jika klip 261 byte dan ffmpeg hilang → FileNotFoundError, bukan bug kode.
+
+### Yang masih tertunda
+- Re-run benchmark E2E penuh setelah fix offset (verifikasi 3 klip valid + subtitle burn-in)
+- Sambungkan auto-open editor ke Mode 2 (keyword/creative)
+- Benchmark kualitas: bandingkan output vs target Opus Clip
