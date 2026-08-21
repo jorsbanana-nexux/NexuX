@@ -85,8 +85,21 @@ async def rerender_with_overlays(
     show_watermark = body.get("show_watermark", False)
     
     clip = clips[clip_index]
-    original_start = float(clip.get("start", 0))
-    original_end = float(clip.get("end", 45))
+    # Clips may be plain path strings; start/end comes from clip_candidates.
+    analysis = job.get("analysis_bundle")
+    if isinstance(analysis, str):
+        try:
+            analysis = json.loads(analysis)
+        except Exception:
+            analysis = {}
+    candidates = (analysis or {}).get("clip_candidates") or []
+    candidate = candidates[clip_index] if clip_index < len(candidates) else {}
+    if isinstance(clip, dict):
+        original_start = float(clip.get("start", 0))
+        original_end = float(clip.get("end", 45))
+    else:
+        original_start = float(candidate.get("start", 0))
+        original_end = float(candidate.get("end", 45))
     original_dur = original_end - original_start
     
     # Apply trim
@@ -254,6 +267,24 @@ async def rerender_with_overlays(
     
     # ── Audio filters ──
     audio_filters = []
+
+    # Per-speaker mute / isolate — diarized segments sent clip-relative.
+    speaker_segments = body.get("speaker_segments") or []
+    muted_speakers = set(body.get("muted_speakers") or [])
+    isolated_speaker = body.get("isolated_speaker")
+    for seg in speaker_segments[:400]:
+        spk = seg.get("speaker")
+        try:
+            s, e = float(seg.get("start", 0)), float(seg.get("end", 0))
+        except (TypeError, ValueError):
+            continue
+        if e - s < 0.05:
+            continue
+        if spk and spk in muted_speakers:
+            audio_filters.append(f"volume=0:enable='between(t,{s:.2f},{e:.2f})'")
+        elif isolated_speaker and spk and spk != isolated_speaker:
+            audio_filters.append(f"volume=0.15:enable='between(t,{s:.2f},{e:.2f})'")
+
     voice_vol = body.get("voice_volume", 100)
     if voice_vol != 100:
         audio_filters.append(f"volume={voice_vol / 100.0:.2f}")

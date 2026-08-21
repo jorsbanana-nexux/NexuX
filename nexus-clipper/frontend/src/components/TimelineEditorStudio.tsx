@@ -43,7 +43,7 @@ import { nexuxApi } from '../api/nexuxApi';
 // TYPES
 // ═══════════════════════════════════════════════════
 
-interface Speaker {
+export interface Speaker {
   id: string;
   name: string;
   color: string;
@@ -100,19 +100,68 @@ interface TimelineEditorProps {
   clips: GeneratedClip[];
   jobId: string;
   onClose: () => void;
+  transcriptSegments?: { start: number; end: number; text: string; speaker?: string }[];
+  clipCandidates?: { path?: string; start?: number; end?: number; score?: number }[];
 }
 
 // ═══════════════════════════════════════════════════
-// MOCK DATA GENERATORS (would come from API in production)
+// MOCK DATA GENERATORS (fallback when job has no diarized transcript)
 // ═══════════════════════════════════════════════════
 
 const SPEAKER_COLORS = ['#22D3EE', '#F472B6', '#A3E635', '#FBBF24', '#C084FC'];
 
-function buildMockSpeakers(): Speaker[] {
+export function buildMockSpeakers(): Speaker[] {
   return [
     { id: 'spk-1', name: 'Tanya', color: SPEAKER_COLORS[0], muted: false, isolated: false },
     { id: 'spk-2', name: 'Tomas', color: SPEAKER_COLORS[1], muted: false, isolated: false },
   ];
+}
+
+// ── Real diarized data from the job (whisperx speaker labels) ──
+export type RawSegment = { start: number; end: number; text: string; speaker?: string };
+
+export function buildRealSpeakers(segments: RawSegment[]): Speaker[] | null {
+  if (!segments.length) return null;
+  const ids = [...new Set(segments.map(s => s.speaker || 'SPEAKER_00'))].sort();
+  if (ids.length === 0) return null;
+  return ids.map((id, i) => ({
+    id,
+    name: /^SPEAKER_(\d+)$/.test(id)
+      ? `Speaker ${(parseInt(id.match(/^SPEAKER_(\d+)$/)![1], 10) || 0) + 1}`
+      : id,
+    color: SPEAKER_COLORS[i % SPEAKER_COLORS.length],
+    muted: false,
+    isolated: false,
+  }));
+}
+
+export function buildRealTranscript(
+  segments: RawSegment[],
+  clipStart: number,
+  clipEnd: number,
+): TranscriptSegment[] {
+  // Slice diarized segments to the clip's time range, shift to clip-relative
+  return segments
+    .filter(s => s.end > clipStart && s.start < clipEnd)
+    .map((s, i) => {
+      const start = Math.max(0, s.start - clipStart);
+      const end = Math.min(clipEnd - clipStart, s.end - clipStart);
+      const rawWords = s.text.trim().split(/\s+/).filter(Boolean);
+      const dur = end - start;
+      const step = rawWords.length > 0 ? dur / rawWords.length : 0;
+      return {
+        id: `seg-${i}`,
+        speakerId: s.speaker || 'SPEAKER_00',
+        start,
+        end,
+        words: rawWords.map((text, wi) => ({
+          text,
+          start: start + wi * step,
+          end: start + (wi + 1) * step,
+        })),
+      };
+    })
+    .filter(s => s.words.length > 0);
 }
 
 function buildMockTranscript(text: string, speakers: Speaker[]): TranscriptSegment[] {
@@ -170,7 +219,7 @@ const TRANSITIONS_GALLERY = [
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════
 
-export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, jobId, onClose }) => {
+export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, jobId, onClose, transcriptSegments, clipCandidates }) => {
   const [selectedClipIndex, setSelectedClipIndex] = useState(0);
   const clip = clips[selectedClipIndex];
 
@@ -218,14 +267,14 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
   // ── Undo/Redo History (NexuX exclusive — Opus Clip has linear undo only) ──
   const historyRef = useRef<{ past: TimelineElement[][]; future: TimelineElement[][] }>({ past: [], future: [] });
   const [historyVersion, setHistoryVersion] = useState(0); // bump to trigger re-render
-  const maxHistory = 50;
+  const [maxVersions, setMaxVersions] = useState(20); // 5–50, configurable in Project settings
 
   const pushHistory = useCallback((snapshot: TimelineElement[]) => {
     historyRef.current.past.push(JSON.parse(JSON.stringify(snapshot)));
-    if (historyRef.current.past.length > maxHistory) historyRef.current.past.shift();
+    while (historyRef.current.past.length > maxVersions) historyRef.current.past.shift();
     historyRef.current.future = []; // clear redo on new action
     setHistoryVersion(v => v + 1);
-  }, []);
+  }, [maxVersions]);
 
   const undo = useCallback(() => {
     const h = historyRef.current;
@@ -261,9 +310,19 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
   const [snapGuides, setSnapGuides] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
   const [snapToGrid, setSnapToGrid] = useState(true);
 
-  // Speakers & transcript
-  const [speakers, setSpeakers] = useState<Speaker[]>(buildMockSpeakers());
-  const transcript = useMemo(() => buildMockTranscript(clip?.subtitleSnippet || '', speakers), [clip, speakers]);
+  // Speakers & transcript — real diarized data when available, mock fallback
+  const candidate = clipCandidates?.[selectedClipIndex];
+  const [speakers, setSpeakers] = useState<Speaker[]>(() => {
+    const real = transcriptSegments ? buildRealSpeakers(transcriptSegments) : null;
+    return real ?? buildMockSpeakers();
+  });
+  const transcript = useMemo(() => {
+    if (transcriptSegments?.length && candidate?.start !== undefined && candidate?.end !== undefined) {
+      const real = buildRealTranscript(transcriptSegments, candidate.start, candidate.end);
+      if (real.length > 0) return real;
+    }
+    return buildMockTranscript(clip?.subtitleSnippet || '', speakers);
+  }, [clip, candidate, transcriptSegments, speakers]);
   const [editingWord, setEditingWord] = useState<{ segId: string; wordIdx: number } | null>(null);
   const [wordDraft, setWordDraft] = useState('');
 
@@ -280,7 +339,6 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
   const [autosave, setAutosave] = useState(true);
   const [gpuAccel, setGpuAccel] = useState(true);
   const [theme, setTheme] = useState<'dark' | 'light' | 'system'>('dark');
-  const [maxVersions, setMaxVersions] = useState(20);
   const [backgroundRender, setBackgroundRender] = useState(true);
   const [captionLang, setCaptionLang] = useState('English');
 
@@ -551,6 +609,13 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
         sfx_enabled: true,
         show_watermark: false,
         watermark_text: '',
+        muted_speakers: speakers.filter(s => s.muted).map(s => s.id),
+        isolated_speaker: speakers.find(s => s.isolated)?.id ?? null,
+        speaker_segments: transcript.map(seg => ({
+          start: seg.start,
+          end: seg.end,
+          speaker: seg.speakerId,
+        })),
       });
 
       // Mark as done

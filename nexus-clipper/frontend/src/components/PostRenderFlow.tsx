@@ -111,7 +111,7 @@ export const PostRenderFlow: React.FC<PostRenderFlowProps> = ({
         payload.max_sources = maxSources;
       }
 
-      const res = await v2Api.generate(payload as Parameters<typeof v2Api.generate>[0]);
+      const res = await v2Api.generate(payload as unknown as Parameters<typeof v2Api.generate>[0]);
       setJobId(res.job_id);
 
       // Start polling for job status
@@ -124,14 +124,24 @@ export const PostRenderFlow: React.FC<PostRenderFlowProps> = ({
           setJob(finalJob);
           if (finalJob.status === 'completed' && finalJob.clips?.length > 0) {
             // Convert clips to GeneratedClip format
-            const generatedClips = finalJob.clips.map((url, idx) => ({
-              id: `${finalJob.job_id}-${idx}`,
-              url: buildOutputUrl(url) || url,
-              thumbnail: '',
-              title: `Clip ${idx + 1}`,
-              duration: targetDuration,
-              score: finalJob.render_meta?.[idx]?.virality || 0,
-            }));
+            const generatedClips: GeneratedClip[] = finalJob.clips.map((url, idx) => {
+              const meta = finalJob.render_meta?.[idx];
+              const evidence = typeof meta?.editorial_evidence === 'string'
+                ? meta.editorial_evidence.slice(0, 120) : '';
+              const score = typeof meta?.virality === 'number' ? meta.virality : 0;
+              return {
+                id: `${finalJob.job_id}-${idx}`,
+                title: evidence || `Clip ${idx + 1}`,
+                hookCategory: evidence.slice(0, 30) || 'AI Moment',
+                duration: `${targetDuration}s`,
+                viralScore: score,
+                timestampRange: '',
+                subtitleSnippet: evidence || 'Clip ready for preview',
+                aspectRatio,
+                videoUrl: buildOutputUrl(url) || url,
+                tags: [mode, subtitleStyle].filter(Boolean),
+              };
+            });
             setClips(generatedClips);
             setFlowState('results');
 
@@ -311,10 +321,10 @@ const ProcessingView: React.FC<{ job: NexuXJob | null; mode: NexuXMode }> = ({ j
       </div>
 
       {/* ETA */}
-      {job && (job as Record<string, unknown>)._stages && (
+      {job && (job as unknown as Record<string, unknown>)._stages && (
         <div className="text-xs text-gray-500 flex items-center gap-2">
           <Clock className="w-3 h-3" />
-          ETA: {((job as Record<string, unknown>)._eta_seconds as number || 0).toFixed(0)}s
+          ETA: {(((job as unknown as Record<string, unknown>)._eta_seconds) as number || 0).toFixed(0)}s
         </div>
       )}
     </div>
@@ -376,19 +386,19 @@ const ResultsView: React.FC<ResultsViewProps> = ({
           >
             {/* Video thumbnail/preview */}
             <div className="aspect-[9/16] relative">
-              {clip.url && (
+              {clip.videoUrl && (
                 <video
-                  src={clip.url}
+                  src={clip.videoUrl}
                   className="w-full h-full object-cover"
                   muted
                   onMouseEnter={(e) => e.currentTarget.play()}
-                  onMouseLeave={(e) => { e.currentTarget.pause(); e.currentTime = 0; }}
+                  onMouseLeave={(e) => { e.currentTarget.pause(); e.currentTarget.currentTime = 0; }}
                 />
               )}
               {/* Score badge */}
-              {clip.score > 0 && (
+              {clip.viralScore > 0 && (
                 <div className="absolute top-2 right-2 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur text-xs font-mono text-cyan-400">
-                  {clip.score.toFixed(0)}
+                  {clip.viralScore.toFixed(0)}
                 </div>
               )}
               {/* Clip number */}

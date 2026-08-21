@@ -191,20 +191,25 @@ export const SpaceshipConsole: React.FC<SpaceshipConsoleProps> = () => {
     sound.playSwoosh();
 
     // Determine the URL to use
-    const url = inputUrl.trim();
+    let url = inputUrl.trim();
     if (!url && !uploadedFile) {
       setErrorMsg('Please provide a YouTube URL or upload a video file.');
       setStage('error');
       return;
     }
 
-    // For file uploads, we'd need a file upload endpoint. 
-    // The canonical API currently supports YouTube URLs. If a file is uploaded,
-    // we show an informative message.
+    // V9.5: real local upload — POST /api/upload returns a local:// token
     if (uploadedFile && !url) {
-      setErrorMsg('Direct file upload is not yet supported by the canonical API. Please provide a YouTube URL.');
-      setStage('error');
-      return;
+      try {
+        setErrorMsg('');
+        setStage('loading');
+        const uploaded = await nexuxApi.upload(uploadedFile);
+        url = uploaded.local_url;
+      } catch (e) {
+        setErrorMsg(`Upload failed: ${e instanceof Error ? e.message : 'unknown error'}`);
+        setStage('error');
+        return;
+      }
     }
 
     setErrorMsg('');
@@ -536,7 +541,7 @@ export const SpaceshipConsole: React.FC<SpaceshipConsoleProps> = () => {
                           Drop video here
                         </h4>
                         <p className="text-xs text-stone-400 mt-1">
-                          MP4, MOV, MKV — direct upload (coming soon)
+                          MP4, MOV, MKV — uploading on your machine (100% local)
                         </p>
                       </div>
                     </div>
@@ -786,6 +791,8 @@ export const SpaceshipConsole: React.FC<SpaceshipConsoleProps> = () => {
             clips={generatedClips}
             jobId={(job as any)?.job_id || ''}
             onClose={() => setShowTimelineEditor(false)}
+            transcriptSegments={(job?.analysis_bundle as any)?.transcript_segments}
+            clipCandidates={(job?.analysis_bundle as any)?.clip_candidates}
           />
         )}
       </AnimatePresence>

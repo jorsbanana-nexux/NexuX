@@ -14,14 +14,84 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import logging
 
-from .constants import OUTPUT_DIR, DOWNLOAD_TIMEOUT
+from .constants import OUTPUT_DIR, UPLOAD_DIR, DOWNLOAD_TIMEOUT
 from .utils import retry
 
 log = logging.getLogger("nexus.download")
 
+LOCAL_PREFIX = "local://"
+
+
+def resolve_local_source(url: str) -> Optional[Path]:
+    """Resolve a local file source to an absolute path, else None.
+
+    Accepts:
+      - local://<stored_name>  → file previously saved by /api/upload
+      - Absolute filesystem path that exists (e.g. /tmp/clip.mp4)
+
+    Guarded: local:// tokens resolve only inside UPLOAD_DIR (no traversal).
+    """
+    if url.startswith(LOCAL_PREFIX):
+        name = Path(url[len(LOCAL_PREFIX):]).name  # strip any traversal
+        candidate = UPLOAD_DIR / name
+        if candidate.exists():
+            return candidate
+        raise FileNotFoundError(f"Uploaded file not found: {name}")
+    p = Path(url)
+    if p.is_absolute() and p.exists() and p.is_file():
+        return p
+    return None
+
+
+def _probe_local(path: Path) -> Dict:
+    """ffprobe metadata for a local file, in the same shape as yt-dlp info."""
+    cmd = [
+        "ffprobe", "-v", "error",
+        "-print_format", "json",
+        "-show_format", "-show_streams",
+        str(path),
+    ]
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+    if r.returncode != 0:
+        raise RuntimeError(f"ffprobe failed: {r.stderr[-300:]}")
+    info = json.loads(r.stdout)
+    fmt = info.get("format", {})
+    video = next((s for s in info.get("streams", []) if s.get("codec_type") == "video"), {})
+    duration = float(fmt.get("duration", 0) or 0)
+    return {
+        "title": path.stem,
+        "duration": duration,
+        "duration_str": f"{int(duration // 60)}:{int(duration % 60):02d}",
+        "uploader": "local upload",
+        "uploader_url": "",
+        "view_count": 0,
+        "like_count": 0,
+        "comment_count": 0,
+        "thumbnail": "",
+        "description": "",
+        "tags": [],
+        "categories": [],
+        "resolution": f"{video.get('width', 0)}x{video.get('height', 0)}",
+        "fps": float(video.get("avg_frame_rate", "30/1").split("/")[0] or 30) if video.get("avg_frame_rate") else 30,
+        "filesize_approx_mb": round(path.stat().st_size / (1024**2), 1),
+        "age_limit": 0,
+        "is_live": False,
+        "has_auto_captions": False,
+        "available_subs": [],
+        "available_auto_subs": [],
+        "local_source": True,
+    }
+
 
 def get_video_info(url: str) -> Dict:
-    """Get YouTube video metadata WITHOUT downloading — instant."""
+    """Get video metadata WITHOUT downloading — instant.
+
+    Local files are probed with ffprobe; remote URLs use yt-dlp.
+    """
+    local = resolve_local_source(url)
+    if local is not None:
+        log.info(f"[Download] Local source: {local.name}")
+        return _probe_local(local)
     cmd = [
         "yt-dlp",
         "--dump-json",
@@ -75,6 +145,9 @@ def fetch_auto_captions(
     
     Returns transcript dict in same format as transcribe(), or None.
     """
+    if resolve_local_source(url) is not None:
+        # Local files have no YouTube auto-captions — whisper handles them
+        return None
     work_dir = OUTPUT_DIR / job_id
     work_dir.mkdir(parents=True, exist_ok=True)
 
@@ -329,6 +402,10 @@ def download_clip_section(
     Returns:
         Path to downloaded clip section
     """
+    local = resolve_local_source(url)
+    if local is not None:
+        return _cut_local_section(local, job_id, start, end, clip_index)
+
     work_dir = OUTPUT_DIR / job_id / "sections"
     work_dir.mkdir(parents=True, exist_ok=True)
 
@@ -452,12 +529,63 @@ def download_youtube(url: str, job_id: str, max_height: int = 1080) -> Path:
     return retry(_download, max_retries=3)
 
 
+def _cut_local_section(
+    src: Path, job_id: str, start: float, end: float, clip_index: int,
+) -> Path:
+    """Cut a time range from a local file with ffmpeg (re-encode at cuts)."""
+    work_dir = OUTPUT_DIR / job_id / "sections"
+    work_dir.mkdir(parents=True, exist_ok=True)
+    out = work_dir / f"clip_{clip_index:02d}.mp4"
+    duration = max(0.1, end - start)
+
+    cmd = [
+        "ffmpeg", "-y",
+        "-ss", f"{start:.3f}",
+        "-i", str(src),
+        "-t", f"{duration:.3f}",
+        "-c:v", "libx264", "-preset", "fast", "-crf", "20",
+        "-c:a", "aac", "-b:a", "192k",
+        "-movflags", "+faststart",
+        str(out),
+    ]
+    log.info(f"[Download] Local cut {clip_index}: {start:.1f}s-{end:.1f}s from {src.name}")
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=DOWNLOAD_TIMEOUT)
+    if r.returncode != 0 or not out.exists():
+        raise RuntimeError(f"ffmpeg local cut failed: {r.stderr[-400:]}")
+    log.info(f"[Download] Local cut {clip_index} complete: {out.name}")
+    return out
+
+
+def _extract_local_audio(src: Path, job_id: str) -> Path:
+    """Extract audio from a local file with ffmpeg for transcription."""
+    work_dir = OUTPUT_DIR / job_id
+    work_dir.mkdir(parents=True, exist_ok=True)
+    out = work_dir / "audio.m4a"
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", str(src),
+        "-vn",
+        "-c:a", "aac", "-b:a", "128k",
+        str(out),
+    ]
+    log.info(f"[Download] Local audio extract: {src.name}")
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    if r.returncode != 0 or not out.exists():
+        raise RuntimeError(f"ffmpeg audio extract failed: {r.stderr[-400:]}")
+    return out
+
+
 def download_audio_only(url: str, job_id: str) -> Path:
     """Download audio-only for fast transcription fallback.
     
     Much faster than downloading full video — only audio track.
     Used when YouTube auto-captions are not available.
+    Local files: audio is extracted with ffmpeg instead.
     """
+    local = resolve_local_source(url)
+    if local is not None:
+        return _extract_local_audio(local, job_id)
+
     work_dir = OUTPUT_DIR / job_id
     work_dir.mkdir(parents=True, exist_ok=True)
 

@@ -38,14 +38,24 @@ jobs:
           cache: "pip"
       - name: Install FFmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
-      - name: Install local-first V5 dependencies
-        working-directory: nexus-clipper/local-first-v5
-        run: python -m pip install -r requirements-local.txt pytest
-      - name: Verify canonical API source
-        working-directory: nexus-clipper/local-first-v5
+      - name: Install local-first V5 + backend dependencies
+        working-directory: nexus-clipper
         run: |
-          python -m py_compile canonical_api.py server.py
-          python -c "from canonical_api import app; assert app.title == 'NexuX Local-First Canonical'"
+          python -m pip install -r local-first-v5/requirements-local.txt pytest
+          # backend main.py imports require these (not covered by the legacy req file)
+          python -m pip install pydantic pydantic-settings
+      - name: Verify canonical backend + legacy shim import cleanly
+        run: |
+          # Canonical API must import from nexus-clipper/backend with its own deps
+          cd nexus-clipper/backend
+          python -m py_compile main.py
+          python -c "from main import app; assert app.title == 'NexuX Local-First Canonical'"
+          cd ../../
+          # Legacy shim must import (from backend dir / backend/main.py app re-exported, or stub 410 app)
+          cd nexus-clipper/local-first-v5
+          python -m py_compile canonical_api.py server.py app.py
+          python -c "from canonical_api import app as legacy_app; t = getattr(legacy_app, 'title', ''); assert 'DEPRECATED' in t or t == 'NexuX Local-First Canonical', 'unexpected title: ' + t"
+          cd ../../
       - name: Compile V5 modules
         working-directory: nexus-clipper/local-first-v5
         run: python -m compileall -q .

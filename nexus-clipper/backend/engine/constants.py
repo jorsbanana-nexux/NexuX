@@ -12,9 +12,10 @@ import tempfile
 BASE_DIR = Path(__file__).resolve().parent
 OUTPUT_DIR = Path(os.environ.get("NEXUS_OUTPUT_DIR", str(BASE_DIR / "output")))
 ASSETS_DIR = Path(os.environ.get("NEXUS_ASSETS_DIR", str(BASE_DIR / "assets")))
+UPLOAD_DIR = Path(os.environ.get("NEXUS_UPLOAD_DIR", str(BASE_DIR / "uploads")))
 TEMP_DIR = Path(tempfile.gettempdir()) / "nexus-clipper-premium"
 
-for d in [OUTPUT_DIR, ASSETS_DIR, TEMP_DIR]:
+for d in [OUTPUT_DIR, ASSETS_DIR, UPLOAD_DIR, TEMP_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 # ── Pipeline ───────────────────────────────────────────

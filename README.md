@@ -98,8 +98,15 @@ Compile with TTS + SFX + transitions → Auto titles + hashtags → Opus Killer 
 | **Cost** | $19–$39/month | **Free forever** |
 | **Privacy** | Video uploaded to cloud | Stays on your machine |
 | **Processing** | Cloud (per-minute cost) | Local (zero cost) |
-| **Hook Detection** | ~3 patterns | **8 archetype patterns** |
+| **Hook Detection** | ~3 patterns | **9 archetype patterns (EN + ID)** |
 | **Virality Scoring** | Black box, 1 number | **8 dimensions, fully transparent** |
+| **4K Export (UHD)** | 4K schedule & download | ✅ `output_resolution=uhd` (2× FFmpeg upscale) |
+| **Local Video Upload** | Up to 30GB cloud | ✅ `POST /api/upload` → `local://` token (no cloud) |
+| **Speaker Isolation** | ❌ | ✅ Per-speaker mute / isolate via whisperx diarization |
+| **Subtitle Presets** | Brand templates | ✅ 32 creator presets |
+| **AI Emoji Injection** | Template-based | ✅ Auto emoji + keyword emphasis (Caption Engine v2) |
+| **Filler Detection** | (Starter+) | ✅ Word-level filler marking for cutting |
+| **Voice-over (TTS)** | 20/day limit | ✅ Unlimited edge-tts voices |
 | **Conversation Flow** | ❌ | ✅ Speaker turn-taking analysis |
 | **Retention Curve** | ❌ | ✅ Dropoff point prediction |
 | **Shareability** | ❌ | ✅ Quotability + meme potential |
@@ -551,6 +558,7 @@ http://127.0.0.1:8000
 | GET | `/api/styles` | Available styles, ratios, codecs |
 | POST | `/api/preview` | Get video info |
 | POST | `/api/search` | Search YouTube |
+| POST | `/api/upload` | Upload local video → `local://` token for `/api/generate` |
 | POST | `/api/generate` | Start clip generation (Mode 1 legacy) |
 | GET | `/api/job/{id}` | Get job status |
 | GET | `/api/jobs` | List jobs (with pagination) |

@@ -173,6 +173,33 @@ export const nexuxApi = {
   baseUrl: API_BASE,
   health: () => request<NexuXHealth>('/api/health'),
   styles: () => request<NexuXStyles>('/api/styles'),
+
+  // V9.5: Local video upload → returns local:// token usable as youtube_url
+  upload: async (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    const headers: Record<string, string> = {};
+    if (API_KEY) headers['X-API-Key'] = API_KEY;
+    const response = await fetch(`${API_BASE}/api/upload`, {
+      method: 'POST',
+      headers,
+      body: form,
+    });
+    if (!response.ok) {
+      let detail = response.statusText || `HTTP ${response.status}`;
+      try {
+        const body = await response.json();
+        detail = body?.detail || detail;
+      } catch { /* keep status */ }
+      throw new Error(detail);
+    }
+    return response.json() as Promise<{
+      status: string;
+      local_url: string;
+      original_name: string;
+      size_mb: number;
+    }>;
+  },
   generate: (payload: GenerateRequest) =>
     request<NexuXJob>('/api/generate', {
       method: 'POST',

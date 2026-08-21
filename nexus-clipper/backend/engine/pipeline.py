@@ -249,7 +249,7 @@ async def run_pipeline(
                 path = await _run_sync(
                     download_clip_section, url, job_id,
                     clip["start"], clip["end"], clip_idx,
-                    max_retries=MAX_RETRIES
+                    2160 if kwargs.get("output_resolution") in ("uhd", "4k") else 1080,
                 )
                 return path
             except Exception as e:
@@ -322,6 +322,7 @@ async def run_pipeline(
                     clip_creative,  # creative config per clip
                     hook_text,  # hook text overlay
                     True,  # SFX enabled
+                    kwargs.get("output_resolution", "hd"),
                 )
                 return {
                     "clip_index": clip_idx,
@@ -403,7 +404,7 @@ async def run_pipeline(
                                 revised_path = await _run_sync(
                                     download_clip_section, url, job_id,
                                     revised_clip["start"], revised_clip["end"],
-                                    r["clip_index"], max_retries=2
+                                    r["clip_index"],
                                 )
                                 section_path = revised_path
                             else:
@@ -456,6 +457,26 @@ async def run_pipeline(
             "skipped": sum(1 for c in critiques if c.get("skipped")),
         }
         result["critiques"] = critiques
+        result["clip_candidates"] = [
+            {
+                "path": r["path"],
+                "start": r.get("start", 0),
+                "end": r.get("end", 60),
+                "score": r.get("score", 0),
+                "reason": r.get("reason", ""),
+            }
+            for r in successful_clips if r.get("path")
+        ]
+        # Diarized transcript for speaker map / inline correction in editor
+        result["transcript_segments"] = [
+            {
+                "start": s.get("start", 0),
+                "end": s.get("end", 0),
+                "text": s.get("text", ""),
+                "speaker": s.get("speaker") or "SPEAKER_00",
+            }
+            for s in segments[:5000] if isinstance(s, dict)
+        ]
         await _progress("critique", 85,
                         gold=result["stages"]["critique"]["gold"],
                         acceptable=result["stages"]["critique"]["acceptable"],
