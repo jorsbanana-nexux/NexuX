@@ -323,6 +323,8 @@ async def run_pipeline(
                     hook_text,  # hook text overlay
                     True,  # SFX enabled
                     kwargs.get("output_resolution", "hd"),
+                    # Section file starts at t=0; seek relative, not absolute
+                    clip.get("start", 0),
                 )
                 return {
                     "clip_index": clip_idx,
@@ -417,6 +419,8 @@ async def run_pipeline(
                                 kwargs.get("auto_zoom", True),
                                 kwargs.get("video_codec", "h264"),
                                 kwargs.get("audio_codec", "aac"),
+                                None, None, True, "hd",
+                                revised_clip.get("start", 0),
                             )
                             final_clips.append(str(revised_render))
                             critiques.append({

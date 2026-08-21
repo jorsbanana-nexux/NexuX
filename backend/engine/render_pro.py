@@ -65,6 +65,7 @@ def render_clip_pro(
     hook_text: Optional[str] = None,
     sfx_enabled: bool = True,
     output_resolution: str = "hd",
+    section_offset: float = 0.0,
 ) -> Path:
     """Render a single clip with PROFESSIONAL quality — Opus Clip level.
     
@@ -73,6 +74,9 @@ def render_clip_pro(
     Pass 2: Subtitle burn-in (kinetic karaoke ASS)
     Pass 3: Hook text overlay (drawtext)
     Pass 4: SFX mixing (procedural sound effects)
+
+    section_offset shifts ffmpeg seeking to section-relative time while ASS
+    karaoke timing keeps using absolute clip.start/end for word sync.
     """
     out_dir = OUTPUT_DIR / job_id
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -87,6 +91,9 @@ def render_clip_pro(
     clip_start = float(clip.get("start", 0))
     clip_end = float(clip.get("end", clip_start + 60))
     clip_dur = clip_end - clip_start
+    # Section files are pre-cut to start at t=0, so seek from 0, not the
+    # absolute source timestamp. ASS karaoke timing still uses clip_start/end.
+    seek_start = max(0.0, clip_start - section_offset)
     
     cc = creative_config or {}
     zoom_style = cc.get("zoom_style", "subtle")
@@ -129,7 +136,7 @@ def render_clip_pro(
     
     cmd1 = [
         "ffmpeg", "-y",
-        "-ss", str(clip_start),
+        "-ss", str(seek_start),
         "-i", str(video_path),
         "-t", str(clip_dur),
         "-vf", vf,
@@ -259,7 +266,15 @@ def render_clip_pro(
     
     # ── Final output ──
     shutil.copy(current_output, output_path)
-    
+
+    # Hard-fail on corrupt output: a render that produced only a header
+    # (typically < 1KB) means every pass failed — never ship it silently.
+    if output_path.stat().st_size < 1024:
+        raise RuntimeError(
+            f"Render output corrupt ({output_path.stat().st_size} bytes) — "
+            "all ffmpeg passes failed; check codec/filter errors above"
+        )
+
     # Cleanup temp files
     _cleanup_temp(out_dir, clip_idx, "pass1", "pass2", "pass3", "pass4")
     
