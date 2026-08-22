@@ -85,6 +85,12 @@ function mapJobToClips(job: NexuXJob): GeneratedClip[] {
     const genre = typeof meta.genre === 'string' ? meta.genre : 'auto';
     const tags = [genre, '9:16', idx === 0 ? 'Top Pick' : `Clip ${idx + 1}`].filter(Boolean) as string[];
 
+    // V9.6: surface Smart Cut stats (dead air removed) as a card tag
+    const smartCut = (meta as any).smart_cut as { removed_seconds?: number; filler_count?: number; silence_count?: number } | undefined;
+    if (smartCut && (smartCut.removed_seconds ?? 0) >= 1) {
+      tags.push(`✂ −${smartCut.removed_seconds!.toFixed(1)}s dead air`);
+    }
+
     return {
       id: `${job.job_id}-clip-${idx + 1}`,
       title: editorialEvidence ? editorialEvidence.slice(0, 60) + (editorialEvidence.length > 60 ? '...' : '') : `Clip ${idx + 1}`,

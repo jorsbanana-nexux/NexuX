@@ -320,3 +320,72 @@ class TestBeyondOpusEndpoints:
 
     def test_retention_unknown_job_404(self, client):
         assert client.get("/api/clips/nope/0/retention").status_code == 404
+
+
+class TestSmartCutRenderMetaPropagation:
+    """pipeline clip_candidates.smart_cut must reach job render_meta."""
+
+    def test_render_meta_carries_smart_cut(self, tmp_path, monkeypatch):
+        import asyncio
+        monkeypatch.setenv("NEXUX_DB_PATH", str(tmp_path / "test.db"))
+        monkeypatch.setenv("NEXUX_API_KEY", "")
+        import main
+        main.jobs.clear()
+        main.cancel_flags.clear()
+        main.active_count = 0
+
+        clip_path = "/tmp/fake_clip.mp4"
+        smart_cut = {"removed_seconds": 3.2, "removed_pct": 10.7,
+                     "filler_count": 2, "silence_count": 1}
+
+        async def fake_pipeline(url, job_id, progress, **kwargs):
+            return {
+                "status": "completed", "clips": [clip_path],
+                "output_path": clip_path,
+                "stages": {"render": {"status": "ok"}},
+                "critiques": [{"clip_index": 0, "verdict": "GOLD", "score": 0.9,
+                               "dimensions": {}, "issues": []}],
+                "clip_candidates": [{"path": clip_path, "start": 0, "end": 30,
+                                     "score": 0.9, "reason": "test",
+                                     "smart_cut": smart_cut}],
+                "transcript_segments": [],
+            }
+
+        monkeypatch.setattr(main, "run_pipeline", fake_pipeline)
+
+        job = main._new_job("sc-prop-1")
+        main.jobs["sc-prop-1"] = job
+        main.cancel_flags["sc-prop-1"] = False
+        main.active_count = 1
+
+        asyncio.run(main._process_job("sc-prop-1", "https://youtu.be/x", {}))
+
+        meta = main.jobs["sc-prop-1"]["render_meta"][0]
+        assert meta["smart_cut"]["removed_seconds"] == 3.2
+        assert meta["smart_cut"]["filler_count"] == 2
+
+    def test_render_meta_without_smart_cut(self, tmp_path, monkeypatch):
+        import asyncio
+        monkeypatch.setenv("NEXUX_DB_PATH", str(tmp_path / "test.db"))
+        monkeypatch.setenv("NEXUX_API_KEY", "")
+        import main
+        main.jobs.clear()
+        main.cancel_flags.clear()
+        main.active_count = 0
+
+        async def fake_pipeline(url, job_id, progress, **kwargs):
+            return {
+                "status": "completed", "clips": ["/tmp/c.mp4"],
+                "output_path": "/tmp/c.mp4", "stages": {}, "critiques": [],
+                "clip_candidates": [{"path": "/tmp/c.mp4", "smart_cut": None}],
+                "transcript_segments": [],
+            }
+
+        monkeypatch.setattr(main, "run_pipeline", fake_pipeline)
+        job = main._new_job("sc-prop-2")
+        main.jobs["sc-prop-2"] = job
+        main.cancel_flags["sc-prop-2"] = False
+        main.active_count = 1
+
+        asyncio.run(main._process_job("sc-prop-2", "https://youtu.be/x", {}))
+        assert "smart_cut" not in main.jobs["sc-prop-2"]["render_meta"][0]

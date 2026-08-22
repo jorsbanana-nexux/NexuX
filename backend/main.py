@@ -1130,10 +1130,15 @@ async def _process_job(job_id: str, url: str, kwargs: dict):
             stages = result.get("stages", {})
             critiques = result.get("critiques", [])
 
+            smart_cut_by_path = {
+                c.get("path"): c.get("smart_cut")
+                for c in result.get("clip_candidates", [])
+                if c.get("smart_cut")
+            }
             render_meta = []
             for i, clip_path in enumerate(clips):
                 critique = critiques[i] if i < len(critiques) else {}
-                render_meta.append({
+                entry = {
                     "candidate_id": f"{job_id}-c{i}",
                     "editorial_rank": i + 1,
                     "editorial_signals": critique.get("dimensions", {}),
@@ -1143,7 +1148,10 @@ async def _process_job(job_id: str, url: str, kwargs: dict):
                     "timeline": stages.get("render", {}),
                     "render": {"path": clip_path},
                     "voiceover": kwargs.get("voice_over_text") if kwargs.get("voice_over") else None,
-                })
+                }
+                if smart_cut_by_path.get(clip_path):
+                    entry["smart_cut"] = smart_cut_by_path[clip_path]
+                render_meta.append(entry)
 
             analysis_bundle = {
                 "download": stages.get("download", {}),
