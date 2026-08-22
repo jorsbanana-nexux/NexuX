@@ -389,3 +389,27 @@ class TestSmartCutRenderMetaPropagation:
 
         asyncio.run(main._process_job("sc-prop-2", "https://youtu.be/x", {}))
         assert "smart_cut" not in main.jobs["sc-prop-2"]["render_meta"][0]
+
+
+class TestTitleCtrEndpoint:
+    def test_title_ctr_scores_good_title(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("NEXUX_DB_PATH", str(tmp_path / "test.db"))
+        monkeypatch.setenv("NEXUX_API_KEY", "")
+        from fastapi.testclient import TestClient
+        import main
+        client = TestClient(main.app)
+        r = client.post("/api/title-ctr", json={
+            "title": "This 1 Secret Trick Nobody Tells You About Podcasts?"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["score"] > 60
+        assert data["strengths"]
+
+    def test_title_ctr_rejects_empty(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("NEXUX_DB_PATH", str(tmp_path / "test.db"))
+        monkeypatch.setenv("NEXUX_API_KEY", "")
+        from fastapi.testclient import TestClient
+        import main
+        client = TestClient(main.app)
+        r = client.post("/api/title-ctr", json={"title": ""})
+        assert r.status_code == 422

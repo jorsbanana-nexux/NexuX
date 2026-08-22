@@ -105,3 +105,27 @@ describe('InsightsPanel', () => {
     });
   });
 });
+
+describe('nexuxApi.titleCtr (Title Studio)', () => {
+  it('posts title to /api/title-ctr and parses result', async () => {
+    global.fetch = vi.fn(() =>
+      Promise.resolve(jsonRes({
+        score: 74, grade: 'A',
+        strengths: ['Power words: secret'],
+        weaknesses: [],
+        suggestions: [],
+      })),
+    ) as typeof fetch;
+
+    const res = await nexuxApi.titleCtr('The Secret Nobody Tells You');
+    const [url, init] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(String(url)).toContain('/api/title-ctr');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual({
+      title: 'The Secret Nobody Tells You',
+      clip_text: '',
+    });
+    expect(res.grade).toBe('A');
+    expect(res.score).toBe(74);
+  });
+});

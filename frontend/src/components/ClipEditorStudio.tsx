@@ -36,6 +36,7 @@ import {
   Undo, Redo, Plus, Trash2, Move, Lock, Unlock, EyeOff,
 } from 'lucide-react';
 import { InsightsPanel } from './InsightsPanel';
+import { TitleStudio } from './TitleStudio';
 import { sound } from '../utils/soundEffects';
 import { MagneticElement } from './MagneticElement';
 import { TiltCard } from './TiltCard';
@@ -1755,6 +1756,11 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
             {activeTab === 'export' && (
               <motion.div key="export" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="p-4 space-y-5">
                 <PanelHeader icon={Download} title="Export & Publish" subtitle="Re-render and share" />
+
+                <TitleStudio
+                  initialTitle={selectedClip?.title || ''}
+                  clipText={selectedClip?.subtitleSnippet || ''}
+                />
 
                 {hasChanges && (
                   <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center gap-2">
