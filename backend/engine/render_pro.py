@@ -66,6 +66,7 @@ def render_clip_pro(
     sfx_enabled: bool = True,
     output_resolution: str = "hd",
     section_offset: float = 0.0,
+    smart_cuts: Optional[Dict] = None,
 ) -> Path:
     """Render a single clip with PROFESSIONAL quality — Opus Clip level.
     
@@ -95,6 +96,62 @@ def render_clip_pro(
     # absolute source timestamp. ASS karaoke timing still uses clip_start/end.
     seek_start = max(0.0, clip_start - section_offset)
     
+
+    # ── PASS 0 (optional): Smart Cut — jump-cut silences & fillers ──
+    # Produces a compressed intermediate whose timeline no longer matches the
+    # source, so we remap the transcript and reset the clip window to [0, N]
+    # before the regular passes run. ASS karaoke, hook overlay and zoom all
+    # then operate on the compressed timeline transparently.
+    if smart_cuts and smart_cuts.get("keep_segments"):
+        keep = [
+            (float(s) - section_offset, float(e) - section_offset)
+            for s, e in smart_cuts["keep_segments"]
+        ]
+        keep = [(max(0.0, s), max(0.0, e)) for s, e in keep if e > s]
+        if len(keep) >= 2:
+            pass0_output = out_dir / f"clip_{clip_idx:02d}_pass0_smartcut.mp4"
+            graph_parts = []
+            for i, (s, e) in enumerate(keep):
+                graph_parts.append(
+                    f"[0:v]trim=start={s:.3f}:end={e:.3f},setpts=PTS-STARTPTS[v{i}]")
+                graph_parts.append(
+                    f"[0:a]atrim=start={s:.3f}:end={e:.3f},asetpts=PTS-STARTPTS[a{i}]")
+            concat_in = "".join(f"[v{i}][a{i}]" for i in range(len(keep)))
+            graph_parts.append(
+                f"{concat_in}concat=n={len(keep)}:v=1:a=1[v][a]")
+
+            cmd0 = [
+                "ffmpeg", "-y",
+                "-i", str(video_path),
+                "-filter_complex", ";".join(graph_parts),
+                "-map", "[v]", "-map", "[a]",
+                "-c:v", "libx264", "-preset", "fast", "-crf", "20",
+                "-c:a", "aac", "-b:a", "192k",
+                "-movflags", "+faststart",
+                str(pass0_output),
+            ]
+            log.info(
+                f"[RenderPro] Pass 0: smart cut — {len(keep)} segments kept, "
+                f"{smart_cuts.get('removed_seconds', 0):.1f}s removed "
+                f"({smart_cuts.get('filler_count', 0)} fillers, "
+                f"{smart_cuts.get('silence_count', 0)} silences)")
+            r0 = subprocess.run(cmd0, capture_output=True, text=True, timeout=300)
+            if r0.returncode == 0 and pass0_output.exists() and pass0_output.stat().st_size > 1024:
+                from .smart_cut import remap_transcript
+                video_path = pass0_output
+                transcript = remap_transcript(transcript, smart_cuts["keep_segments"])
+                clip_end = float(smart_cuts.get("new_duration", clip_dur))
+                clip_start = 0.0
+                clip_dur = clip_end
+                seek_start = 0.0
+                # ASS karaoke + downstream passes read the clip dict directly —
+                # retime it onto the compressed timeline too
+                clip = {**clip, "start": 0.0, "end": clip_dur}
+            else:
+                log.warning(
+                    f"[RenderPro] Smart cut failed ({r0.returncode}), "
+                    f"rendering uncut: {r0.stderr[-200:]}")
+
     cc = creative_config or {}
     zoom_style = cc.get("zoom_style", "subtle")
     transition = cc.get("transition", "hard_cut")
@@ -276,7 +333,7 @@ def render_clip_pro(
         )
 
     # Cleanup temp files
-    _cleanup_temp(out_dir, clip_idx, "pass1", "pass2", "pass3", "pass4")
+    _cleanup_temp(out_dir, clip_idx, "pass0_smartcut", "pass1", "pass2", "pass3", "pass4")
     
     log.info(f"[RenderPro] Clip {clip_idx} complete: {output_path.name}")
     return output_path

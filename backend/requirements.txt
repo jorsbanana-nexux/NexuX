@@ -1,4 +1,4 @@
-# ── NexuX V9.5 Backend Dependencies ──
+# ── NexuX V9.6 Backend Dependencies ──
 # Local-First: No cloud AI SDKs required.
 # Smart architecture: auto-captions + partial download = minimal deps needed.
 

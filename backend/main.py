@@ -1,7 +1,7 @@
 """
-NexuX V9.5 — FastAPI Backend (Production-Ready)
+NexuX V9.6 — FastAPI Backend (Production-Ready)
 ==================================================
-Canonical API matching the frontend V9.5 contract.
+Canonical API matching the frontend V9.6 contract.
 
 V9.5 feature set:
 - Dual-mode system: Podcast Mode + AI Creative Mode (/api/v2/*)
@@ -13,6 +13,14 @@ V9.5 feature set:
 - Automatic cleanup of old jobs (TTL-based)
 - Structured logging with request IDs
 - Rate limiting per API key
+
+V9.6 "Beyond Opus" feature set:
+- Smart Cut engine: real jump-cuts of silences + filler words in render
+  (remove_fillers_pauses now actually cuts, with per-cut transparency)
+- Retention heatmap: per-second retention prediction with drop-off reasons
+  (GET /api/clips/{job_id}/{idx}/retention)
+- Hook Lab: ranked hook variants + transparent title CTR prediction
+  (GET /api/clips/{job_id}/{idx}/hook-lab)
 
 Architecture:
 - Local-first: no cloud AI, no external API calls
@@ -58,7 +66,7 @@ logging.basicConfig(
 log = logging.getLogger("nexus.api")
 
 # ── Constants ──
-VERSION = "9.5.2"
+VERSION = "9.6.0"
 DB_PATH = Path(os.environ.get("NEXUX_DB_PATH", "nexux_jobs.db"))
 JOB_TTL_HOURS = int(os.environ.get("NEXUX_JOB_TTL_HOURS", "72"))
 API_KEY = os.environ.get("NEXUX_API_KEY", "")  # Empty = no auth (local dev)
