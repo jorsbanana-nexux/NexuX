@@ -28,9 +28,6 @@ import {
   ShieldAlert,
   Volume2
 } from 'lucide-react';
-import { sound } from '../utils/soundEffects';
-import { TiltCard } from './TiltCard';
-import { MagneticElement } from './MagneticElement';
 import { 
   SubtitleAnimationStyle, 
   SubtitleVisualPreset, 
@@ -185,7 +182,7 @@ const SAMPLE_BG_VIDEOS = [
 
 const COLOR_PALETTES = [
   { id: '#facc15', label: 'Hormozi Gold', hex: '#facc15', bgClass: 'bg-yellow-400', textClass: 'text-yellow-400' },
-  { id: '#22d3ee', label: 'MrBeast Cyan', hex: '#22d3ee', bgClass: 'bg-cyan-400', textClass: 'text-cyan-400' },
+  { id: '#22d3ee', label: 'MrBeast Violet', hex: '#22d3ee', bgClass: 'bg-violet-400', textClass: 'text-violet-400' },
   { id: '#10b981', label: 'Emerald Lime', hex: '#10b981', bgClass: 'bg-emerald-400', textClass: 'text-emerald-400' },
   { id: '#f43f5e', label: 'Neon Rose', hex: '#f43f5e', bgClass: 'bg-rose-500', textClass: 'text-rose-400' },
   { id: '#f97316', label: 'Solar Orange', hex: '#f97316', bgClass: 'bg-orange-500', textClass: 'text-orange-400' },
@@ -296,14 +293,14 @@ export const SubtitleEngineStudio: React.FC = () => {
   };
 
   const handleAnimationSelect = (style: SubtitleAnimationStyle) => {
-    sound.playClick();
+    
     setSelectedAnimation(style);
     setWordIndex(0);
     setLineIndex(0);
   };
 
   const handlePresetSelect = (preset: SubtitleVisualPreset) => {
-    sound.playClick();
+    
     setSelectedPreset(preset);
     
     // Smart auto-color and category pairing for effortless viral aesthetics
@@ -343,8 +340,8 @@ export const SubtitleEngineStudio: React.FC = () => {
   };
 
   const handleApplyPreset = () => {
-    sound.playClick();
-    sound.playSwoosh();
+    
+    
 
     const presetNames: { [key in SubtitleVisualPreset]: string } = {
       hormozi: 'Alex Hormozi ($100M Viral)',
@@ -381,7 +378,7 @@ export const SubtitleEngineStudio: React.FC = () => {
   };
 
   const handleCopyPresetConfig = () => {
-    sound.playClick();
+    
     const configExport = JSON.stringify({
       animationStyle: selectedAnimation,
       visualPreset: selectedPreset,
@@ -419,8 +416,8 @@ export const SubtitleEngineStudio: React.FC = () => {
     <section id="subtitle-engine" className="relative py-24 px-6 sm:px-10 max-w-7xl mx-auto z-10 select-none">
       {/* 1. Header Section */}
       <div className="text-center max-w-3xl mx-auto space-y-4 mb-16">
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-cyan-500/30 bg-cyan-950/30 text-cyan-300 font-mono text-xs uppercase tracking-widest shadow-[0_0_20px_rgba(34,211,238,0.2)]">
-          <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-violet-500/30 bg-violet-950/30 text-violet-300 font-mono text-xs uppercase tracking-widest shadow-[0_0_20px_rgba(34,211,238,0.2)]">
+          <Sparkles className="w-3.5 h-3.5 text-violet-400 animate-pulse" />
           <span>VIRAL SUBTITLE & DYNAMIC ANIMATION STUDIO // 字幕スタジオ</span>
         </div>
 
@@ -440,15 +437,15 @@ export const SubtitleEngineStudio: React.FC = () => {
         <div className="lg:col-span-7 space-y-8">
           
           {/* SECTION 1: ANIMASI MUNCULNYA TEKS (8 Dynamic Options) */}
-          <div className="hud-glass-panel rounded-2xl p-6 border border-white/15 spacex-glow-border space-y-5 bg-black/60 backdrop-blur-xl">
+          <div className="bg-[#131316] rounded-2xl p-6 border border-white/15 spacex- space-y-5 bg-black/60 backdrop-blur-xl">
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2.5">
-                <Type className="w-4 h-4 text-cyan-400" />
+                <Type className="w-4 h-4 text-violet-400" />
                 <h3 className="font-display font-bold text-base text-white">
                   1. Animasi Munculnya Teks (Dynamic Motion Engine)
                 </h3>
               </div>
-              <span className="text-[10px] font-mono text-cyan-300 bg-cyan-950/60 px-2.5 py-0.5 rounded-full border border-cyan-500/30">
+              <span className="text-[10px] font-mono text-violet-300 bg-violet-950/60 px-2.5 py-0.5 rounded-full border border-violet-500/30">
                 8 VIRAL MOTION MODES
               </span>
             </div>
@@ -457,17 +454,17 @@ export const SubtitleEngineStudio: React.FC = () => {
               {/* Option 1: Word by Word */}
               <button
                 onClick={() => handleAnimationSelect('word-by-word')}
-                onMouseEnter={() => sound.playHover()}
+                onMouseEnter={() => void 0}
                 className={`p-3.5 rounded-xl text-left border transition-all relative flex flex-col justify-between ${
                   selectedAnimation === 'word-by-word'
-                    ? 'bg-gradient-to-b from-cyan-950/90 to-blue-950/90 border-cyan-400 shadow-[0_0_20px_rgba(34,211,238,0.3)]'
+                    ? 'bg-gradient-to-b from-violet-950/90 to-blue-950/90 border-violet-400 shadow-[0_0_20px_rgba(34,211,238,0.3)]'
                     : 'bg-black/40 border-white/10 hover:border-white/25 hover:bg-white/5'
                 }`}
               >
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-mono font-bold text-cyan-400 uppercase tracking-wider">01 • Karaoke</span>
-                    {selectedAnimation === 'word-by-word' && <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />}
+                    <span className="text-[11px] font-mono font-bold text-violet-400 uppercase tracking-wider">01 • Karaoke</span>
+                    {selectedAnimation === 'word-by-word' && <span className="w-2 h-2 rounded-full bg-violet-400 animate-ping" />}
                   </div>
                   <h4 className="font-bold text-white text-sm">Kata Per Kata</h4>
                   <p className="text-xs text-stone-300 leading-relaxed">
@@ -479,7 +476,7 @@ export const SubtitleEngineStudio: React.FC = () => {
               {/* Option 2: Line by Line */}
               <button
                 onClick={() => handleAnimationSelect('line-by-line')}
-                onMouseEnter={() => sound.playHover()}
+                onMouseEnter={() => void 0}
                 className={`p-3.5 rounded-xl text-left border transition-all relative flex flex-col justify-between ${
                   selectedAnimation === 'line-by-line'
                     ? 'bg-gradient-to-b from-purple-950/90 to-blue-950/90 border-purple-400 shadow-[0_0_20px_rgba(192,132,252,0.3)]'
@@ -501,7 +498,7 @@ export const SubtitleEngineStudio: React.FC = () => {
               {/* Option 3: Bounce & Pop-Up Zoom */}
               <button
                 onClick={() => handleAnimationSelect('bounce-zoom')}
-                onMouseEnter={() => sound.playHover()}
+                onMouseEnter={() => void 0}
                 className={`p-3.5 rounded-xl text-left border transition-all relative flex flex-col justify-between ${
                   selectedAnimation === 'bounce-zoom'
                     ? 'bg-gradient-to-b from-amber-950/90 to-red-950/90 border-amber-400 shadow-[0_0_20px_rgba(251,191,36,0.3)]'
@@ -523,10 +520,10 @@ export const SubtitleEngineStudio: React.FC = () => {
               {/* Option 4: Typewriter & Glitch */}
               <button
                 onClick={() => handleAnimationSelect('typewriter-glitch')}
-                onMouseEnter={() => sound.playHover()}
+                onMouseEnter={() => void 0}
                 className={`p-3.5 rounded-xl text-left border transition-all relative flex flex-col justify-between ${
                   selectedAnimation === 'typewriter-glitch'
-                    ? 'bg-gradient-to-b from-emerald-950/90 to-cyan-950/90 border-emerald-400 shadow-[0_0_20px_rgba(52,211,153,0.3)]'
+                    ? 'bg-gradient-to-b from-emerald-950/90 to-violet-950/90 border-emerald-400 shadow-[0_0_20px_rgba(52,211,153,0.3)]'
                     : 'bg-black/40 border-white/10 hover:border-white/25 hover:bg-white/5'
                 }`}
               >
@@ -545,7 +542,7 @@ export const SubtitleEngineStudio: React.FC = () => {
               {/* Option 5: Kinetic Slide-Up */}
               <button
                 onClick={() => handleAnimationSelect('kinetic-slide')}
-                onMouseEnter={() => sound.playHover()}
+                onMouseEnter={() => void 0}
                 className={`p-3.5 rounded-xl text-left border transition-all relative flex flex-col justify-between ${
                   selectedAnimation === 'kinetic-slide'
                     ? 'bg-gradient-to-b from-rose-950/90 to-orange-950/90 border-rose-400 shadow-[0_0_20px_rgba(251,113,133,0.3)]'
@@ -567,7 +564,7 @@ export const SubtitleEngineStudio: React.FC = () => {
               {/* Option 6: Neon Pulse & Wave */}
               <button
                 onClick={() => handleAnimationSelect('pulse-glow')}
-                onMouseEnter={() => sound.playHover()}
+                onMouseEnter={() => void 0}
                 className={`p-3.5 rounded-xl text-left border transition-all relative flex flex-col justify-between ${
                   selectedAnimation === 'pulse-glow'
                     ? 'bg-gradient-to-b from-fuchsia-950/90 to-indigo-950/90 border-fuchsia-400 shadow-[0_0_20px_rgba(232,121,249,0.3)]'
@@ -589,7 +586,7 @@ export const SubtitleEngineStudio: React.FC = () => {
               {/* Option 7: 3D Flip Rotate */}
               <button
                 onClick={() => handleAnimationSelect('flip-rotate')}
-                onMouseEnter={() => sound.playHover()}
+                onMouseEnter={() => void 0}
                 className={`p-3.5 rounded-xl text-left border transition-all relative flex flex-col justify-between ${
                   selectedAnimation === 'flip-rotate'
                     ? 'bg-gradient-to-b from-teal-950/90 to-emerald-950/90 border-teal-400 shadow-[0_0_20px_rgba(45,212,191,0.3)]'
@@ -611,7 +608,7 @@ export const SubtitleEngineStudio: React.FC = () => {
               {/* Option 8: Atmospheric Fade Drift */}
               <button
                 onClick={() => handleAnimationSelect('fade-drift')}
-                onMouseEnter={() => sound.playHover()}
+                onMouseEnter={() => void 0}
                 className={`p-3.5 rounded-xl text-left border transition-all relative flex flex-col justify-between ${
                   selectedAnimation === 'fade-drift'
                     ? 'bg-gradient-to-b from-sky-950/90 to-indigo-950/90 border-sky-400 shadow-[0_0_20px_rgba(56,189,248,0.3)]'
@@ -633,7 +630,7 @@ export const SubtitleEngineStudio: React.FC = () => {
           </div>
 
           {/* SECTION 2: DESAIN VISUAL & ESTETIKA (8 Top Creator Presets) */}
-          <div className="hud-glass-panel rounded-2xl p-6 border border-white/15 spacex-glow-border space-y-5 bg-black/60 backdrop-blur-xl">
+          <div className="bg-[#131316] rounded-2xl p-6 border border-white/15 spacex- space-y-5 bg-black/60 backdrop-blur-xl">
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2.5">
                 <Layers className="w-4 h-4 text-amber-400" />
@@ -650,7 +647,7 @@ export const SubtitleEngineStudio: React.FC = () => {
               {/* Preset 1: Alex Hormozi */}
               <button
                 onClick={() => handlePresetSelect('hormozi')}
-                onMouseEnter={() => sound.playHover()}
+                onMouseEnter={() => void 0}
                 className={`p-3.5 rounded-xl text-left border transition-all flex flex-col justify-between ${
                   selectedPreset === 'hormozi'
                     ? 'bg-amber-950/50 border-amber-400 shadow-[0_0_20px_rgba(251,191,36,0.35)]'
@@ -672,21 +669,21 @@ export const SubtitleEngineStudio: React.FC = () => {
               {/* Preset 2: MrBeast Hyper-Retention */}
               <button
                 onClick={() => handlePresetSelect('mrbeast')}
-                onMouseEnter={() => sound.playHover()}
+                onMouseEnter={() => void 0}
                 className={`p-3.5 rounded-xl text-left border transition-all flex flex-col justify-between ${
                   selectedPreset === 'mrbeast'
-                    ? 'bg-cyan-950/50 border-cyan-400 shadow-[0_0_20px_rgba(34,211,238,0.35)]'
+                    ? 'bg-violet-950/50 border-violet-400 shadow-[0_0_20px_rgba(34,211,238,0.35)]'
                     : 'bg-black/40 border-white/10 hover:border-white/25 hover:bg-white/5'
                 }`}
               >
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-mono font-bold text-cyan-300">MRBEAST HYPER</span>
-                    <Flame className="w-4 h-4 text-cyan-400" />
+                    <span className="text-[11px] font-mono font-bold text-violet-300">MRBEAST HYPER</span>
+                    <Flame className="w-4 h-4 text-violet-400" />
                   </div>
                   <h4 className="font-bold text-white text-sm">MrBeast Action</h4>
                   <p className="text-xs text-stone-300 leading-relaxed">
-                    Display font tilt -2°, aksen Cyan Neon cerah & bayangan tajam bebas bercak hitam.
+                    Display font tilt -2°, aksen Violet Neon cerah & bayangan tajam bebas bercak hitam.
                   </p>
                 </div>
               </button>
@@ -694,7 +691,7 @@ export const SubtitleEngineStudio: React.FC = () => {
               {/* Preset 3: Minimalist Aesthetic */}
               <button
                 onClick={() => handlePresetSelect('minimal-aesthetic')}
-                onMouseEnter={() => sound.playHover()}
+                onMouseEnter={() => void 0}
                 className={`p-3.5 rounded-xl text-left border transition-all flex flex-col justify-between ${
                   selectedPreset === 'minimal-aesthetic'
                     ? 'bg-stone-900/80 border-white/50 shadow-[0_0_20px_rgba(255,255,255,0.2)]'
@@ -716,7 +713,7 @@ export const SubtitleEngineStudio: React.FC = () => {
               {/* Preset 4: Gamer / Comic Book */}
               <button
                 onClick={() => handlePresetSelect('gamer-comic')}
-                onMouseEnter={() => sound.playHover()}
+                onMouseEnter={() => void 0}
                 className={`p-3.5 rounded-xl text-left border transition-all flex flex-col justify-between ${
                   selectedPreset === 'gamer-comic'
                     ? 'bg-rose-950/50 border-rose-400 shadow-[0_0_20px_rgba(244,63,94,0.35)]'
@@ -730,7 +727,7 @@ export const SubtitleEngineStudio: React.FC = () => {
                   </div>
                   <h4 className="font-bold text-white text-sm">Gamer Comic</h4>
                   <p className="text-xs text-stone-300 leading-relaxed">
-                    Warna emosi per kata (Merah Rage, Hijau Menang, Cyan Combo) berkontras tinggi.
+                    Warna emosi per kata (Merah Rage, Hijau Menang, Violet Combo) berkontras tinggi.
                   </p>
                 </div>
               </button>
@@ -738,21 +735,21 @@ export const SubtitleEngineStudio: React.FC = () => {
               {/* Preset 5: Neon Cyberpunk 2077 */}
               <button
                 onClick={() => handlePresetSelect('neon-cyberpunk')}
-                onMouseEnter={() => sound.playHover()}
+                onMouseEnter={() => void 0}
                 className={`p-3.5 rounded-xl text-left border transition-all flex flex-col justify-between ${
                   selectedPreset === 'neon-cyberpunk'
-                    ? 'bg-indigo-950/50 border-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.35)]'
+                    ? 'bg-indigo-950/50 border-violet-400 shadow-[0_0_20px_rgba(6,182,212,0.35)]'
                     : 'bg-black/40 border-white/10 hover:border-white/25 hover:bg-white/5'
                 }`}
               >
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-mono font-bold text-cyan-400">CYBER HUD</span>
+                    <span className="text-[11px] font-mono font-bold text-violet-400">CYBER HUD</span>
                     <Activity className="w-4 h-4 text-fuchsia-400" />
                   </div>
                   <h4 className="font-bold text-white text-sm">Cyberpunk 2077</h4>
                   <p className="text-xs text-stone-300 leading-relaxed">
-                    Glow Neon Cyan & Magenta, bracket HUD futuristik `[ ... ]` bersinar tajam.
+                    Glow Neon Violet & Magenta, bracket HUD futuristik `[ ... ]` bersinar tajam.
                   </p>
                 </div>
               </button>
@@ -760,7 +757,7 @@ export const SubtitleEngineStudio: React.FC = () => {
               {/* Preset 6: Ali Abdaal Notion Highlighter */}
               <button
                 onClick={() => handlePresetSelect('ali-abdaal')}
-                onMouseEnter={() => sound.playHover()}
+                onMouseEnter={() => void 0}
                 className={`p-3.5 rounded-xl text-left border transition-all flex flex-col justify-between ${
                   selectedPreset === 'ali-abdaal'
                     ? 'bg-emerald-950/50 border-emerald-400 shadow-[0_0_20px_rgba(52,211,153,0.35)]'
@@ -782,7 +779,7 @@ export const SubtitleEngineStudio: React.FC = () => {
               {/* Preset 7: Iman Gadzhi Luxury Serif */}
               <button
                 onClick={() => handlePresetSelect('iman-gadzhi')}
-                onMouseEnter={() => sound.playHover()}
+                onMouseEnter={() => void 0}
                 className={`p-3.5 rounded-xl text-left border transition-all flex flex-col justify-between ${
                   selectedPreset === 'iman-gadzhi'
                     ? 'bg-amber-950/50 border-yellow-200 shadow-[0_0_20px_rgba(254,240,138,0.35)]'
@@ -804,7 +801,7 @@ export const SubtitleEngineStudio: React.FC = () => {
               {/* Preset 8: Anime Impact */}
               <button
                 onClick={() => handlePresetSelect('anime-impact')}
-                onMouseEnter={() => sound.playHover()}
+                onMouseEnter={() => void 0}
                 className={`p-3.5 rounded-xl text-left border transition-all flex flex-col justify-between ${
                   selectedPreset === 'anime-impact'
                     ? 'bg-orange-950/50 border-orange-400 shadow-[0_0_20px_rgba(249,115,22,0.35)]'
@@ -826,10 +823,10 @@ export const SubtitleEngineStudio: React.FC = () => {
           </div>
 
           {/* SECTION 3: PERSONALISASI DETAIL (Warna, Tipografi, Posisi, Ukuran, Emojis) */}
-          <div className="hud-glass-panel rounded-2xl p-6 border border-white/15 bg-black/60 backdrop-blur-xl space-y-6">
+          <div className="bg-[#131316] rounded-2xl p-6 border border-white/15 bg-black/60 backdrop-blur-xl space-y-6">
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <span className="text-sm font-mono font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                <Sliders className="w-4 h-4 text-cyan-400" />
+                <Sliders className="w-4 h-4 text-violet-400" />
                 <span>3. Personalisasi Warna, Font & Tata Letak Geometry</span>
               </span>
               <span className="text-xs font-mono text-emerald-400 flex items-center gap-1.5 bg-emerald-950/50 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
@@ -843,14 +840,14 @@ export const SubtitleEngineStudio: React.FC = () => {
               {/* Highlight Color Palette Picker */}
               <div className="space-y-2">
                 <label className="text-xs font-mono font-bold text-stone-300 flex items-center gap-2">
-                  <Palette className="w-3.5 h-3.5 text-cyan-400" />
+                  <Palette className="w-3.5 h-3.5 text-violet-400" />
                   <span>WARNA HIGHLIGHT AKTIF:</span>
                 </label>
                 <div className="flex items-center gap-2 p-1.5 rounded-xl bg-black/60 border border-white/10">
                   {COLOR_PALETTES.map((color) => (
                     <button
                       key={color.id}
-                      onClick={() => { sound.playClick(); setHighlightColor(color.hex); }}
+                      onClick={() => {  setHighlightColor(color.hex); }}
                       className={`w-7 h-7 rounded-lg transition-all flex items-center justify-center ${color.bgClass} ${
                         highlightColor === color.hex ? 'ring-2 ring-white scale-110 shadow-lg' : 'opacity-60 hover:opacity-100'
                       }`}
@@ -870,33 +867,33 @@ export const SubtitleEngineStudio: React.FC = () => {
                 </label>
                 <div className="grid grid-cols-4 rounded-xl bg-black/60 border border-white/10 p-1">
                   <button
-                    onClick={() => { sound.playClick(); setSelectedFontFamily('sans'); }}
+                    onClick={() => {  setSelectedFontFamily('sans'); }}
                     className={`py-1.5 px-2 rounded-lg text-xs font-bold font-sans transition-all truncate ${
-                      selectedFontFamily === 'sans' ? 'bg-cyan-500 text-black shadow-md' : 'text-stone-400 hover:text-white'
+                      selectedFontFamily === 'sans' ? 'bg-violet-500 text-black shadow-md' : 'text-stone-400 hover:text-white'
                     }`}
                   >
                     Sans
                   </button>
                   <button
-                    onClick={() => { sound.playClick(); setSelectedFontFamily('display'); }}
+                    onClick={() => {  setSelectedFontFamily('display'); }}
                     className={`py-1.5 px-2 rounded-lg text-xs font-bold font-display transition-all truncate ${
-                      selectedFontFamily === 'display' ? 'bg-cyan-500 text-black shadow-md' : 'text-stone-400 hover:text-white'
+                      selectedFontFamily === 'display' ? 'bg-violet-500 text-black shadow-md' : 'text-stone-400 hover:text-white'
                     }`}
                   >
                     Display
                   </button>
                   <button
-                    onClick={() => { sound.playClick(); setSelectedFontFamily('mono'); }}
+                    onClick={() => {  setSelectedFontFamily('mono'); }}
                     className={`py-1.5 px-2 rounded-lg text-xs font-bold font-mono transition-all truncate ${
-                      selectedFontFamily === 'mono' ? 'bg-cyan-500 text-black shadow-md' : 'text-stone-400 hover:text-white'
+                      selectedFontFamily === 'mono' ? 'bg-violet-500 text-black shadow-md' : 'text-stone-400 hover:text-white'
                     }`}
                   >
                     Mono
                   </button>
                   <button
-                    onClick={() => { sound.playClick(); setSelectedFontFamily('serif'); }}
+                    onClick={() => {  setSelectedFontFamily('serif'); }}
                     className={`py-1.5 px-2 rounded-lg text-xs font-bold font-serif italic transition-all truncate ${
-                      selectedFontFamily === 'serif' ? 'bg-cyan-500 text-black shadow-md' : 'text-stone-400 hover:text-white'
+                      selectedFontFamily === 'serif' ? 'bg-violet-500 text-black shadow-md' : 'text-stone-400 hover:text-white'
                     }`}
                   >
                     Serif
@@ -909,7 +906,7 @@ export const SubtitleEngineStudio: React.FC = () => {
                 <label className="text-xs font-mono font-bold text-stone-300 block">POSISI VERTIKAL:</label>
                 <div className="flex rounded-xl bg-black/60 border border-white/10 p-1">
                   <button
-                    onClick={() => { sound.playClick(); setSelectedPosition('top'); }}
+                    onClick={() => {  setSelectedPosition('top'); }}
                     className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-mono font-bold transition-all ${
                       selectedPosition === 'top' ? 'bg-amber-500 text-black shadow-md' : 'text-stone-400 hover:text-white'
                     }`}
@@ -917,7 +914,7 @@ export const SubtitleEngineStudio: React.FC = () => {
                     Top
                   </button>
                   <button
-                    onClick={() => { sound.playClick(); setSelectedPosition('center'); }}
+                    onClick={() => {  setSelectedPosition('center'); }}
                     className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-mono font-bold transition-all ${
                       selectedPosition === 'center' ? 'bg-amber-500 text-black shadow-md' : 'text-stone-400 hover:text-white'
                     }`}
@@ -925,7 +922,7 @@ export const SubtitleEngineStudio: React.FC = () => {
                     Center
                   </button>
                   <button
-                    onClick={() => { sound.playClick(); setSelectedPosition('bottom'); }}
+                    onClick={() => {  setSelectedPosition('bottom'); }}
                     className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-mono font-bold transition-all ${
                       selectedPosition === 'bottom' ? 'bg-amber-500 text-black shadow-md' : 'text-stone-400 hover:text-white'
                     }`}
@@ -940,7 +937,7 @@ export const SubtitleEngineStudio: React.FC = () => {
                 <label className="text-xs font-mono font-bold text-stone-300 block">UKURAN FONT:</label>
                 <div className="grid grid-cols-4 rounded-xl bg-black/60 border border-white/10 p-1">
                   <button
-                    onClick={() => { sound.playClick(); setSelectedFontSize('compact'); }}
+                    onClick={() => {  setSelectedFontSize('compact'); }}
                     className={`py-1.5 px-1 rounded-lg text-xs font-mono font-bold transition-all ${
                       selectedFontSize === 'compact' ? 'bg-rose-500 text-white shadow-md' : 'text-stone-400 hover:text-white'
                     }`}
@@ -948,7 +945,7 @@ export const SubtitleEngineStudio: React.FC = () => {
                     S
                   </button>
                   <button
-                    onClick={() => { sound.playClick(); setSelectedFontSize('normal'); }}
+                    onClick={() => {  setSelectedFontSize('normal'); }}
                     className={`py-1.5 px-1 rounded-lg text-xs font-mono font-bold transition-all ${
                       selectedFontSize === 'normal' ? 'bg-rose-500 text-white shadow-md' : 'text-stone-400 hover:text-white'
                     }`}
@@ -956,7 +953,7 @@ export const SubtitleEngineStudio: React.FC = () => {
                     M
                   </button>
                   <button
-                    onClick={() => { sound.playClick(); setSelectedFontSize('large'); }}
+                    onClick={() => {  setSelectedFontSize('large'); }}
                     className={`py-1.5 px-1 rounded-lg text-xs font-mono font-bold transition-all ${
                       selectedFontSize === 'large' ? 'bg-rose-500 text-white shadow-md' : 'text-stone-400 hover:text-white'
                     }`}
@@ -964,7 +961,7 @@ export const SubtitleEngineStudio: React.FC = () => {
                     L
                   </button>
                   <button
-                    onClick={() => { sound.playClick(); setSelectedFontSize('huge'); }}
+                    onClick={() => {  setSelectedFontSize('huge'); }}
                     className={`py-1.5 px-1 rounded-lg text-xs font-mono font-bold transition-all ${
                       selectedFontSize === 'huge' ? 'bg-rose-500 text-white shadow-md' : 'text-stone-400 hover:text-white'
                     }`}
@@ -979,7 +976,7 @@ export const SubtitleEngineStudio: React.FC = () => {
                 <label className="text-xs font-mono font-bold text-stone-300 block">INTENSITAS GLOW & BAYANGAN:</label>
                 <div className="grid grid-cols-3 rounded-xl bg-black/60 border border-white/10 p-1">
                   <button
-                    onClick={() => { sound.playClick(); setSelectedGlowStyle('subtle'); }}
+                    onClick={() => {  setSelectedGlowStyle('subtle'); }}
                     className={`py-1.5 px-2 rounded-lg text-xs font-mono font-bold transition-all truncate ${
                       selectedGlowStyle === 'subtle' ? 'bg-purple-500 text-white shadow-md' : 'text-stone-400 hover:text-white'
                     }`}
@@ -987,7 +984,7 @@ export const SubtitleEngineStudio: React.FC = () => {
                     Halus
                   </button>
                   <button
-                    onClick={() => { sound.playClick(); setSelectedGlowStyle('intense'); }}
+                    onClick={() => {  setSelectedGlowStyle('intense'); }}
                     className={`py-1.5 px-2 rounded-lg text-xs font-mono font-bold transition-all truncate ${
                       selectedGlowStyle === 'intense' ? 'bg-purple-500 text-white shadow-md' : 'text-stone-400 hover:text-white'
                     }`}
@@ -995,7 +992,7 @@ export const SubtitleEngineStudio: React.FC = () => {
                     Intens
                   </button>
                   <button
-                    onClick={() => { sound.playClick(); setSelectedGlowStyle('outline-clean'); }}
+                    onClick={() => {  setSelectedGlowStyle('outline-clean'); }}
                     className={`py-1.5 px-2 rounded-lg text-xs font-mono font-bold transition-all truncate ${
                       selectedGlowStyle === 'outline-clean' ? 'bg-purple-500 text-white shadow-md' : 'text-stone-400 hover:text-white'
                     }`}
@@ -1009,7 +1006,7 @@ export const SubtitleEngineStudio: React.FC = () => {
               <div className="space-y-2">
                 <label className="text-xs font-mono font-bold text-stone-300 block">AUTO 3D EMOJI:</label>
                 <button
-                  onClick={() => { sound.playClick(); setShowEmojis(!showEmojis); }}
+                  onClick={() => {  setShowEmojis(!showEmojis); }}
                   className={`w-full py-2 px-3 rounded-xl border font-mono text-xs font-bold flex items-center justify-between transition-all ${
                     showEmojis 
                       ? 'bg-emerald-950/60 border-emerald-400/40 text-emerald-300 shadow-[0_0_15px_rgba(52,211,153,0.2)]' 
@@ -1030,7 +1027,7 @@ export const SubtitleEngineStudio: React.FC = () => {
           {/* Compact Apply & Sync Action Bar */}
           <div className="flex items-center justify-between p-3 px-4 rounded-xl bg-black/60 border border-white/10 backdrop-blur-xl">
             <div className="flex items-center gap-2 text-xs font-mono text-stone-300">
-              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+              <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
               <span className="text-white font-bold uppercase">{selectedPreset}</span>
               <span className="text-stone-500">•</span>
               <span className="text-stone-400 uppercase">{selectedAnimation}</span>
@@ -1039,7 +1036,7 @@ export const SubtitleEngineStudio: React.FC = () => {
             <div className="flex items-center gap-2">
               <button
                 onClick={handleCopyPresetConfig}
-                onMouseEnter={() => sound.playHover()}
+                onMouseEnter={() => void 0}
                 className="px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-stone-400 hover:text-white border border-white/10 text-xs font-mono flex items-center gap-1 transition-all"
                 title="Copy JSON Config"
               >
@@ -1049,11 +1046,11 @@ export const SubtitleEngineStudio: React.FC = () => {
 
               <button
                 onClick={handleApplyPreset}
-                onMouseEnter={() => sound.playHover()}
+                onMouseEnter={() => void 0}
                 className={`px-4 py-1.5 rounded-lg font-mono text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all active:scale-95 ${
                   isApplied
                     ? 'bg-emerald-400 text-black shadow-[0_0_15px_rgba(52,211,153,0.6)]'
-                    : 'bg-white text-black hover:bg-cyan-400 shadow-[0_0_15px_rgba(255,255,255,0.3)]'
+                    : 'bg-white text-black hover:bg-violet-400 shadow-[0_0_15px_rgba(255,255,255,0.3)]'
                 }`}
               >
                 {isApplied ? (
@@ -1092,21 +1089,17 @@ export const SubtitleEngineStudio: React.FC = () => {
 
         {/* Right Column: 9:16 Authentic High-End Sandbox Simulator (5 cols) */}
         <div className="lg:col-span-5 flex flex-col items-center">
-          <TiltCard
-            maxTilt={5}
-            glareOpacity={0.15}
-            className="w-full max-w-sm rounded-3xl hud-glass-panel border border-cyan-500/30 p-4 shadow-[0_0_50px_rgba(0,0,0,0.95)] space-y-4 bg-black/90 backdrop-blur-2xl"
-          >
+          <div className="w-full max-w-sm rounded-3xl border border-white/10 p-4 space-y-4 bg-[#131316]">
             {/* Phone Simulator Top Bar */}
             <div className="flex items-center justify-between px-2 text-[10px] font-mono text-stone-400">
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-cyan-300 font-bold tracking-wider">9:16 VIRAL SIMULATOR</span>
+                <span className="text-violet-300 font-bold tracking-wider">9:16 VIRAL SIMULATOR</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <button
                   onClick={() => {
-                    sound.playClick();
+                    
                     setPlaybackSpeed((prev) => (prev === 1 ? 1.25 : prev === 1.25 ? 1.5 : prev === 1.5 ? 0.75 : 1));
                   }}
                   className="px-1.5 py-0.5 rounded bg-white/10 hover:bg-white/20 text-stone-300 text-[10px] font-mono"
@@ -1116,7 +1109,7 @@ export const SubtitleEngineStudio: React.FC = () => {
                 </button>
                 <button
                   onClick={() => {
-                    sound.playClick();
+                    
                     setIsPlaying(!isPlaying);
                   }}
                   className="p-1.5 rounded bg-white/10 hover:bg-white/20 text-white"
@@ -1126,7 +1119,7 @@ export const SubtitleEngineStudio: React.FC = () => {
                 </button>
                 <button
                   onClick={() => {
-                    sound.playClick();
+                    
                     setWordIndex(0);
                     setLineIndex(0);
                   }}
@@ -1146,14 +1139,14 @@ export const SubtitleEngineStudio: React.FC = () => {
                   <button
                     key={key}
                     onClick={() => {
-                      sound.playClick();
+                      
                       setActiveCategory(key);
                       setWordIndex(0);
                       setLineIndex(0);
                     }}
                     className={`py-1 px-1 rounded-lg truncate font-bold transition-all text-center ${
                       isActive
-                        ? 'bg-cyan-500 text-black shadow-[0_0_10px_rgba(34,211,238,0.4)]'
+                        ? 'bg-violet-500 text-black shadow-[0_0_10px_rgba(34,211,238,0.4)]'
                         : 'text-stone-400 hover:text-white hover:bg-white/5'
                     }`}
                   >
@@ -1214,7 +1207,7 @@ export const SubtitleEngineStudio: React.FC = () => {
                   {SAMPLE_BG_VIDEOS.map((vid, idx) => (
                     <button
                       key={vid.id}
-                      onClick={() => { sound.playClick(); setActiveBgVideoIdx(idx); }}
+                      onClick={() => {  setActiveBgVideoIdx(idx); }}
                       className={`px-1.5 py-0.5 rounded text-[9px] ${
                         activeBgVideoIdx === idx ? 'bg-white/20 text-white font-bold' : 'text-stone-500 hover:text-stone-300'
                       }`}
@@ -1223,14 +1216,14 @@ export const SubtitleEngineStudio: React.FC = () => {
                     </button>
                   ))}
                 </div>
-                <div className="text-cyan-300 font-bold flex items-center gap-1">
+                <div className="text-violet-300 font-bold flex items-center gap-1">
                   <Activity className="w-3 h-3 text-emerald-400" />
                   <span>120 FPS GPU</span>
                 </div>
               </div>
 
             </div>
-          </TiltCard>
+          </div>
         </div>
       </div>
     </section>

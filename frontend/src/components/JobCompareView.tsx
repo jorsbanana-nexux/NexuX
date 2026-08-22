@@ -60,7 +60,7 @@ export default function JobCompareView() {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h3 className="flex items-center gap-2 text-lg font-semibold text-white">
-            <BarChart3 className="h-5 w-5 text-cyan-400" />
+            <BarChart3 className="h-5 w-5 text-violet-400" />
             Multi-Job Compare
           </h3>
           <p className="text-sm text-white/50">
@@ -95,7 +95,7 @@ export default function JobCompareView() {
             key={label}
             className="rounded-xl border border-white/10 bg-white/5 p-4 text-center"
           >
-            <Icon className="mx-auto mb-1.5 h-4 w-4 text-cyan-400" />
+            <Icon className="mx-auto mb-1.5 h-4 w-4 text-violet-400" />
             <div className="text-xl font-bold text-white">{value}</div>
             <div className="text-xs text-white/40">{label}</div>
           </div>
@@ -141,7 +141,7 @@ export default function JobCompareView() {
                       className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
                         r.mode === 'mode2'
                           ? 'bg-violet-500/20 text-violet-300'
-                          : 'bg-cyan-500/20 text-cyan-300'
+                          : 'bg-violet-500/20 text-violet-300'
                       }`}
                     >
                       {r.mode === 'mode2' ? 'Creative' : 'Podcast'}

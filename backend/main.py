@@ -57,6 +57,7 @@ from engine import ytdlp_updater
 from api_v95_editor import router as editor_router
 from api_v95_modes import router as modes_router
 from api_v95_extras import router as extras_router
+from api_v97_settings import router as settings_router
 
 
 # ── Logger ──
@@ -67,7 +68,7 @@ logging.basicConfig(
 log = logging.getLogger("nexus.api")
 
 # ── Constants ──
-VERSION = "9.6.0"
+VERSION = "9.7.0"
 DB_PATH = Path(os.environ.get("NEXUX_DB_PATH", "nexux_jobs.db"))
 JOB_TTL_HOURS = int(os.environ.get("NEXUX_JOB_TTL_HOURS", "72"))
 API_KEY = os.environ.get("NEXUX_API_KEY", "")  # Empty = no auth (local dev)
@@ -494,6 +495,7 @@ def _get_job(job_id: str) -> Optional[dict]:
 app.include_router(editor_router)
 app.include_router(modes_router)
 app.include_router(extras_router)
+app.include_router(settings_router)
 
 # ── Routes ──
 

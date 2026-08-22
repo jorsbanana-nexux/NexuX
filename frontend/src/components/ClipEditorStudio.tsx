@@ -37,9 +37,6 @@ import {
 } from 'lucide-react';
 import { InsightsPanel } from './InsightsPanel';
 import { TitleStudio } from './TitleStudio';
-import { sound } from '../utils/soundEffects';
-import { MagneticElement } from './MagneticElement';
-import { TiltCard } from './TiltCard';
 import { LiveSubtitleRenderer } from './LiveSubtitleRenderer';
 import { subtitleStore } from '../utils/subtitleStore';
 import {
@@ -246,7 +243,7 @@ const CREATOR_TEMPLATES: CreatorTemplate[] = [
     speedRamp: true,
     speedRampType: 'speedup',
     badge: '🎮 GAMER',
-    badgeColor: 'text-cyan-400',
+    badgeColor: 'text-violet-400',
   },
   {
     id: 'neon-cyberpunk',
@@ -330,7 +327,7 @@ const CREATOR_TEMPLATES: CreatorTemplate[] = [
     speedRamp: false,
     speedRampType: 'none',
     badge: '🎙️ PODCAST',
-    badgeColor: 'text-cyan-400',
+    badgeColor: 'text-violet-400',
   },
   {
     id: 'viral-tiktok',
@@ -403,7 +400,7 @@ const COLOR_SWATCHES = [
   { name: 'White', value: '#FFFFFF' },
   { name: 'Yellow', value: '#FFD700' },
   { name: 'Gold', value: '#D4AF37' },
-  { name: 'Cyan', value: '#22D3EE' },
+  { name: 'Violet', value: '#22D3EE' },
   { name: 'Green', value: '#00FF00' },
   { name: 'Red', value: '#FF4444' },
   { name: 'Magenta', value: '#FF00FF' },
@@ -535,7 +532,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
     });
     setHasChanges(true);
     setHistoryVersion(v => v + 1);
-    sound.playClick();
+    
   }, []);
 
   const redo = useCallback(() => {
@@ -547,7 +544,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
     });
     setHasChanges(true);
     setHistoryVersion(v => v + 1);
-    sound.playClick();
+    
   }, []);
 
   // Update state helper with undo/redo history
@@ -557,7 +554,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
       return { ...prev, [key]: value };
     });
     setHasChanges(true);
-    sound.playClick();
+    
   }, [pushHistory]);
 
   // Apply a creator template with undo/redo history
@@ -582,7 +579,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
       };
     });
     setHasChanges(true);
-    sound.playSuccess();
+    
   }, [pushHistory]);
 
   // Overlay management functions
@@ -610,7 +607,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
     setOverlays(prev => [...prev, newOverlay]);
     setSelectedOverlayId(newOverlay.id);
     setHasChanges(true);
-    sound.playClick();
+    
   }, [overlays.length]);
 
   const updateOverlay = useCallback((id: string, props: Partial<(typeof overlays)[0]>) => {
@@ -622,7 +619,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
     setOverlays(prev => prev.filter(o => o.id !== id));
     if (selectedOverlayId === id) setSelectedOverlayId(null);
     setHasChanges(true);
-    sound.playClick();
+    
   }, [selectedOverlayId]);
 
   const selectOverlay = useCallback((id: string | null) => {
@@ -689,7 +686,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
       });
       if (res && res.preview_url) {
         setPreviewUrl(buildOutputUrl(res.preview_url));
-        sound.playSuccess();
+        
       } else {
         setPreviewUrl(null);
       }
@@ -752,13 +749,13 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
   // Re-render handler
   const handleReRender = async () => {
     setIsReRendering(true);
-    sound.playClick();
+    
 
     // Call custom handler if provided (for testing)
     if (onReRender) {
       onReRender(editorState, selectedClipIndex);
       setHasChanges(false);
-      sound.playSuccess();
+      
       setIsReRendering(false);
       return;
     }
@@ -800,7 +797,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
       const result = await editorApi.reRenderClip(jobId, selectedClipIndex, settings);
       setRenderResult({ success: true, message: 'Re-render complete!', changes: result.changes_applied });
       setHasChanges(false);
-      sound.playSuccess();
+      
     } catch (e) {
       console.error('Re-render failed:', e);
       setRenderResult({ success: false, message: 'Re-render failed. Check server logs.' });
@@ -928,15 +925,15 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
         {/* Left: Close + Title */}
         <div className="flex items-center gap-3">
           <button
-            onClick={() => { sound.playClick(); onClose(); }}
-            onMouseEnter={() => sound.playHover()}
+            onClick={() => {  onClose(); }}
+            onMouseEnter={() => void 0}
             className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-stone-300 hover:text-white border border-white/10 text-xs font-mono transition-colors"
           >
             <ArrowLeft className="w-4 h-4" />
             <span className="hidden sm:inline">Back to Results</span>
           </button>
           <div className="hidden md:flex items-center gap-2 ml-2">
-            <Wand2 className="w-4 h-4 text-cyan-400" />
+            <Wand2 className="w-4 h-4 text-violet-400" />
             <span className="font-display font-bold text-white text-sm tracking-wide">
               Clip Editor Studio
             </span>
@@ -951,15 +948,15 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
         {/* Right: Actions */}
         <div className="flex items-center gap-2">
           <button
-            onClick={() => { sound.playClick(); setShowClipStrip(!showClipStrip); }}
+            onClick={() => {  setShowClipStrip(!showClipStrip); }}
             className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-stone-400 hover:text-white border border-white/10 text-xs font-mono transition-colors"
           >
             <Film className="w-3.5 h-3.5" />
             <span>Clips</span>
           </button>
           <button
-            onClick={() => { sound.playClick(); pushHistory(editorState); setEditorState(DEFAULT_EDITOR_STATE); setHasChanges(false); }}
-            onMouseEnter={() => sound.playHover()}
+            onClick={() => {  pushHistory(editorState); setEditorState(DEFAULT_EDITOR_STATE); setHasChanges(false); }}
+            onMouseEnter={() => void 0}
             className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-stone-400 hover:text-white border border-white/10 text-xs font-mono transition-colors"
           >
             <RotateCcw className="w-3.5 h-3.5" />
@@ -968,7 +965,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
           <button
             onClick={undo}
             disabled={historyRef.current.past.length === 0}
-            onMouseEnter={() => sound.playHover()}
+            onMouseEnter={() => void 0}
             className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-stone-400 hover:text-white border border-white/10 text-xs font-mono transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             title="Undo (Ctrl+Z)"
           >
@@ -978,7 +975,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
           <button
             onClick={redo}
             disabled={historyRef.current.future.length === 0}
-            onMouseEnter={() => sound.playHover()}
+            onMouseEnter={() => void 0}
             className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-stone-400 hover:text-white border border-white/10 text-xs font-mono transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             title="Redo (Ctrl+Shift+Z)"
           >
@@ -988,8 +985,8 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
           <button
             onClick={handleReRender}
             disabled={isReRendering}
-            onMouseEnter={() => sound.playHover()}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white text-xs font-mono font-bold transition-colors disabled:opacity-50 disabled:cursor-wait shadow-[0_0_20px_rgba(34,211,238,0.3)]"
+            onMouseEnter={() => void 0}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-violet-500 to-blue-500 hover:from-violet-400 hover:to-blue-400 text-white text-xs font-mono font-bold transition-colors disabled:opacity-50 disabled:cursor-wait shadow-[0_0_20px_rgba(34,211,238,0.3)]"
           >
             {isReRendering ? (
               <>
@@ -1019,11 +1016,11 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
             return (
               <button
                 key={tab.id}
-                onClick={() => { sound.playClick(); setActiveTab(tab.id); }}
-                onMouseEnter={() => sound.playHover()}
+                onClick={() => {  setActiveTab(tab.id); }}
+                onMouseEnter={() => void 0}
                 className={`flex flex-col items-center gap-1.5 py-3 mx-2 rounded-xl transition-all ${
                   isActive
-                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-[0_0_15px_rgba(34,211,238,0.2)]'
+                    ? 'bg-violet-500/20 text-violet-300 border border-violet-500/40 shadow-[0_0_15px_rgba(34,211,238,0.2)]'
                     : 'text-stone-500 hover:text-stone-300 hover:bg-white/5 border border-transparent'
                 }`}
               >
@@ -1077,14 +1074,14 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
             {/* Loading spinner for FFmpeg preview */}
             {previewLoading && (
               <div className="absolute inset-0 z-40 bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center gap-3">
-                <Loader2 className="w-10 h-10 text-cyan-400 animate-spin" />
-                <span className="text-xs font-mono text-cyan-200">Rendering FFmpeg Preview...</span>
+                <Loader2 className="w-10 h-10 text-violet-400 animate-spin" />
+                <span className="text-xs font-mono text-violet-200">Rendering FFmpeg Preview...</span>
               </div>
             )}
 
             {/* FFmpeg Preview indicator badge */}
             {previewUrl && (
-              <div className="absolute top-3 left-3 z-30 flex items-center gap-2 px-2.5 py-1 rounded-full bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 text-[10px] font-mono">
+              <div className="absolute top-3 left-3 z-30 flex items-center gap-2 px-2.5 py-1 rounded-full bg-violet-500/20 border border-violet-500/40 text-violet-300 text-[10px] font-mono">
                 <span>FFmpeg Preview (5s)</span>
                 <button
                   onClick={(e) => { e.stopPropagation(); setPreviewUrl(null); }}
@@ -1157,7 +1154,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
                   className={`absolute select-none transition-shadow ${
                     overlay.locked ? 'cursor-not-allowed' : 'cursor-move'
                   } ${
-                    isSelected ? 'ring-2 ring-cyan-400 ring-offset-1 ring-offset-black' : 'hover:ring-1 hover:ring-white/50'
+                    isSelected ? 'ring-2 ring-violet-400 ring-offset-1 ring-offset-black' : 'hover:ring-1 hover:ring-white/50'
                   }`}
                   style={{
                     left: `${overlay.x}%`,
@@ -1175,7 +1172,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
                 >
                   {overlay.content}
                   {isSelected && (
-                    <div className="absolute -top-6 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded bg-cyan-500 text-[9px] font-mono text-black font-bold flex items-center gap-1 pointer-events-none">
+                    <div className="absolute -top-6 left-1/2 -translate-x-1/2 px-1.5 py-0.5 rounded bg-violet-500 text-[9px] font-mono text-black font-bold flex items-center gap-1 pointer-events-none">
                       <span>{Math.round(overlay.x)}%, {Math.round(overlay.y)}%</span>
                       {overlay.locked && <Lock className="w-2.5 h-2.5" />}
                     </div>
@@ -1188,7 +1185,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
             {editorState.progressbar && !previewUrl && (
               <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/10 z-20">
                 <div
-                  className="h-full bg-cyan-400 transition-all"
+                  className="h-full bg-violet-400 transition-all"
                   style={{
                     width: `${videoRef.current ? (currentTime / (videoRef.current.duration || 45)) * 100 : 0}%`,
                   }}
@@ -1226,7 +1223,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
             </button>
             <button
               onClick={togglePlay}
-              className="w-10 h-10 rounded-full bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-300 hover:bg-cyan-500/30 transition-colors"
+              className="w-10 h-10 rounded-full bg-violet-500/20 border border-violet-500/40 flex items-center justify-center text-violet-300 hover:bg-violet-500/30 transition-colors"
             >
               {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
             </button>
@@ -1259,7 +1256,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
                         onClick={() => update('captionStyle', p)}
                         className={`px-3 py-2 rounded-lg text-xs font-mono border transition-all ${
                           editorState.captionStyle === p
-                            ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                            ? 'bg-violet-500/20 text-violet-300 border-violet-500/40'
                             : 'bg-white/5 text-stone-400 border-white/10 hover:bg-white/10'
                         }`}
                       >
@@ -1278,7 +1275,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
                         onClick={() => update('animation', a)}
                         className={`px-3 py-2 rounded-lg text-xs font-mono border transition-all ${
                           editorState.animation === a
-                            ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                            ? 'bg-violet-500/20 text-violet-300 border-violet-500/40'
                             : 'bg-white/5 text-stone-400 border-white/10 hover:bg-white/10'
                         }`}
                       >
@@ -1297,7 +1294,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
                         onClick={() => update('position', p)}
                         className={`px-3 py-2 rounded-lg text-xs font-mono border transition-all ${
                           editorState.position === p
-                            ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                            ? 'bg-violet-500/20 text-violet-300 border-violet-500/40'
                             : 'bg-white/5 text-stone-400 border-white/10 hover:bg-white/10'
                         }`}
                       >
@@ -1316,7 +1313,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
                         onClick={() => update('fontFamily', f)}
                         className={`px-3 py-2 rounded-lg text-xs font-mono border transition-all ${
                           editorState.fontFamily === f
-                            ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                            ? 'bg-violet-500/20 text-violet-300 border-violet-500/40'
                             : 'bg-white/5 text-stone-400 border-white/10 hover:bg-white/10'
                         }`}
                       >
@@ -1335,7 +1332,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
                         onClick={() => update('fontSize', s)}
                         className={`px-2 py-2 rounded-lg text-[10px] font-mono border transition-all ${
                           editorState.fontSize === s
-                            ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                            ? 'bg-violet-500/20 text-violet-300 border-violet-500/40'
                             : 'bg-white/5 text-stone-400 border-white/10 hover:bg-white/10'
                         }`}
                       >
@@ -1364,7 +1361,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
                         onClick={() => update('glowStyle', g)}
                         className={`px-3 py-2 rounded-lg text-xs font-mono border transition-all ${
                           editorState.glowStyle === g
-                            ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                            ? 'bg-violet-500/20 text-violet-300 border-violet-500/40'
                             : 'bg-white/5 text-stone-400 border-white/10 hover:bg-white/10'
                         }`}
                       >
@@ -1393,8 +1390,8 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
                     <button
                       key={tpl.id}
                       onClick={() => applyTemplate(tpl)}
-                      onMouseEnter={() => sound.playHover()}
-                      className="w-full text-left p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-cyan-500/30 transition-all group"
+                      onMouseEnter={() => void 0}
+                      className="w-full text-left p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-violet-500/30 transition-all group"
                     >
                       <div className="flex items-center justify-between mb-1">
                         <span className="font-display font-bold text-white text-sm">{tpl.name}</span>
@@ -1405,7 +1402,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
                         <div className="w-3 h-3 rounded-full border border-white/20" style={{ background: tpl.primaryColor }} />
                         <div className="w-3 h-3 rounded-full border border-white/20" style={{ background: tpl.highlightColor }} />
                         <span className="text-[10px] text-stone-500 font-mono ml-1">{tpl.animation.replace(/-/g, ' ')}</span>
-                        <ChevronRight className="w-3 h-3 text-stone-500 ml-auto group-hover:text-cyan-400 transition-colors" />
+                        <ChevronRight className="w-3 h-3 text-stone-500 ml-auto group-hover:text-violet-400 transition-colors" />
                       </div>
                     </button>
                   ))}
@@ -1426,7 +1423,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
                         onClick={() => update('zoomStyle', z)}
                         className={`px-3 py-2 rounded-lg text-xs font-mono border transition-all ${
                           editorState.zoomStyle === z
-                            ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                            ? 'bg-violet-500/20 text-violet-300 border-violet-500/40'
                             : 'bg-white/5 text-stone-400 border-white/10 hover:bg-white/10'
                         }`}
                       >
@@ -1444,7 +1441,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
                     step={0.1}
                     value={editorState.zoomLevel}
                     onChange={(e) => update('zoomLevel', parseFloat(e.target.value))}
-                    className="w-full accent-cyan-500"
+                    className="w-full accent-violet-500"
                   />
                 </ControlSection>
 
@@ -1456,7 +1453,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
                         onClick={() => update('colorGrade', c)}
                         className={`px-3 py-2 rounded-lg text-xs font-mono border transition-all ${
                           editorState.colorGrade === c
-                            ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                            ? 'bg-violet-500/20 text-violet-300 border-violet-500/40'
                             : 'bg-white/5 text-stone-400 border-white/10 hover:bg-white/10'
                         }`}
                       >
@@ -1476,7 +1473,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
                           onClick={() => update('speedRampType', s)}
                           className={`px-2 py-2 rounded-lg text-[10px] font-mono border transition-all ${
                             editorState.speedRampType === s
-                              ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                              ? 'bg-violet-500/20 text-violet-300 border-violet-500/40'
                               : 'bg-white/5 text-stone-400 border-white/10 hover:bg-white/10'
                           }`}
                         >
@@ -1502,7 +1499,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
                     step={0.1}
                     value={editorState.trimStart}
                     onChange={(e) => update('trimStart', parseFloat(e.target.value))}
-                    className="w-full accent-cyan-500"
+                    className="w-full accent-violet-500"
                   />
                 </ControlSection>
 
@@ -1514,14 +1511,14 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
                     step={0.1}
                     value={editorState.trimEnd}
                     onChange={(e) => update('trimEnd', parseFloat(e.target.value))}
-                    className="w-full accent-cyan-500"
+                    className="w-full accent-violet-500"
                   />
                 </ControlSection>
 
                 <div className="p-3 rounded-xl bg-white/5 border border-white/10">
                   <div className="flex items-center justify-between text-xs font-mono">
                     <span className="text-stone-400">Duration:</span>
-                    <span className="text-cyan-300 font-bold">
+                    <span className="text-violet-300 font-bold">
                       {(editorState.trimEnd - editorState.trimStart).toFixed(1)}s
                     </span>
                   </div>
@@ -1552,7 +1549,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
                     max={100}
                     value={editorState.bgmVolume}
                     onChange={(e) => update('bgmVolume', parseInt(e.target.value))}
-                    className="w-full accent-cyan-500"
+                    className="w-full accent-violet-500"
                   />
                 </ControlSection>
 
@@ -1563,7 +1560,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
                     max={100}
                     value={editorState.voiceVolume}
                     onChange={(e) => update('voiceVolume', parseInt(e.target.value))}
-                    className="w-full accent-cyan-500"
+                    className="w-full accent-violet-500"
                   />
                 </ControlSection>
 
@@ -1588,7 +1585,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
                         onClick={() => update('aspectRatio', r)}
                         className={`px-3 py-3 rounded-lg text-sm font-mono border transition-all flex flex-col items-center gap-1 ${
                           editorState.aspectRatio === r
-                            ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                            ? 'bg-violet-500/20 text-violet-300 border-violet-500/40'
                             : 'bg-white/5 text-stone-400 border-white/10 hover:bg-white/10'
                         }`}
                       >
@@ -1623,7 +1620,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
                         value={editorState.watermarkText}
                         onChange={(e) => update('watermarkText', e.target.value)}
                         placeholder="@yourbrand"
-                        className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs font-mono placeholder-stone-500 focus:border-cyan-500/40 focus:outline-none"
+                        className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-xs font-mono placeholder-stone-500 focus:border-violet-500/40 focus:outline-none"
                       />
                     </ControlSection>
 
@@ -1635,7 +1632,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
                             onClick={() => update('watermarkPosition', p)}
                             className={`px-3 py-2 rounded-lg text-xs font-mono border transition-all ${
                               editorState.watermarkPosition === p
-                                ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                                ? 'bg-violet-500/20 text-violet-300 border-violet-500/40'
                                 : 'bg-white/5 text-stone-400 border-white/10 hover:bg-white/10'
                             }`}
                           >
@@ -1656,7 +1653,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
                     <span className="text-xs font-mono font-bold text-white uppercase tracking-wider">Overlays ({overlays.length})</span>
                     <button
                       onClick={addTextOverlay}
-                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-mono transition-colors"
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 border border-violet-500/40 text-xs font-mono transition-colors"
                     >
                       <Plus className="w-3 h-3" />
                       <span>Add Text Overlay</span>
@@ -1675,7 +1672,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
                           onClick={() => selectOverlay(overlay.id)}
                           className={`p-2.5 rounded-xl border transition-all text-xs font-mono space-y-2 ${
                             selectedOverlayId === overlay.id
-                              ? 'bg-cyan-950/40 border-cyan-500/50 text-white'
+                              ? 'bg-violet-950/40 border-violet-500/50 text-white'
                               : 'bg-white/5 border-white/10 text-stone-300 hover:bg-white/10'
                           }`}
                         >
@@ -1685,12 +1682,12 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
                               value={overlay.content}
                               onChange={(e) => updateOverlay(overlay.id, { content: e.target.value })}
                               onClick={(e) => e.stopPropagation()}
-                              className="flex-1 px-2 py-1 rounded bg-black/50 border border-white/10 text-xs text-white focus:outline-none focus:border-cyan-400"
+                              className="flex-1 px-2 py-1 rounded bg-black/50 border border-white/10 text-xs text-white focus:outline-none focus:border-violet-400"
                             />
                             <div className="flex items-center gap-1">
                               <button
                                 onClick={(e) => { e.stopPropagation(); updateOverlay(overlay.id, { visible: !overlay.visible }); }}
-                                className={`p-1 rounded ${overlay.visible ? 'text-cyan-400' : 'text-stone-600'}`}
+                                className={`p-1 rounded ${overlay.visible ? 'text-violet-400' : 'text-stone-600'}`}
                                 title={overlay.visible ? 'Hide' : 'Show'}
                               >
                                 {overlay.visible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
@@ -1787,7 +1784,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
                   <button
                     onClick={handleReRender}
                     disabled={isReRendering}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 text-white text-sm font-mono font-bold transition-colors disabled:opacity-50 shadow-[0_0_20px_rgba(34,211,238,0.3)]"
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-violet-500 to-blue-500 text-white text-sm font-mono font-bold transition-colors disabled:opacity-50 shadow-[0_0_20px_rgba(34,211,238,0.3)]"
                   >
                     {isReRendering ? (
                       <><Loader2 className="w-4 h-4 animate-spin" /> Re-rendering...</>
@@ -1815,23 +1812,23 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
                 <div className="p-3 rounded-xl bg-white/5 border border-white/10 space-y-1.5">
                   <div className="flex justify-between text-xs font-mono">
                     <span className="text-stone-400">Resolution:</span>
-                    <span className="text-cyan-300">1080×1920</span>
+                    <span className="text-violet-300">1080×1920</span>
                   </div>
                   <div className="flex justify-between text-xs font-mono">
                     <span className="text-stone-400">Aspect:</span>
-                    <span className="text-cyan-300">{editorState.aspectRatio}</span>
+                    <span className="text-violet-300">{editorState.aspectRatio}</span>
                   </div>
                   <div className="flex justify-between text-xs font-mono">
                     <span className="text-stone-400">Style:</span>
-                    <span className="text-cyan-300">{editorState.captionStyle}</span>
+                    <span className="text-violet-300">{editorState.captionStyle}</span>
                   </div>
                   <div className="flex justify-between text-xs font-mono">
                     <span className="text-stone-400">Animation:</span>
-                    <span className="text-cyan-300">{editorState.animation.replace(/-/g, ' ')}</span>
+                    <span className="text-violet-300">{editorState.animation.replace(/-/g, ' ')}</span>
                   </div>
                   <div className="flex justify-between text-xs font-mono">
                     <span className="text-stone-400">Color Grade:</span>
-                    <span className="text-cyan-300">{editorState.colorGrade}</span>
+                    <span className="text-violet-300">{editorState.colorGrade}</span>
                   </div>
                 </div>
               </motion.div>
@@ -1855,11 +1852,11 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
               {clips.map((clip, idx) => (
                 <button
                   key={clip.id}
-                  onClick={() => { sound.playClick(); setSelectedClipIndex(idx); }}
-                  onMouseEnter={() => sound.playHover()}
+                  onClick={() => {  setSelectedClipIndex(idx); }}
+                  onMouseEnter={() => void 0}
                   className={`flex-shrink-0 w-20 h-32 rounded-lg overflow-hidden border-2 transition-all relative ${
                     selectedClipIndex === idx
-                      ? 'border-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.4)]'
+                      ? 'border-violet-400 shadow-[0_0_15px_rgba(34,211,238,0.4)]'
                       : 'border-white/10 hover:border-white/30'
                   }`}
                 >
@@ -1876,7 +1873,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
                     <span className="ml-1 text-[8px] text-amber-400 font-mono">★{clip.viralScore}</span>
                   </div>
                   {selectedClipIndex === idx && (
-                    <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-cyan-400 flex items-center justify-center">
+                    <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-violet-400 flex items-center justify-center">
                       <Check className="w-2.5 h-2.5 text-black" />
                     </div>
                   )}
@@ -1935,7 +1932,7 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
 function PanelHeader({ icon: Icon, title, subtitle }: { icon: typeof Type; title: string; subtitle: string }) {
   return (
     <div className="flex items-center gap-3 pb-3 border-b border-white/10">
-      <div className="w-9 h-9 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
+      <div className="w-9 h-9 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center text-violet-400">
         <Icon className="w-4 h-4" />
       </div>
       <div>
@@ -1963,9 +1960,9 @@ function ColorSwatches({ value, onChange }: { value: string; onChange: (v: strin
       {COLOR_SWATCHES.map(c => (
         <button
           key={c.value}
-          onClick={() => { onChange(c.value); sound.playClick(); }}
+          onClick={() => { onChange(c.value);  }}
           className={`w-8 h-8 rounded-lg border-2 transition-all ${
-            value === c.value ? 'border-cyan-400 scale-110' : 'border-white/20 hover:border-white/40'
+            value === c.value ? 'border-violet-400 scale-110' : 'border-white/20 hover:border-white/40'
           }`}
           style={{ background: c.value }}
           title={c.name}
@@ -1978,11 +1975,11 @@ function ColorSwatches({ value, onChange }: { value: string; onChange: (v: strin
 function ToggleRow({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
   return (
     <button
-      onClick={() => { onChange(!value); sound.playClick(); }}
+      onClick={() => { onChange(!value);  }}
       className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-mono transition-colors"
     >
       <span className="text-stone-300">{label}</span>
-      <div className={`w-9 h-5 rounded-full transition-colors ${value ? 'bg-cyan-500' : 'bg-white/10'}`}>
+      <div className={`w-9 h-5 rounded-full transition-colors ${value ? 'bg-violet-500' : 'bg-white/10'}`}>
         <div className={`w-4 h-4 rounded-full bg-white transition-transform ${value ? 'translate-x-4' : 'translate-x-0.5'} mt-0.5`} />
       </div>
     </button>

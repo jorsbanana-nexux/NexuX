@@ -57,19 +57,19 @@ export const ProcessingLoadingState: React.FC<LoadingStateProps> = ({
         <motion.div
           animate={{ rotate: 360 }}
           transition={{ duration: 18, repeat: Infinity, ease: 'linear' }}
-          className="absolute inset-0 rounded-full border border-cyan-500/20 border-dashed will-change-transform"
+          className="absolute inset-0 rounded-full border border-violet-500/20 border-dashed will-change-transform"
         />
 
         <motion.div
           animate={{ rotate: -360 }}
           transition={{ duration: 12, repeat: Infinity, ease: 'linear' }}
-          className="absolute inset-4 rounded-full border border-white/15 border-t-cyan-400/80 border-b-cyan-400/80 will-change-transform"
+          className="absolute inset-4 rounded-full border border-white/15 border-t-violet-400/80 border-b-violet-400/80 will-change-transform"
         />
 
         <motion.div
           animate={{ scale: [0.96, 1.04, 0.96], opacity: [0.3, 0.7, 0.3] }}
           transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
-          className="absolute inset-8 sm:inset-10 rounded-full border border-cyan-400/30 bg-cyan-950/20 shadow-[0_0_35px_rgba(6,182,212,0.25)] will-change-transform"
+          className="absolute inset-8 sm:inset-10 rounded-full border border-violet-400/30 bg-violet-950/20 shadow-[0_0_35px_rgba(6,182,212,0.25)] will-change-transform"
         />
 
         {/* Radar Sweeping Beam */}
@@ -83,8 +83,8 @@ export const ProcessingLoadingState: React.FC<LoadingStateProps> = ({
         />
 
         {/* Crosshair HUD Lines */}
-        <div className="absolute inset-x-0 top-1/2 h-[1px] bg-cyan-400/20 pointer-events-none" />
-        <div className="absolute inset-y-0 left-1/2 w-[1px] bg-cyan-400/20 pointer-events-none" />
+        <div className="absolute inset-x-0 top-1/2 h-[1px] bg-violet-400/20 pointer-events-none" />
+        <div className="absolute inset-y-0 left-1/2 w-[1px] bg-violet-400/20 pointer-events-none" />
 
         {/* Center Glowing Core with Audio Waveform bars */}
         <div className="relative z-10 w-28 h-28 sm:w-32 sm:h-32 rounded-full bg-black/90 border border-white/20 backdrop-blur-xl flex flex-col items-center justify-center p-3 shadow-[0_0_30px_rgba(255,255,255,0.2)]">
@@ -104,12 +104,12 @@ export const ProcessingLoadingState: React.FC<LoadingStateProps> = ({
                   delay: i * 0.08,
                 }}
                 style={{ height: `${height}%`, originY: 0.5 }}
-                className="w-1 rounded-full bg-cyan-400 shadow-[0_0_6px_#22d3ee] will-change-transform"
+                className="w-1 rounded-full bg-violet-400 shadow-[0_0_6px_#22d3ee] will-change-transform"
               />
             ))}
           </div>
 
-          <div className="text-[10px] font-mono text-cyan-300 font-bold tracking-widest mt-1">
+          <div className="text-[10px] font-mono text-violet-300 font-bold tracking-widest mt-1">
             {displayProgress}%
           </div>
         </div>
@@ -118,7 +118,7 @@ export const ProcessingLoadingState: React.FC<LoadingStateProps> = ({
       {/* Stage Label */}
       <div className="space-y-3 max-w-xl mx-auto px-4 w-full">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs font-mono text-stone-400">
-          <Activity className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+          <Activity className="w-3.5 h-3.5 text-violet-400 animate-pulse" />
           <span>NEURAL PIPELINE // {stageLabel.toUpperCase()}</span>
         </div>
 
@@ -126,14 +126,14 @@ export const ProcessingLoadingState: React.FC<LoadingStateProps> = ({
         <div className="min-h-[3rem] flex items-center justify-center px-2">
           <p className="text-sm sm:text-base md:text-lg font-mono text-white tracking-wide leading-snug">
             {displayText}
-            <span className="inline-block w-1.5 sm:w-2 h-3.5 sm:h-4 ml-1 bg-cyan-400 animate-pulse align-middle" />
+            <span className="inline-block w-1.5 sm:w-2 h-3.5 sm:h-4 ml-1 bg-violet-400 animate-pulse align-middle" />
           </p>
         </div>
 
         {/* Real Progress Bar from API */}
         <div className="w-full max-w-md mx-auto bg-stone-900 rounded-full h-2 p-0.5 border border-white/15 overflow-hidden">
           <div
-            className="h-full rounded-full bg-gradient-to-r from-cyan-500 via-white to-blue-500 shadow-[0_0_15px_rgba(6,182,212,0.8)] transition-all duration-500 will-change-[width]"
+            className="h-full rounded-full bg-gradient-to-r from-violet-500 via-white to-blue-500 shadow-[0_0_15px_rgba(6,182,212,0.8)] transition-all duration-500 will-change-[width]"
             style={{ width: `${displayProgress}%` }}
           />
         </div>
@@ -147,7 +147,7 @@ export const ProcessingLoadingState: React.FC<LoadingStateProps> = ({
             </span>
           )}
           {etaSeconds != null && etaSeconds > 0 && (
-            <span className="text-cyan-400/70">
+            <span className="text-violet-400/70">
               ETA: {fmtTime(etaSeconds)}
             </span>
           )}
@@ -157,7 +157,7 @@ export const ProcessingLoadingState: React.FC<LoadingStateProps> = ({
         <div className="flex items-center justify-between text-[10px] sm:text-[11px] font-mono text-stone-500 max-w-md mx-auto px-1 pt-1">
           <span>NEXUX V8.0</span>
           <span>SMART DOWNLOAD</span>
-          <span className="text-cyan-400">{fastPath ? 'AUTO-CAPTIONS' : 'LOCAL-FIRST'}</span>
+          <span className="text-violet-400">{fastPath ? 'AUTO-CAPTIONS' : 'LOCAL-FIRST'}</span>
         </div>
 
         {/* Cancel button */}

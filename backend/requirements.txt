@@ -1,4 +1,4 @@
-# ── NexuX V9.6 Backend Dependencies ──
+# ── NexuX V9.7 Backend Dependencies ──
 # Local-First: No cloud AI SDKs required.
 # Smart architecture: auto-captions + partial download = minimal deps needed.
 
@@ -11,17 +11,17 @@ pydantic-settings>=2.7,<3.0
 yt-dlp>=2026.1
 httpx>=0.28
 
-# ── TRANSCRIPTION (Required for whisper fallback) ──
-# If YouTube auto-captions available, these are NOT used (fast path)
-faster-whisper>=1.1
-ctranslate2>=4.5
+# ── TRANSCRIPTION (WhisperX — V9.7) ──
+# WhisperX is the ONLY transcription backend (faster-whisper replaced).
+# Auto-captions from YouTube skip transcription entirely (fast path).
+whisperx>=3.1
 
 # ── VISION / FACE DETECTION ──
 opencv-python-headless>=4.10,<5.0
 mediapipe>=1.0
 numpy>=1.26,<3.0
 
-# ── ML BACKEND (Required by faster-whisper) ──
+# ── ML BACKEND (Required by WhisperX) ──
 torch>=2.2
 
 # ── SYSTEM MONITORING ──

@@ -10,7 +10,6 @@ import {
   CheckCircle, 
   Copy 
 } from 'lucide-react';
-import { sound } from '../utils/soundEffects';
 import { subtitleStore } from '../utils/subtitleStore';
 import { SubtitleConfig, SubtitleScriptLine } from '../types/subtitles';
 import { LiveSubtitleRenderer } from './LiveSubtitleRenderer';
@@ -123,7 +122,7 @@ export const VideoResultCard: React.FC<VideoResultCardProps> = ({ clip, index, o
   };
 
   const handleMouseEnter = () => {
-    sound.playHover();
+    
     if (videoRef.current) {
       videoRef.current.play().catch(() => {});
       setIsPlaying(true);
@@ -132,14 +131,14 @@ export const VideoResultCard: React.FC<VideoResultCardProps> = ({ clip, index, o
 
   const handleCopyHook = (e: React.MouseEvent) => {
     e.stopPropagation();
-    sound.playClick();
+    
     navigator.clipboard.writeText(clip.subtitleSnippet);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   const handleCardClick = () => {
-    sound.playClick();
+    
     onPreview(clip);
   };
 
@@ -164,15 +163,15 @@ export const VideoResultCard: React.FC<VideoResultCardProps> = ({ clip, index, o
         rotateY,
         transformPerspective: 1000,
       }}
-      className="group relative rounded-3xl bg-stone-900/90 border border-white/15 p-4 flex flex-col justify-between cursor-pointer shadow-[0_15px_40px_rgba(0,0,0,0.7)] hover:border-cyan-400/80 hover:shadow-[0_0_35px_rgba(6,182,212,0.3)] overflow-hidden select-none will-change-transform"
+      className="group relative rounded-3xl bg-stone-900/90 border border-white/15 p-4 flex flex-col justify-between cursor-pointer shadow-[0_15px_40px_rgba(0,0,0,0.7)] hover:border-violet-400/80 hover:shadow-[0_0_35px_rgba(6,182,212,0.3)] overflow-hidden select-none will-change-transform"
     >
       {/* Background Subtle Gradient Glow */}
-      <div className="absolute -inset-1 bg-gradient-to-b from-cyan-500/10 via-transparent to-purple-500/10 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+      <div className="absolute -inset-1 bg-gradient-to-b from-violet-500/10 via-transparent to-purple-500/10 rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
 
       {/* Top Header Information inside card */}
       <div className="flex items-center justify-between pb-3 z-10">
-        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 border border-white/10 text-[11px] font-mono text-cyan-300">
-          <Sparkles className="w-3 h-3 text-cyan-400" />
+        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/10 border border-white/10 text-[11px] font-mono text-violet-300">
+          <Sparkles className="w-3 h-3 text-violet-400" />
           <span>{clip.hookCategory}</span>
         </div>
 
@@ -212,14 +211,14 @@ export const VideoResultCard: React.FC<VideoResultCardProps> = ({ clip, index, o
 
         {/* Play / Pause Indicator Icon */}
         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-          <div className="w-12 h-12 rounded-full bg-cyan-400/90 text-black flex items-center justify-center shadow-[0_0_25px_rgba(34,211,238,0.8)]">
+          <div className="w-12 h-12 rounded-full bg-violet-400/90 text-black flex items-center justify-center shadow-[0_0_25px_rgba(34,211,238,0.8)]">
             {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
           </div>
         </div>
 
         {/* Time Stamp overlay badge */}
         <div className="absolute top-3 left-3 px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-sm border border-white/10 text-[10px] font-mono text-stone-300 flex items-center gap-1">
-          <Clock className="w-2.5 h-2.5 text-cyan-400" />
+          <Clock className="w-2.5 h-2.5 text-violet-400" />
           <span>{clip.timestampRange}</span>
         </div>
 
@@ -232,7 +231,7 @@ export const VideoResultCard: React.FC<VideoResultCardProps> = ({ clip, index, o
       {/* Card Footer Details & Actions */}
       <div className="pt-2 space-y-3 z-10">
         <div>
-          <h4 className="text-sm font-bold text-white font-display line-clamp-1 group-hover:text-cyan-300 transition-colors">
+          <h4 className="text-sm font-bold text-white font-display line-clamp-1 group-hover:text-violet-300 transition-colors">
             {clip.title}
           </h4>
           <div className="flex flex-wrap gap-1 mt-1.5">
@@ -248,7 +247,7 @@ export const VideoResultCard: React.FC<VideoResultCardProps> = ({ clip, index, o
         <div className="flex items-center gap-2 pt-1 border-t border-white/10">
           <button
             onClick={handleCopyHook}
-            onMouseEnter={() => sound.playHover()}
+            onMouseEnter={() => void 0}
             title="Salin Kalimat Hook"
             className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-white/5 hover:bg-white/15 text-stone-300 hover:text-white text-xs font-mono transition-colors"
           >
@@ -268,12 +267,12 @@ export const VideoResultCard: React.FC<VideoResultCardProps> = ({ clip, index, o
           <button
             onClick={(e) => {
               e.stopPropagation();
-              sound.playClick();
+              
               onPreview(clip);
             }}
-            onMouseEnter={() => sound.playHover()}
+            onMouseEnter={() => void 0}
             title="Download Clip"
-            className="p-2 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/40 text-cyan-300 hover:text-cyan-100 border border-cyan-500/30 transition-colors"
+            className="p-2 rounded-xl bg-violet-500/20 hover:bg-violet-500/40 text-violet-300 hover:text-violet-100 border border-violet-500/30 transition-colors"
           >
             <Download className="w-4 h-4" />
           </button>

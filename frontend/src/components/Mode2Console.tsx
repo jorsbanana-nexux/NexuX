@@ -26,7 +26,6 @@ import { mode2Api, buildOutputUrl, type Mode2Response, type Mode2Voice } from '.
 import { v2Api, type Mode2StoryboardResult } from '../api/v2Api';
 import { ClipEditorStudio } from './ClipEditorStudio';
 import type { GeneratedClip } from './VideoResultCard';
-import { sound } from '../utils/soundEffects';
 
 interface Mode2ConsoleProps {
   onBack?: () => void;
@@ -205,7 +204,7 @@ export const Mode2Console: React.FC<Mode2ConsoleProps> = ({ onBack }) => {
           >
             {/* Mode 2 Badge */}
             <div className="flex items-center justify-center gap-3 mb-6">
-              <div className="px-4 py-1.5 rounded-full bg-gradient-to-r from-purple-500/20 to-pink-500/20 border border-purple-500/30 text-purple-300 text-sm font-medium flex items-center gap-2">
+              <div className="px-4 py-1.5 rounded-full bg-violet-500/10 border border-violet-500/30 text-violet-300 text-sm font-medium flex items-center gap-2">
                 <Wand2 className="w-4 h-4" />
                 Mode 2 — Creative Viral
               </div>
@@ -213,7 +212,7 @@ export const Mode2Console: React.FC<Mode2ConsoleProps> = ({ onBack }) => {
 
             {/* Keyword Input */}
             <div className="relative group">
-              <div className="absolute -inset-0.5 bg-gradient-to-r from-purple-500 to-pink-500 rounded-2xl blur opacity-25 group-focus-within:opacity-50 transition-opacity" />
+              <div className="absolute -inset-0.5 bg-violet-500/20 rounded-2xl blur opacity-0 group-focus-within:opacity-100 transition-opacity" />
               <div className="relative bg-black/40 backdrop-blur-xl rounded-2xl border border-white/10 p-6">
                 <label className="text-gray-400 text-sm mb-3 block">
                   Ketik satu kata kunci — AI cari, edit, dan render semuanya
@@ -234,7 +233,7 @@ export const Mode2Console: React.FC<Mode2ConsoleProps> = ({ onBack }) => {
                   <button
                     onClick={handleGenerate}
                     disabled={!keyword.trim()}
-                    className="px-6 py-4 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:opacity-90 transition-opacity flex items-center gap-2"
+                    className="px-6 py-4 rounded-xl bg-violet-600 text-white font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:opacity-90 transition-opacity flex items-center gap-2"
                   >
                     <Sparkles className="w-5 h-5" />
                     Generate
@@ -246,7 +245,7 @@ export const Mode2Console: React.FC<Mode2ConsoleProps> = ({ onBack }) => {
                   <button
                     onClick={handleStoryboard}
                     disabled={!keyword.trim() || storyboardLoading}
-                    className="text-xs text-cyan-300 hover:text-cyan-200 disabled:text-gray-600 flex items-center gap-1.5 transition-colors"
+                    className="text-xs text-violet-300 hover:text-violet-200 disabled:text-gray-600 flex items-center gap-1.5 transition-colors"
                   >
                     {storyboardLoading ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -273,7 +272,7 @@ export const Mode2Console: React.FC<Mode2ConsoleProps> = ({ onBack }) => {
                           />
                         )}
                         <span className={`w-16 shrink-0 text-[10px] font-mono uppercase ${
-                          clip.role === 'hook' ? 'text-amber-400' : clip.role === 'payoff' ? 'text-emerald-400' : 'text-cyan-300'
+                          clip.role === 'hook' ? 'text-amber-400' : clip.role === 'payoff' ? 'text-emerald-400' : 'text-violet-300'
                         }`}>
                           {clip.role}
                         </span>
@@ -310,7 +309,7 @@ export const Mode2Console: React.FC<Mode2ConsoleProps> = ({ onBack }) => {
                     ))}
                     <button
                       onClick={handleGenerateFromStoryboard}
-                      className="w-full mt-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 text-white text-sm font-medium flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
+                      className="w-full mt-2 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-medium flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
                     >
                       <Sparkles className="w-4 h-4" />
                       Buat dari Storyboard ({storyboard.total_clips} klip)
@@ -445,7 +444,7 @@ export const Mode2Console: React.FC<Mode2ConsoleProps> = ({ onBack }) => {
             <div className="max-w-md mx-auto">
               <div className="h-2 bg-white/5 rounded-full overflow-hidden">
                 <motion.div
-                  className="h-full bg-gradient-to-r from-purple-500 to-pink-500"
+                  className="h-full bg-violet-600"
                   initial={{ width: '0%' }}
                   animate={{ width: '100%' }}
                   transition={{ duration: 60, ease: 'linear' }}
@@ -526,14 +525,14 @@ export const Mode2Console: React.FC<Mode2ConsoleProps> = ({ onBack }) => {
             <div className="flex justify-center gap-3">
               <a
                 href={`/api/download/${result.job_id}`}
-                className="px-6 py-3 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white font-medium hover:opacity-90 transition-opacity flex items-center gap-2"
+                className="px-6 py-3 rounded-xl bg-violet-600 text-white font-medium hover:opacity-90 transition-opacity flex items-center gap-2"
               >
                 <Download className="w-5 h-5" /> Download Video
               </a>
               {result.output_path && (
                 <button
-                  onClick={() => { sound.playClick(); setShowEditor(true); }}
-                  className="px-6 py-3 rounded-xl bg-cyan-500/15 border border-cyan-500/40 text-cyan-200 hover:bg-cyan-500/25 transition-colors flex items-center gap-2"
+                  onClick={() => {  setShowEditor(true); }}
+                  className="px-6 py-3 rounded-xl bg-violet-500/15 border border-violet-500/40 text-violet-200 hover:bg-violet-500/25 transition-colors flex items-center gap-2"
                 >
                   <SlidersHorizontal className="w-5 h-5" /> Edit Video
                 </button>

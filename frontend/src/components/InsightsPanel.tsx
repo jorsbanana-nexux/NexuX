@@ -26,7 +26,7 @@ interface InsightsPanelProps {
 const GRADE_COLORS: Record<string, string> = {
   S: 'text-amber-300 border-amber-400/50 bg-amber-400/10',
   A: 'text-emerald-300 border-emerald-400/50 bg-emerald-400/10',
-  B: 'text-cyan-300 border-cyan-400/50 bg-cyan-400/10',
+  B: 'text-violet-300 border-violet-400/50 bg-violet-400/10',
   C: 'text-yellow-300 border-yellow-400/50 bg-yellow-400/10',
   D: 'text-rose-300 border-rose-400/50 bg-rose-400/10',
 };
@@ -79,7 +79,7 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({ jobId, clipIndex }
   if (loading) {
     return (
       <div className="p-4 space-y-4">
-        <div className="flex items-center gap-2 text-cyan-300 text-xs font-mono">
+        <div className="flex items-center gap-2 text-violet-300 text-xs font-mono">
           <Activity className="w-4 h-4 animate-pulse" />
           Menganalisis retensi & hook…
         </div>
@@ -105,7 +105,7 @@ export const InsightsPanel: React.FC<InsightsPanelProps> = ({ jobId, clipIndex }
         <div>
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <Activity className="w-4 h-4 text-cyan-300" />
+              <Activity className="w-4 h-4 text-violet-300" />
               <span className="text-xs font-mono uppercase tracking-wider text-stone-300">
                 Retention Heatmap
               </span>

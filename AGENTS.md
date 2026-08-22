@@ -65,3 +65,13 @@ Log: /tmp/benchmark_e2e*.log. Output: engine/output/bench_e2e/.
 - **`engine/ytdlp_updater.py`** — self-heal: background thread at startup (`main.lifespan`, delayed `NEXUX_YTDLP_UPDATE_DELAY`=120s) + reactive: `download._run_ytdlp` upgrades yt-dlp once and retries once when stderr matches 403. Process-wide lock; failures never crash the app. Opt out: `NEXUX_YTDLP_AUTO_UPDATE=0`.
 - Sandbox finding: metadata fetch works, but stream download 403s even with player_client — cookies + proxy are the durable fixes; on a hostile network only `NEXUX_PROXY` (or local upload) unblocks googlevideo.
 - Tests: `tests/test_ytdlp_resilience.py` (13 tests). Never add yt-dlp subprocess calls without `_ytdlp_common_args()`.
+
+
+## V9.7.0 — WhisperX + Settings + Clean Redesign (2026-08-22)
+- **Whisper dihapus total**; transkripsi = WhisperX-only (engine/transcribe.py). faster-whisper/openai-whisper/ctranslate2 dihapus dari requirements; whisperx>=3.1 ditambahkan (opsional — pipeline tetap jalan via auto-captions bila belum terinstall).
+- **Bug "Loading large-v3 on cpu"**: model dipilih dari utils/settings_store.py (JSON di NEXUX_SETTINGS_PATH), BUKAN env var. Settings live-reload per job — tidak perlu restart.
+- **Settings API** api_v97_settings.py: GET/PATCH /api/settings, GET /api/settings/models, POST /api/settings/models/preload (BackgroundTasks, poll /preload/{job_id}), DELETE /api/settings/reset. Diarization butuh HF_TOKEN.
+- **Frontend redesign**: App.tsx = view-switching (studio/compare/settings), komponen baru AppHeader/HeroCompact/SettingsPage/StudioGenerate. Semua komponen cosmic legacy (SpaceshipConsole, TiltCard, MagneticElement, soundEffects, dll.) DIHAPUS. TryModal & VideoModal dihapus (duplikat/dummy).
+- Aksen warna global: violet (bukan cyan). HATI-HATI: colorType: 'cyan' di types/subtitles.ts adalah NILAI DOMAIN — jangan direname saat recolor (pecah TS2367).
+- Dev server WAJIB port 3000 (CORS ALLOWED_ORIGINS hanya localhost:3000). Jika vite pindah ke 3001 -> indikator Offline di UI.
+- Verify: backend 115 tests (termasuk tests/test_settings.py), frontend 26 vitest + tsc + build.

@@ -10,7 +10,6 @@ import {
   Clapperboard,
 } from 'lucide-react';
 import { VideoResultCard, GeneratedClip } from './VideoResultCard';
-import { sound } from '../utils/soundEffects';
 import { nexuxApi } from '../api/nexuxApi';
 
 interface ResultsMosaicProps {
@@ -25,8 +24,8 @@ export const ResultsMosaicGrid: React.FC<ResultsMosaicProps> = ({ clips, onReset
   const [downloadToast, setDownloadToast] = useState(false);
 
   const handleDownloadAll = async () => {
-    sound.playClick();
-    sound.playSuccess();
+    
+    
     setDownloadToast(true);
     // Download each clip individually (no ZIP endpoint in canonical API)
     for (const clip of clips) {
@@ -70,10 +69,10 @@ export const ResultsMosaicGrid: React.FC<ResultsMosaicProps> = ({ clips, onReset
         <div className="flex items-center gap-2.5 sm:gap-3 flex-wrap">
           <button
             onClick={() => {
-              sound.playClick();
+              
               onReset();
             }}
-            onMouseEnter={() => sound.playHover()}
+            onMouseEnter={() => void 0}
             className="inline-flex items-center gap-2 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-stone-300 hover:text-white border border-white/10 text-xs font-mono transition-colors active:scale-95"
           >
             <RotateCcw className="w-3.5 h-3.5" />
@@ -83,11 +82,11 @@ export const ResultsMosaicGrid: React.FC<ResultsMosaicProps> = ({ clips, onReset
           {onOpenTimelineEditor && (
             <button
               onClick={() => {
-                sound.playClick();
+                
                 onOpenTimelineEditor();
               }}
-              onMouseEnter={() => sound.playHover()}
-              className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-gradient-to-r from-cyan-500/20 to-blue-500/20 hover:from-cyan-500/30 hover:to-blue-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-mono font-bold transition-colors active:scale-95 shadow-[0_0_15px_rgba(34,211,238,0.15)]"
+              onMouseEnter={() => void 0}
+              className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-gradient-to-r from-violet-500/20 to-blue-500/20 hover:from-violet-500/30 hover:to-blue-500/30 text-violet-300 border border-violet-500/40 text-xs font-mono font-bold transition-colors active:scale-95 shadow-[0_0_15px_rgba(34,211,238,0.15)]"
             >
               <Clapperboard className="w-3.5 h-3.5" />
               <span>Open Timeline Editor</span>
@@ -97,10 +96,10 @@ export const ResultsMosaicGrid: React.FC<ResultsMosaicProps> = ({ clips, onReset
           {onPersonalize && (
             <button
               onClick={() => {
-                sound.playClick();
+                
                 onPersonalize();
               }}
-              onMouseEnter={() => sound.playHover()}
+              onMouseEnter={() => void 0}
               className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-stone-300 border border-white/10 text-xs font-mono font-bold transition-colors active:scale-95"
             >
               <Wand2 className="w-3.5 h-3.5" />
@@ -110,7 +109,7 @@ export const ResultsMosaicGrid: React.FC<ResultsMosaicProps> = ({ clips, onReset
 
           <button
             onClick={handleDownloadAll}
-            onMouseEnter={() => sound.playHover()}
+            onMouseEnter={() => void 0}
             className="inline-flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-white text-black hover:bg-stone-100 font-mono text-xs font-bold uppercase tracking-wider transition-all shadow-[0_0_20px_rgba(255,255,255,0.4)] active:scale-95"
           >
             <Download className="w-3.5 h-3.5" />

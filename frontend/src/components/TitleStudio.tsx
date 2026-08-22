@@ -20,7 +20,7 @@ interface TitleStudioProps {
 const GRADE_STYLES: Record<string, string> = {
   S: 'text-amber-300 border-amber-400/50 bg-amber-400/10',
   A: 'text-emerald-300 border-emerald-400/50 bg-emerald-400/10',
-  B: 'text-cyan-300 border-cyan-400/50 bg-cyan-400/10',
+  B: 'text-violet-300 border-violet-400/50 bg-violet-400/10',
   C: 'text-yellow-300 border-yellow-400/50 bg-yellow-400/10',
   D: 'text-rose-300 border-rose-400/50 bg-rose-400/10',
 };

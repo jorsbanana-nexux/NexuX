@@ -1,224 +1,162 @@
 /**
- * @license
- * SPDX-License-Identifier: Apache-2.0
+ * NexuX V9.7 — App shell.
+ * Clean view-based architecture (no modals-as-pages), SpaceX-style restraint:
+ * Studio (create flows), Compare (multi-job), Settings.
+ * All heavy sections render inside a single scroll container — no custom
+ * scroll hijacking, no global cursor overrides, no particle systems.
  */
+import React, { useState, useEffect, useCallback, Suspense, lazy, useRef } from 'react';
+import { AppHeader } from './components/AppHeader';
 
-import React, { useState, useEffect, Suspense, lazy } from 'react';
-import { CustomCursor } from './components/CustomCursor';
-import { CosmicAtmosphere } from './components/CosmicAtmosphere';
-import { Rocket4KVideoBackground, SPACE_4K_VARIANTS } from './components/Rocket4KVideoBackground';
-import { Navbar } from './components/Navbar';
-import { HeroSection } from './components/HeroSection';
-import { MagneticElement } from './components/MagneticElement';
-import { CosmicThemeMode } from './components/AudioCosmicControls';
-import { WarpSpeedTransition } from './components/WarpSpeedTransition';
-import { Cpu } from 'lucide-react';
-import { sound } from './utils/soundEffects';
-import { initLenis, destroyLenis } from './utils/lenis';
-
-// Lazy-loaded below-the-fold components (reduces initial bundle)
-const PostRenderFlow = lazy(() => import('./components/PostRenderFlow').then(m => ({ default: m.PostRenderFlow })));
+const HeroCompact = lazy(() => import('./components/HeroCompact'));
 const JobCompareView = lazy(() => import('./components/JobCompareView'));
 const SubtitleEngineStudio = lazy(() => import('./components/SubtitleEngineStudio').then(m => ({ default: m.SubtitleEngineStudio })));
-const ShowcaseSection = lazy(() => import('./components/ShowcaseSection').then(m => ({ default: m.ShowcaseSection })));
-const TryModal = lazy(() => import('./components/TryModal').then(m => ({ default: m.TryModal })));
-const VideoModal = lazy(() => import('./components/VideoModal').then(m => ({ default: m.VideoModal })));
-const CosmicSpaceDock = lazy(() => import('./components/CosmicSpaceDock').then(m => ({ default: m.CosmicSpaceDock })));
+const StudioGenerate = lazy(() => import('./components/StudioGenerate'));
+const SettingsPage = lazy(() => import('./components/SettingsPage'));
+const nexuxApiHealth = () => import('./api/nexuxApi').then(m => m.nexuxApi.health());
 
-// Lightweight fallback for lazy components
+type View = 'studio' | 'compare' | 'settings';
+
+interface Toast {
+  id: number;
+  kind: 'success' | 'error' | 'info';
+  message: string;
+}
+
 const LazyFallback = () => (
-  <div className="min-h-[200px] flex items-center justify-center">
-    <div className="w-8 h-8 border-2 border-cyan-400/30 border-t-cyan-400 rounded-full animate-spin" />
+  <div className="min-h-[180px] flex items-center justify-center">
+    <div className="w-6 h-6 border-2 border-white/20 border-t-violet-500 rounded-full animate-spin" />
   </div>
 );
 
 export default function App() {
-  const [isTryModalOpen, setIsTryModalOpen] = useState(false);
-  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
-  
-  // Cosmic Theme Mode: 'nebula' (vibrant aura) vs 'deep-space' (pure OLED void)
-  const [cosmicTheme, setCosmicTheme] = useState<CosmicThemeMode>('nebula');
-  
-  // 10 4K Space Background Controller State (5s interval as requested)
-  const [spaceTrackIndex, setSpaceTrackIndex] = useState(0);
-  const [isAutoCycle, setIsAutoCycle] = useState(true);
+  const [view, setView] = useState<View>('studio');
+  const [healthOk, setHealthOk] = useState<boolean | null>(null);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const toastId = useRef(0);
 
-  // Warp Speed Transition State
-  const [warpActive, setWarpActive] = useState(false);
-  const [warpLabel, setWarpLabel] = useState('WARP DRIVE ENGAGED');
-
-  // Initialize Lenis Momentum Smooth Scrolling & GSAP integration
   useEffect(() => {
-    const lenis = initLenis();
-    return () => {
-      destroyLenis();
-    };
+    let alive = true;
+    nexuxApiHealth()
+      .then(() => alive && setHealthOk(true))
+      .catch(() => alive && setHealthOk(false));
+    return () => { alive = false; };
   }, []);
 
-  // 5-Second Rapid Space Cycle Timer (Requested by User)
-  useEffect(() => {
-    if (!isAutoCycle) return;
-    const timer = setInterval(() => {
-      setSpaceTrackIndex((prev) => (prev + 1) % SPACE_4K_VARIANTS.length);
-    }, 5000);
+  const showToast = useCallback((kind: Toast['kind'], message: string) => {
+    const id = ++toastId.current;
+    setToasts((t) => [...t, { id, kind, message }]);
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4000);
+  }, []);
 
-    return () => clearInterval(timer);
-  }, [isAutoCycle]);
-
-  const triggerWarp = (label: string = 'LIGHTSPEED ENGAGED // 躍進モード') => {
-    setWarpLabel(label);
-    setWarpActive(true);
-  };
+  const goToStudioFlow = useCallback(() => {
+    setView('studio');
+    requestAnimationFrame(() => {
+      document.getElementById('studio-generate')?.scrollIntoView({ behavior: 'smooth' });
+    });
+  }, []);
 
   return (
-    <div className="relative min-h-screen bg-transparent text-white selection:bg-cyan-500/30 selection:text-cyan-200">
-      {/* 1. Dynamic 4K SpaceX / Elon Musk Rocket Rotating Video Background with 10 Space Variants & 5s Fast Auto-Cycle */}
-      <Rocket4KVideoBackground 
-        opacity={cosmicTheme === 'deep-space' ? 0.7 : 0.85} 
-        currentIndex={spaceTrackIndex}
-        onIndexChange={(idx) => setSpaceTrackIndex(idx)}
-      />
-
-      {/* 2. Interactive Cosmic Atmosphere: Parallax Starfield & Aurora Stardust Overlays */}
-      <CosmicAtmosphere theme={cosmicTheme} enableParticles={true} />
-
-      {/* 3. Custom Glowing Star-Trail Cursor with Magnetic Trailing Effect */}
-      <CustomCursor />
-
-      {/* 4. Transparent Astronaut Glassmorphism Navbar with Magnetic Links */}
-      <Navbar
-        onOpenTryModal={() => {
-          sound.playClick();
-          setIsTryModalOpen(true);
+    <div className="min-h-screen bg-[#0a0a0b] text-white">
+      <AppHeader
+        currentView={view}
+        onNavigate={(v) => {
+          setView(v);
         }}
+        healthOk={healthOk}
       />
 
-      {/* 5. Hero Section with Orbital Rotations & SpaceX Parallax Video Background */}
-      <HeroSection
-        onOpenTryModal={() => setIsTryModalOpen(true)}
-        onOpenDemoVideo={() => setIsVideoModalOpen(true)}
-      />
+      {/* Toast stack — top-right under header */}
+      <div className="fixed top-20 right-4 z-[60] flex flex-col gap-2 max-w-sm" role="status">
+        {toasts.map((t) => (
+          <div
+            key={t.id}
+            className={`rounded-lg border px-4 py-2.5 text-sm font-medium shadow-lg ${
+              t.kind === 'success'
+                ? 'border-emerald-500/30 bg-emerald-950/90 text-emerald-200'
+                : t.kind === 'error'
+                ? 'border-red-500/30 bg-red-950/90 text-red-200'
+                : 'border-white/15 bg-neutral-900/95 text-zinc-200'
+            }`}
+          >
+            {t.message}
+          </div>
+        ))}
+      </div>
 
-      {/* 6. Dual-Mode Flow: Mode Selector → Podcast Console (Spaceship) or AI Creative Console (Mode 2) */}
-      <Suspense fallback={<LazyFallback />}>
-        <PostRenderFlow />
-      </Suspense>
+      {view === 'studio' && (
+        <>
+          <Suspense fallback={<LazyFallback />}>
+            <HeroCompact onStart={goToStudioFlow} />
+          </Suspense>
 
-      {/* 6.5 Multi-Job Compare Dashboard — cross-job quality matrix (beyond Opus Clip) */}
-      <Suspense fallback={<LazyFallback />}>
-        <JobCompareView />
-      </Suspense>
+          <Suspense fallback={<LazyFallback />}>
+            <StudioGenerate />
+          </Suspense>
 
-      {/* 7. Subtitle Engine Studio with Word-by-Word, Line-by-Line, Bounce-Zoom & Hormozi, Minimal, Gamer Presets */}
-      <Suspense fallback={<LazyFallback />}>
-        <SubtitleEngineStudio />
-      </Suspense>
-
-      {/* 8. High-Performance Architecture Telemetry with 3D Tilt & Orbital Radar Diagnostics */}
-      <Suspense fallback={<LazyFallback />}>
-        <ShowcaseSection />
-      </Suspense>
-
-      {/* 9. Minimalist, Zero-Clutter Unified Floating Space Dock at Bottom Right */}
-      <Suspense fallback={<LazyFallback />}>
-        <CosmicSpaceDock
-          currentTrackIndex={spaceTrackIndex}
-          onTrackSelect={(idx) => setSpaceTrackIndex(idx)}
-          isAutoCycle={isAutoCycle}
-          onToggleAutoCycle={() => setIsAutoCycle(!isAutoCycle)}
-          currentTheme={cosmicTheme}
-          onThemeChange={(newTheme) => setCosmicTheme(newTheme)}
-          onTriggerWarp={(label) => triggerWarp(label)}
-        />
-      </Suspense>
-
-      {/* 10. Warp Speed Hyperspace Tunnel Transition */}
-      <WarpSpeedTransition
-        isActive={warpActive}
-        label={warpLabel}
-        durationMs={1100}
-        onComplete={() => setWarpActive(false)}
-      />
-
-      {/* 11. Modern Astronaut Visor Glassmorphism Footer with Magnetic Anchors */}
-      <footer className="relative border-t border-white/10 bg-black/80 backdrop-blur-xl py-12 px-6 sm:px-10 z-10 select-none">
-        <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
-          <MagneticElement strength={0.25} radius={60}>
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-white/10 border border-cyan-400/40 text-cyan-300 flex items-center justify-center font-black text-sm shadow-[0_0_15px_rgba(34,211,238,0.25)]">
-                <Cpu className="w-4 h-4 text-cyan-300" />
-              </div>
-              <div className="flex items-baseline gap-2">
-                <span className="font-display tracking-[0.25em] font-extrabold text-base text-white">
-                  NEXU<span className="text-cyan-400 text-glow-cyan">X</span>
-                </span>
-                <span className="font-jp text-[10px] font-medium tracking-widest text-stone-500">
-                  ネクサス
-                </span>
+          <section id="how-it-works" className="py-16 px-4 sm:px-6 border-t border-white/[0.06]">
+            <div className="max-w-5xl mx-auto">
+              <p className="section-label mb-3">How it works</p>
+              <h2 className="font-display text-2xl sm:text-3xl font-bold mb-8">
+                Three steps. Zero cloud.
+              </h2>
+              <div className="grid sm:grid-cols-3 gap-4">
+                {[
+                  { n: '01', t: 'Paste link or keyword', d: 'YouTube URL for Podcast Mode, or a single keyword for AI Creative Mode.' },
+                  { n: '02', t: 'AI finds the moments', d: '8-dimension scoring, hook detection, and critic review pick the strongest segments.' },
+                  { n: '03', t: 'Export & post', d: '9:16 clips with karaoke subtitles, viral titles, and hashtags — rendered locally with FFmpeg.' },
+                ].map((s) => (
+                  <div key={s.n} className="card p-5">
+                    <span className="text-xs font-mono2 text-violet-400">{s.n}</span>
+                    <h3 className="mt-2 font-semibold text-white text-sm">{s.t}</h3>
+                    <p className="mt-1 text-sm text-zinc-400 leading-relaxed">{s.d}</p>
+                  </div>
+                ))}
               </div>
             </div>
-          </MagneticElement>
+          </section>
 
-          <div className="flex items-center gap-6 text-xs font-mono text-stone-400">
-            <MagneticElement strength={0.3} radius={50}>
-              <a 
-                href="#hero" 
-                onClick={() => sound.playClick()}
-                className="hover:text-cyan-300 transition-colors py-1 block"
-              >
-                Overview
-              </a>
-            </MagneticElement>
-            <MagneticElement strength={0.3} radius={50}>
-              <a 
-                href="#workspace-console" 
-                onClick={() => sound.playClick()}
-                className="hover:text-cyan-300 transition-colors py-1 block"
-              >
-                Cockpit
-              </a>
-            </MagneticElement>
-            <MagneticElement strength={0.3} radius={50}>
-              <a 
-                href="#subtitle-engine" 
-                onClick={() => sound.playClick()}
-                className="hover:text-cyan-300 transition-colors py-1 block"
-              >
-                Subtitles
-              </a>
-            </MagneticElement>
-            <MagneticElement strength={0.3} radius={50}>
-              <a 
-                href="#capabilities" 
-                onClick={() => sound.playClick()}
-                className="hover:text-cyan-300 transition-colors py-1 block"
-              >
-                Architecture
-              </a>
-            </MagneticElement>
-          </div>
+          <Suspense fallback={<LazyFallback />}>
+            <SubtitleEngineStudio />
+          </Suspense>
 
-          <div className="text-[11px] font-mono text-stone-500 flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span>© 2026 NEXUX • Autonomous AI Space Infrastructure</span>
-          </div>
+          <footer className="border-t border-white/[0.06] py-10 px-4 sm:px-6">
+            <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+              <span className="text-sm text-zinc-500">
+                NexuX v9.7 — local-first AI video repurposing
+              </span>
+              <div className="flex items-center gap-5 text-sm text-zinc-500">
+                <button onClick={() => setView('settings')} className="hover:text-white transition-colors">
+                  Settings
+                </button>
+                <a
+                  href="https://github.com/jorsbanana-nexux/NexuX"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="hover:text-white transition-colors"
+                >
+                  GitHub
+                </a>
+              </div>
+            </div>
+          </footer>
+        </>
+      )}
+
+      {view === 'compare' && (
+        <div className="pt-16">
+          <Suspense fallback={<LazyFallback />}>
+            <JobCompareView />
+          </Suspense>
         </div>
-      </footer>
+      )}
 
-      {/* Interactive Modals */}
-      <Suspense fallback={null}>
-        <TryModal
-          isOpen={isTryModalOpen}
-          onClose={() => setIsTryModalOpen(false)}
-        />
-      </Suspense>
+      {view === 'settings' && (
+        <Suspense fallback={<LazyFallback />}>
+          <SettingsPage showToast={showToast} />
+        </Suspense>
+      )}
 
-      <Suspense fallback={null}>
-        <VideoModal
-          isOpen={isVideoModalOpen}
-          onClose={() => setIsVideoModalOpen(false)}
-        />
-      </Suspense>
     </div>
   );
 }

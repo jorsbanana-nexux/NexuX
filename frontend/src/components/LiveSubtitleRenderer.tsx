@@ -185,7 +185,7 @@ export const LiveSubtitleRenderer: React.FC<LiveSubtitleRendererProps> = ({
           {visualPreset === 'mrbeast' && (
             <div 
               style={{ ...getGlowStyle(true, highlightColor) }}
-              className="inline-block px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-400 via-amber-300 to-rose-400 text-black font-black -rotate-2 border-2 border-black shadow-2xl leading-tight"
+              className="inline-block px-4 py-2 rounded-xl bg-gradient-to-r from-violet-400 via-amber-300 to-rose-400 text-black font-black -rotate-2 border-2 border-black shadow-2xl leading-tight"
             >
               {currentLine.lineText} {showEmojis && '🔥'}
             </div>
@@ -193,7 +193,7 @@ export const LiveSubtitleRenderer: React.FC<LiveSubtitleRendererProps> = ({
 
           {visualPreset === 'minimal-aesthetic' && (
             <div className="inline-block px-5 py-2.5 rounded-2xl bg-black/80 backdrop-blur-xl border border-white/30 text-white font-medium shadow-2xl leading-tight">
-              <span className="text-cyan-300 font-bold">{currentLine.lineText}</span>
+              <span className="text-violet-300 font-bold">{currentLine.lineText}</span>
             </div>
           )}
 
@@ -209,7 +209,7 @@ export const LiveSubtitleRenderer: React.FC<LiveSubtitleRendererProps> = ({
           {visualPreset === 'neon-cyberpunk' && (
             <div 
               style={{ ...getGlowStyle(true, '#06b6d4') }}
-              className="inline-block px-4 py-2 rounded-xl bg-black/90 border border-cyan-400 text-cyan-300 font-mono font-bold shadow-2xl leading-tight tracking-wider"
+              className="inline-block px-4 py-2 rounded-xl bg-black/90 border border-violet-400 text-violet-300 font-mono font-bold shadow-2xl leading-tight tracking-wider"
             >
               [ {currentLine.lineText} ]
             </div>
@@ -348,7 +348,7 @@ export const LiveSubtitleRenderer: React.FC<LiveSubtitleRendererProps> = ({
                   }
                   className={`px-2 py-0.5 rounded-lg transition-all duration-200 font-medium ${
                     isActive
-                      ? 'font-bold underline underline-offset-4 decoration-2 decoration-cyan-400 bg-black/60 backdrop-blur-md px-2.5 border border-white/20'
+                      ? 'font-bold underline underline-offset-4 decoration-2 decoration-violet-400 bg-black/60 backdrop-blur-md px-2.5 border border-white/20'
                       : 'bg-black/30 backdrop-blur-sm'
                   }`}
                 >
@@ -416,7 +416,7 @@ export const LiveSubtitleRenderer: React.FC<LiveSubtitleRendererProps> = ({
                         }
                   }
                   className={`px-2 py-0.5 rounded-md font-mono font-bold leading-none border transition-all duration-150 ${
-                    isActive ? 'border-cyan-400 scale-105 z-10' : 'border-white/10 bg-black/40'
+                    isActive ? 'border-violet-400 scale-105 z-10' : 'border-white/10 bg-black/40'
                   }`}
                 >
                   {isActive ? `[${w.text}]` : w.text}

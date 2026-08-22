@@ -35,7 +35,6 @@ import {
   Maximize2, LayoutGrid, Rows3, CheckCircle2, Loader2, Server,
   AlertCircle,
 } from 'lucide-react';
-import { sound } from '../utils/soundEffects';
 import { GeneratedClip } from './VideoResultCard';
 import { nexuxApi } from '../api/nexuxApi';
 
@@ -283,7 +282,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
     h.future.push(JSON.parse(JSON.stringify(elements)));
     setElements(prev);
     setHistoryVersion(v => v + 1);
-    sound.playClick();
+    
   }, [elements]);
 
   const redo = useCallback(() => {
@@ -293,7 +292,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
     h.past.push(JSON.parse(JSON.stringify(elements)));
     setElements(next);
     setHistoryVersion(v => v + 1);
-    sound.playClick();
+    
   }, [elements]);
 
   // ── Preview rendering state ──
@@ -344,7 +343,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
 
   // ── Playback controls ──
   const togglePlay = () => {
-    sound.playClick();
+    
     if (videoRef.current) {
       if (isPlaying) videoRef.current.pause();
       else videoRef.current.play();
@@ -421,7 +420,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
 
   // ── Transcript editing ──
   const startEditWord = (segId: string, wordIdx: number, current: string) => {
-    sound.playClick();
+    
     setEditingWord({ segId, wordIdx });
     setWordDraft(current);
   };
@@ -433,13 +432,13 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
   };
 
   const applyCorrection = (everywhere: boolean) => {
-    sound.playSuccess();
+    
     setEditingWord(null);
   };
 
   // ── Element ops ──
   const addTextElement = () => {
-    sound.playClick();
+    
     pushHistory(elements);
     const newEl: TimelineElement = {
       id: `el-${Date.now()}`, type: 'text', content: 'New Text',
@@ -459,7 +458,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
   };
 
   const deleteElement = (id: string) => {
-    sound.playClick();
+    
     pushHistory(elements);
     setElements(prev => prev.filter(el => el.id !== id));
     if (selectedElementId === id) setSelectedElementId(null);
@@ -469,24 +468,24 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
 
   // ── Speaker ops ──
   const toggleSpeakerMute = (id: string) => {
-    sound.playClick();
+    
     setSpeakers(prev => prev.map(s => s.id === id ? { ...s, muted: !s.muted } : s));
   };
   const toggleSpeakerIsolate = (id: string) => {
-    sound.playClick();
+    
     setSpeakers(prev => prev.map(s => s.id === id ? { ...s, isolated: !s.isolated } : s));
   };
 
   // ── Sections ──
   const addSection = () => {
-    sound.playClick();
+    
     setSections(prev => [...prev, { id: `sec-${Date.now()}`, time: currentTime, label: `Section ${prev.length + 1}` }]);
   };
 
   // ── Repair / Self-Heal ──
   const runDiagnostics = async () => {
     setRepairRunning(true);
-    sound.playClick();
+    
     try {
       // Call the repair API
       const res = await fetch(`${import.meta.env.VITE_NEXUX_API || 'http://127.0.0.1:8000'}/api/repair/diagnose`);
@@ -525,12 +524,12 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
       ]);
     }
     setRepairRunning(false);
-    sound.playSuccess();
+    
   };
 
   const fixAllIssues = async () => {
     setRepairRunning(true);
-    sound.playClick();
+    
     try {
       await fetch(`${import.meta.env.VITE_NEXUX_API || 'http://127.0.0.1:8000'}/api/repair/fix-all`, { method: 'POST' });
     } catch { /* offline — simulate */ }
@@ -539,13 +538,13 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
       ? { ...r, status: 'fixed' as const, detail: `${r.label}: ${r.detail} → Fixed automatically` }
       : r));
     setRepairRunning(false);
-    sound.playSuccess();
+    
   };
 
   // ── Real-time FFmpeg Preview ──
   const generatePreview = async () => {
     setPreviewLoading(true);
-    sound.playClick();
+    
     try {
       const res = await fetch(`${import.meta.env.VITE_NEXUX_API || 'http://127.0.0.1:8000'}/api/preview-render/${jobId}/${selectedClipIndex}`, {
         method: 'POST',
@@ -569,7 +568,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
 
   // ── Export (burns overlays to video via FFmpeg) ──
   const startExport = async () => {
-    sound.playClick();
+    
     const id = `render-${Date.now()}`;
     setRenderQueue(prev => [...prev, { id, label: `${clip?.title || 'Clip'} — ${exportRes}`, progress: 0, status: 'queued' }]);
     setShowSettings(false);
@@ -622,7 +621,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
       setRenderQueue(prev => prev.map(r => r.id === id
         ? { ...r, progress: 100, status: 'done' }
         : r));
-      sound.playSuccess();
+      
     } catch (e) {
       console.error('Export failed:', e);
       // Fallback: simulate progress so UI still works offline
@@ -632,7 +631,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
         setRenderQueue(prev => prev.map(r => r.id === id
           ? { ...r, progress: Math.min(100, p), status: p >= 100 ? 'done' : 'rendering' }
           : r));
-        if (p >= 100) { clearInterval(iv); sound.playSuccess(); }
+        if (p >= 100) { clearInterval(iv);  }
       }, 400);
     }
   };
@@ -719,7 +718,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
         {/* Left: back + add section */}
         <div className="flex items-center gap-3">
           <button
-            onClick={() => { sound.playClick(); onClose(); }}
+            onClick={() => {  onClose(); }}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg hover:bg-white/10 text-stone-400 hover:text-white text-xs font-mono transition-colors"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
@@ -736,7 +735,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
         <div className="flex items-center gap-2">
           <div className="relative">
             <button
-              onClick={() => { sound.playClick(); setShowAspectMenu(!showAspectMenu); setShowLayoutMenu(false); }}
+              onClick={() => {  setShowAspectMenu(!showAspectMenu); setShowLayoutMenu(false); }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 text-stone-300 text-xs font-mono border border-white/10"
             >
               <Smartphone className="w-3 h-3" /> {aspectRatio} <ChevronDown className="w-3 h-3" />
@@ -744,7 +743,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
             {showAspectMenu && (
               <div className="absolute top-full mt-1 left-0 bg-stone-900 border border-white/10 rounded-lg overflow-hidden z-10 min-w-[100px]">
                 {(['9:16', '1:1', '16:9', '4:5'] as const).map(r => (
-                  <button key={r} onClick={() => { setAspectRatio(r); setShowAspectMenu(false); sound.playClick(); }}
+                  <button key={r} onClick={() => { setAspectRatio(r); setShowAspectMenu(false);  }}
                     className="block w-full text-left px-3 py-2 text-xs font-mono text-stone-300 hover:bg-white/10">{r}</button>
                 ))}
               </div>
@@ -753,7 +752,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
 
           <div className="relative">
             <button
-              onClick={() => { sound.playClick(); setShowLayoutMenu(!showLayoutMenu); setShowAspectMenu(false); }}
+              onClick={() => {  setShowLayoutMenu(!showLayoutMenu); setShowAspectMenu(false); }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 text-stone-300 text-xs font-mono border border-white/10"
             >
               <LayoutGrid className="w-3 h-3" /> Layout: {layoutMode} <ChevronDown className="w-3 h-3" />
@@ -761,7 +760,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
             {showLayoutMenu && (
               <div className="absolute top-full mt-1 left-0 bg-stone-900 border border-white/10 rounded-lg overflow-hidden z-10 min-w-[100px]">
                 {(['Fill', 'Fit'] as const).map(l => (
-                  <button key={l} onClick={() => { setLayoutMode(l); setShowLayoutMenu(false); sound.playClick(); }}
+                  <button key={l} onClick={() => { setLayoutMode(l); setShowLayoutMenu(false);  }}
                     className="block w-full text-left px-3 py-2 text-xs font-mono text-stone-300 hover:bg-white/10">{l}</button>
                 ))}
               </div>
@@ -769,7 +768,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
           </div>
 
           <button
-            onClick={() => { sound.playClick(); setTrackOn(!trackOn); }}
+            onClick={() => {  setTrackOn(!trackOn); }}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-mono border transition-colors ${
               trackOn ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300' : 'bg-white/5 border-white/10 text-stone-400'
             }`}
@@ -781,7 +780,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
         {/* Right: render queue indicator + settings gear + export */}
         <div className="flex items-center gap-2">
           {renderQueue.filter(r => r.status !== 'done').length > 0 && (
-            <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-[11px] font-mono">
+            <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-full bg-violet-500/10 border border-violet-500/30 text-violet-300 text-[11px] font-mono">
               <Loader2 className="w-3 h-3 animate-spin" />
               {renderQueue.filter(r => r.status !== 'done').length} rendering
             </div>
@@ -812,8 +811,8 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
 
           {/* SETTINGS GEAR — top right, as requested */}
           <button
-            onClick={() => { sound.playClick(); setShowSettings(true); }}
-            onMouseEnter={() => sound.playHover()}
+            onClick={() => {  setShowSettings(true); }}
+            onMouseEnter={() => void 0}
             className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-stone-300 hover:text-white transition-colors"
             title="Settings"
           >
@@ -822,7 +821,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
 
           <button
             onClick={startExport}
-            className="flex items-center gap-2 px-4 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-500 text-white text-xs font-mono font-bold hover:from-cyan-400 hover:to-blue-400 transition-colors shadow-[0_0_15px_rgba(34,211,238,0.3)]"
+            className="flex items-center gap-2 px-4 py-1.5 rounded-lg bg-gradient-to-r from-violet-500 to-blue-500 text-white text-xs font-mono font-bold hover:from-violet-400 hover:to-blue-400 transition-colors shadow-[0_0_15px_rgba(34,211,238,0.3)]"
           >
             <Download className="w-3.5 h-3.5" /> Export
           </button>
@@ -845,11 +844,11 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full" style={{ background: s.color }} />
                   <span className="text-xs font-mono text-stone-300">{s.name}</span>
-                  {s.isolated && <span className="text-[9px] font-mono text-cyan-400">ISOLATED</span>}
+                  {s.isolated && <span className="text-[9px] font-mono text-violet-400">ISOLATED</span>}
                 </div>
                 <div className="flex items-center gap-1">
                   <button onClick={() => toggleSpeakerIsolate(s.id)} title="Voice isolation (NexuX exclusive)"
-                    className={`p-1 rounded ${s.isolated ? 'text-cyan-400' : 'text-stone-500 hover:text-stone-300'}`}>
+                    className={`p-1 rounded ${s.isolated ? 'text-violet-400' : 'text-stone-500 hover:text-stone-300'}`}>
                     <Sparkles className="w-3 h-3" />
                   </button>
                   <button onClick={() => toggleSpeakerMute(s.id)}
@@ -892,8 +891,8 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
                       <span key={wi} className="relative inline">
                         <span
                           onClick={(e) => { e.stopPropagation(); startEditWord(seg.id, wi, w.text); }}
-                          className={`cursor-text hover:bg-cyan-500/20 rounded px-0.5 ${
-                            editingWord?.segId === seg.id && editingWord?.wordIdx === wi ? 'bg-cyan-500/30' : ''
+                          className={`cursor-text hover:bg-violet-500/20 rounded px-0.5 ${
+                            editingWord?.segId === seg.id && editingWord?.wordIdx === wi ? 'bg-violet-500/30' : ''
                           } ${w.text.toLowerCase() === 'linkin' ? 'text-emerald-400 underline decoration-dotted' : 'text-stone-200'}`}
                         >
                           {w.text}
@@ -912,7 +911,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
                             <button onClick={() => applyCorrection(false)} className="flex items-center gap-1 text-[10px] font-mono text-emerald-400 hover:text-emerald-300">
                               <Check className="w-3 h-3" /> Correct
                             </button>
-                            <button onClick={() => applyCorrection(true)} className="flex items-center gap-1 text-[10px] font-mono text-cyan-400 hover:text-cyan-300">
+                            <button onClick={() => applyCorrection(true)} className="flex items-center gap-1 text-[10px] font-mono text-violet-400 hover:text-violet-300">
                               <Check className="w-3 h-3" /> Correct everywhere ({countOccurrences(w.text)})
                             </button>
                             <button onClick={() => setEditingWord(null)} className="text-[10px] font-mono text-stone-400 hover:text-white">
@@ -958,10 +957,10 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
 
             {/* Snap guides */}
             {snapGuides.x !== null && (
-              <div className="absolute top-0 bottom-0 w-px bg-cyan-400/70 pointer-events-none" style={{ left: `${snapGuides.x}%` }} />
+              <div className="absolute top-0 bottom-0 w-px bg-violet-400/70 pointer-events-none" style={{ left: `${snapGuides.x}%` }} />
             )}
             {snapGuides.y !== null && (
-              <div className="absolute left-0 right-0 h-px bg-cyan-400/70 pointer-events-none" style={{ top: `${snapGuides.y}%` }} />
+              <div className="absolute left-0 right-0 h-px bg-violet-400/70 pointer-events-none" style={{ top: `${snapGuides.y}%` }} />
             )}
 
             {/* Draggable elements */}
@@ -970,7 +969,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
                 key={el.id}
                 onPointerDown={(e) => onElementPointerDown(e, el)}
                 className={`absolute cursor-move flex items-center justify-center text-center font-display font-bold leading-tight ${
-                  selectedElementId === el.id ? 'ring-2 ring-cyan-400' : ''
+                  selectedElementId === el.id ? 'ring-2 ring-violet-400' : ''
                 }`}
                 style={{
                   left: `${el.x}%`, top: `${el.y}%`,
@@ -990,7 +989,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
                 {selectedElementId === el.id && !el.locked && (
                   <div
                     onPointerDown={(e) => onResizeHandlePointerDown(e, el)}
-                    className="absolute -bottom-1.5 -right-1.5 w-3 h-3 rounded-full bg-cyan-400 border-2 border-white cursor-nwse-resize"
+                    className="absolute -bottom-1.5 -right-1.5 w-3 h-3 rounded-full bg-violet-400 border-2 border-white cursor-nwse-resize"
                   />
                 )}
               </div>
@@ -1037,7 +1036,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
                   {activePanel === 'text' && (
                     <>
                       <PanelTitle label="Text" />
-                      <button onClick={addTextElement} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 text-xs font-mono font-bold">
+                      <button onClick={addTextElement} className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-violet-500/20 hover:bg-violet-500/30 border border-violet-500/40 text-violet-300 text-xs font-mono font-bold">
                         <Plus className="w-3.5 h-3.5" /> Add text box
                       </button>
                       {selectedElement && selectedElement.type === 'text' && (
@@ -1060,7 +1059,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
                             <div className="grid grid-cols-3 gap-1 mt-1">
                               {(['none', 'fade', 'slide-up', 'pop', 'bounce'] as AnimationPreset[]).map(a => (
                                 <button key={a} onClick={() => updateElement(selectedElement.id, { animationIn: a })}
-                                  className={`px-1.5 py-1 rounded text-[9px] font-mono ${selectedElement.animationIn === a ? 'bg-cyan-500/20 text-cyan-300' : 'bg-white/5 text-stone-400'}`}>
+                                  className={`px-1.5 py-1 rounded text-[9px] font-mono ${selectedElement.animationIn === a ? 'bg-violet-500/20 text-violet-300' : 'bg-white/5 text-stone-400'}`}>
                                   {a}
                                 </button>
                               ))}
@@ -1071,7 +1070,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
                             <div className="grid grid-cols-3 gap-1 mt-1">
                               {(['none', 'fade', 'slide-down', 'shrink'] as ExitPreset[]).map(a => (
                                 <button key={a} onClick={() => updateElement(selectedElement.id, { animationOut: a })}
-                                  className={`px-1.5 py-1 rounded text-[9px] font-mono ${selectedElement.animationOut === a ? 'bg-cyan-500/20 text-cyan-300' : 'bg-white/5 text-stone-400'}`}>
+                                  className={`px-1.5 py-1 rounded text-[9px] font-mono ${selectedElement.animationOut === a ? 'bg-violet-500/20 text-violet-300' : 'bg-white/5 text-stone-400'}`}>
                                   {a}
                                 </button>
                               ))}
@@ -1111,7 +1110,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
                         { label: 'Stabilize shake', desc: 'Smooth handheld footage' },
                       ].map(item => (
                         <button key={item.label} className="w-full text-left p-2.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10">
-                          <div className="flex items-center gap-2 text-xs font-mono text-stone-200"><Sparkles className="w-3.5 h-3.5 text-cyan-400" /> {item.label}</div>
+                          <div className="flex items-center gap-2 text-xs font-mono text-stone-200"><Sparkles className="w-3.5 h-3.5 text-violet-400" /> {item.label}</div>
                           <p className="text-[10px] text-stone-500 mt-0.5 ml-5">{item.desc}</p>
                         </button>
                       ))}
@@ -1183,11 +1182,11 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
                         <button key={m.id} className="w-full p-2.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-left">
                           <div className="flex items-center justify-between mb-1.5">
                             <span className="text-xs font-mono text-stone-200">{m.name}</span>
-                            <Play className="w-3 h-3 text-cyan-400" />
+                            <Play className="w-3 h-3 text-violet-400" />
                           </div>
                           <div className="flex items-end gap-0.5 h-4">
                             {m.waveform.map((v, i) => (
-                              <div key={i} className="w-1 bg-cyan-500/50 rounded-sm" style={{ height: `${v * 10}%` }} />
+                              <div key={i} className="w-1 bg-violet-500/50 rounded-sm" style={{ height: `${v * 10}%` }} />
                             ))}
                           </div>
                           <div className="text-[9px] text-stone-500 mt-1">{m.bpm} BPM · {m.mood}</div>
@@ -1204,7 +1203,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
                         <div key={el.id}
                           onClick={() => setSelectedElementId(el.id)}
                           className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer border ${
-                            selectedElementId === el.id ? 'bg-cyan-500/10 border-cyan-500/30' : 'bg-white/5 border-white/10 hover:bg-white/10'
+                            selectedElementId === el.id ? 'bg-violet-500/10 border-violet-500/30' : 'bg-white/5 border-white/10 hover:bg-white/10'
                           }`}
                         >
                           <GripVertical className="w-3 h-3 text-stone-500" />
@@ -1234,10 +1233,10 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
               return (
                 <button
                   key={item.id}
-                  onClick={() => { sound.playClick(); setActivePanel(isActive ? null : item.id); }}
-                  onMouseEnter={() => sound.playHover()}
+                  onClick={() => {  setActivePanel(isActive ? null : item.id); }}
+                  onMouseEnter={() => void 0}
                   className={`w-12 flex flex-col items-center gap-1 py-2 rounded-lg transition-colors ${
-                    isActive ? 'text-cyan-300 bg-cyan-500/10' : 'text-stone-500 hover:text-stone-300 hover:bg-white/5'
+                    isActive ? 'text-violet-300 bg-violet-500/10' : 'text-stone-500 hover:text-stone-300 hover:bg-white/5'
                   }`}
                 >
                   <Icon className="w-4 h-4" />
@@ -1265,7 +1264,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
 
           <div className="flex items-center gap-3">
             <button onClick={() => seekTo(0)} className="text-stone-400 hover:text-white"><SkipBack className="w-3.5 h-3.5" /></button>
-            <button onClick={togglePlay} className="w-8 h-8 rounded-full bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-300">
+            <button onClick={togglePlay} className="w-8 h-8 rounded-full bg-violet-500/20 border border-violet-500/40 flex items-center justify-center text-violet-300">
               {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ml-0.5" />}
             </button>
             <button onClick={() => seekTo(duration)} className="text-stone-400 hover:text-white"><SkipForward className="w-3.5 h-3.5" /></button>
@@ -1276,7 +1275,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
 
           <div className="flex items-center gap-2">
             <button onClick={() => setZoom(Math.max(10, zoom - 10))}><ZoomOut className="w-3.5 h-3.5 text-stone-400" /></button>
-            <input type="range" min={10} max={100} value={zoom} onChange={(e) => setZoom(parseInt(e.target.value))} className="w-24 accent-cyan-500" />
+            <input type="range" min={10} max={100} value={zoom} onChange={(e) => setZoom(parseInt(e.target.value))} className="w-24 accent-violet-500" />
             <button onClick={() => setZoom(Math.min(100, zoom + 10))}><ZoomIn className="w-3.5 h-3.5 text-stone-400" /></button>
           </div>
         </div>
@@ -1323,7 +1322,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
                   key={el.id}
                   onClick={() => setSelectedElementId(el.id)}
                   className={`absolute h-5 rounded px-2 flex items-center text-[9px] font-mono truncate cursor-pointer ${
-                    selectedElementId === el.id ? 'bg-cyan-500/40 text-white' : 'bg-cyan-500/15 text-cyan-300'
+                    selectedElementId === el.id ? 'bg-violet-500/40 text-white' : 'bg-violet-500/15 text-violet-300'
                   }`}
                   style={{
                     left: `${(el.start / duration) * 100}%`,
@@ -1379,7 +1378,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
             >
               <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
                 <div className="flex items-center gap-2.5">
-                  <Settings className="w-4 h-4 text-cyan-400" />
+                  <Settings className="w-4 h-4 text-violet-400" />
                   <h2 className="font-display font-bold text-white text-base">Editor Settings</h2>
                 </div>
                 <button onClick={() => setShowSettings(false)} className="text-stone-400 hover:text-white"><X className="w-4 h-4" /></button>
@@ -1399,7 +1398,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
                     return (
                       <button key={tab.id} onClick={() => setSettingsTab(tab.id)}
                         className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-mono transition-colors ${
-                          settingsTab === tab.id ? 'bg-cyan-500/15 text-cyan-300' : 'text-stone-400 hover:bg-white/5'
+                          settingsTab === tab.id ? 'bg-violet-500/15 text-violet-300' : 'text-stone-400 hover:bg-white/5'
                         }`}
                       >
                         <Icon className="w-3.5 h-3.5" /> {tab.label}
@@ -1416,7 +1415,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
                         <div className="grid grid-cols-3 gap-2">
                           {(['720p', '1080p', '4K'] as const).map(r => (
                             <button key={r} onClick={() => setExportRes(r)}
-                              className={`px-3 py-2 rounded-lg text-xs font-mono border ${exportRes === r ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-300' : 'bg-white/5 border-white/10 text-stone-400'}`}>
+                              className={`px-3 py-2 rounded-lg text-xs font-mono border ${exportRes === r ? 'bg-violet-500/20 border-violet-500/40 text-violet-300' : 'bg-white/5 border-white/10 text-stone-400'}`}>
                               {r}
                             </button>
                           ))}
@@ -1426,7 +1425,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
                         <div className="grid grid-cols-3 gap-2">
                           {([24, 30, 60] as const).map(f => (
                             <button key={f} onClick={() => setExportFps(f)}
-                              className={`px-3 py-2 rounded-lg text-xs font-mono border ${exportFps === f ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-300' : 'bg-white/5 border-white/10 text-stone-400'}`}>
+                              className={`px-3 py-2 rounded-lg text-xs font-mono border ${exportFps === f ? 'bg-violet-500/20 border-violet-500/40 text-violet-300' : 'bg-white/5 border-white/10 text-stone-400'}`}>
                               {f} fps
                             </button>
                           ))}
@@ -1436,7 +1435,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
                         <div className="grid grid-cols-3 gap-2">
                           {(['draft', 'standard', 'high'] as const).map(q => (
                             <button key={q} onClick={() => setExportQuality(q)}
-                              className={`px-3 py-2 rounded-lg text-xs font-mono border capitalize ${exportQuality === q ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-300' : 'bg-white/5 border-white/10 text-stone-400'}`}>
+                              className={`px-3 py-2 rounded-lg text-xs font-mono border capitalize ${exportQuality === q ? 'bg-violet-500/20 border-violet-500/40 text-violet-300' : 'bg-white/5 border-white/10 text-stone-400'}`}>
                               {q}
                             </button>
                           ))}
@@ -1451,13 +1450,13 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
                               <div key={r.id} className="p-2.5 rounded-lg bg-white/5 border border-white/10">
                                 <div className="flex items-center justify-between text-[11px] font-mono mb-1.5">
                                   <span className="text-stone-300 flex items-center gap-1.5">
-                                    {r.status === 'done' ? <CheckCircle2 className="w-3 h-3 text-emerald-400" /> : <Server className="w-3 h-3 text-cyan-400" />}
+                                    {r.status === 'done' ? <CheckCircle2 className="w-3 h-3 text-emerald-400" /> : <Server className="w-3 h-3 text-violet-400" />}
                                     {r.label}
                                   </span>
                                   <span className="text-stone-500">{Math.round(r.progress)}%</span>
                                 </div>
                                 <div className="h-1 rounded-full bg-white/10 overflow-hidden">
-                                  <div className="h-full bg-cyan-400 transition-all" style={{ width: `${r.progress}%` }} />
+                                  <div className="h-full bg-violet-400 transition-all" style={{ width: `${r.progress}%` }} />
                                 </div>
                               </div>
                             ))}
@@ -1472,9 +1471,9 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
                       <SettingsToggle label="Autosave" value={autosave} onChange={setAutosave} />
                       <SettingsToggle label="Snap to grid & guides" value={snapToGrid} onChange={setSnapToGrid} />
                       <SettingsSection label="Version history depth">
-                        <input type="range" min={5} max={50} value={maxVersions} onChange={(e) => setMaxVersions(parseInt(e.target.value))} className="w-full accent-cyan-500" />
+                        <input type="range" min={5} max={50} value={maxVersions} onChange={(e) => setMaxVersions(parseInt(e.target.value))} className="w-full accent-violet-500" />
                         <div className="flex justify-between text-[10px] font-mono text-stone-500 mt-1">
-                          <span>5 versions</span><span className="text-cyan-300">{maxVersions} kept</span><span>50 versions</span>
+                          <span>5 versions</span><span className="text-violet-300">{maxVersions} kept</span><span>50 versions</span>
                         </div>
                       </SettingsSection>
                       <SettingsSection label="Theme">
@@ -1487,7 +1486,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
                             const Icon = t.icon;
                             return (
                               <button key={t.id} onClick={() => setTheme(t.id)}
-                                className={`flex flex-col items-center gap-1 px-3 py-2.5 rounded-lg text-xs font-mono border ${theme === t.id ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-300' : 'bg-white/5 border-white/10 text-stone-400'}`}>
+                                className={`flex flex-col items-center gap-1 px-3 py-2.5 rounded-lg text-xs font-mono border ${theme === t.id ? 'bg-violet-500/20 border-violet-500/40 text-violet-300' : 'bg-white/5 border-white/10 text-stone-400'}`}>
                                 <Icon className="w-3.5 h-3.5" /> {t.label}
                               </button>
                             );
@@ -1513,7 +1512,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
                       ].map(([key, desc]) => (
                         <div key={key} className="flex items-center justify-between px-3 py-2 rounded-lg bg-white/5">
                           <span className="text-xs font-mono text-stone-300">{desc}</span>
-                          <kbd className="px-2 py-0.5 rounded bg-white/10 text-[10px] font-mono text-cyan-300 border border-white/10">{key}</kbd>
+                          <kbd className="px-2 py-0.5 rounded bg-white/10 text-[10px] font-mono text-violet-300 border border-white/10">{key}</kbd>
                         </div>
                       ))}
                     </div>
@@ -1541,7 +1540,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
                     <>
                       <div className="flex items-center justify-between mb-1">
                         <div className="flex items-center gap-2">
-                          <Zap className="w-4 h-4 text-cyan-400" />
+                          <Zap className="w-4 h-4 text-violet-400" />
                           <span className="text-xs font-mono font-bold text-stone-200">Self-Repair System</span>
                         </div>
                         <div className="flex items-center gap-2">
@@ -1553,7 +1552,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
                           </button>
                           <button onClick={fixAllIssues}
                             disabled={repairRunning || repairResults.length === 0}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-[11px] font-mono text-cyan-300 disabled:opacity-50">
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-500/20 hover:bg-violet-500/30 border border-violet-500/40 text-[11px] font-mono text-violet-300 disabled:opacity-50">
                             <Wand2 className="w-3 h-3" /> Repair All
                           </button>
                         </div>
@@ -1572,7 +1571,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
                           </div>
                         )}
                         {repairRunning && repairResults.length === 0 && (
-                          <div className="flex items-center justify-center py-8 gap-2 text-cyan-400 text-xs font-mono">
+                          <div className="flex items-center justify-center py-8 gap-2 text-violet-400 text-xs font-mono">
                             <Loader2 className="w-4 h-4 animate-spin" /> Scanning system...
                           </div>
                         )}
@@ -1582,7 +1581,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
                             {r.status === 'healthy' && <CheckCircle2 className="w-4 h-4 text-emerald-400 flex-shrink-0" />}
                             {r.status === 'warning' && <AlertCircle className="w-4 h-4 text-amber-400 flex-shrink-0" />}
                             {r.status === 'error' && <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />}
-                            {r.status === 'fixed' && <CheckCircle2 className="w-4 h-4 text-cyan-400 flex-shrink-0" />}
+                            {r.status === 'fixed' && <CheckCircle2 className="w-4 h-4 text-violet-400 flex-shrink-0" />}
                             <div className="flex-1 min-w-0">
                               <div className="text-xs font-mono text-stone-200">{r.label}</div>
                               <div className="text-[10px] font-mono text-stone-500 truncate">{r.detail}</div>
@@ -1591,7 +1590,7 @@ export const TimelineEditorStudio: React.FC<TimelineEditorProps> = ({ clips, job
                               r.status === 'healthy' ? 'text-emerald-400' :
                               r.status === 'warning' ? 'text-amber-400' :
                               r.status === 'error' ? 'text-red-400' :
-                              'text-cyan-400'
+                              'text-violet-400'
                             }`}>
                               {r.status === 'fixed' ? '✓ FIXED' : r.status}
                             </span>
@@ -1635,9 +1634,9 @@ function SettingsToggle({ label, value, onChange, note }: { label: string; value
     >
       <div className="text-left">
         <span className="text-xs font-mono text-stone-300">{label}</span>
-        {note && <div className="text-[9px] font-mono text-cyan-400 mt-0.5">{note}</div>}
+        {note && <div className="text-[9px] font-mono text-violet-400 mt-0.5">{note}</div>}
       </div>
-      <div className={`w-9 h-5 rounded-full transition-colors flex-shrink-0 ${value ? 'bg-cyan-500' : 'bg-white/10'}`}>
+      <div className={`w-9 h-5 rounded-full transition-colors flex-shrink-0 ${value ? 'bg-violet-500' : 'bg-white/10'}`}>
         <div className={`w-4 h-4 rounded-full bg-white transition-transform ${value ? 'translate-x-4' : 'translate-x-0.5'} mt-0.5`} />
       </div>
     </button>

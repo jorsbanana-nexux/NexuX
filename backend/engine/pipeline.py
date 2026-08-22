@@ -161,7 +161,7 @@ async def run_pipeline(
                 retry, download_audio_only, url, job_id, max_retries=MAX_RETRIES
             )
 
-            await _progress("transcribing", 9, message="Transcribing with faster-whisper...")
+            await _progress("transcribing", 9, message="Transcribing with WhisperX...")
             transcript = await _run_sync(
                 retry, transcribe, audio_path, job_id,
                 language=language,
