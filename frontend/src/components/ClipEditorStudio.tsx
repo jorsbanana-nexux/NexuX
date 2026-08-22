@@ -25,7 +25,7 @@ import {
   ArrowLeft, X, Download, RotateCcw, Share2, Check,
   // Editor tabs
   Type, Sparkles, Scissors, Volume2, Layout, Palette, 
-  Wand2, Film, Zap, Play, Pause, SkipBack, SkipForward,
+  Wand2, Film, Zap, Play, Pause, SkipBack, SkipForward, Activity,
   // Controls
   Sliders, Eye, Copy, ChevronRight, ChevronLeft,
   Bold, Italic, AlignLeft, AlignCenter, AlignRight,
@@ -35,6 +35,8 @@ import {
   // History & Overlays
   Undo, Redo, Plus, Trash2, Move, Lock, Unlock, EyeOff,
 } from 'lucide-react';
+import { InsightsPanel } from './InsightsPanel';
+import { TitleStudio } from './TitleStudio';
 import { sound } from '../utils/soundEffects';
 import { MagneticElement } from './MagneticElement';
 import { TiltCard } from './TiltCard';
@@ -59,6 +61,7 @@ type EditorTab =
   | 'audio'       // Audio mixing
   | 'layout'      // Aspect ratio & layout
   | 'branding'    // Watermark, logo, intro
+  | 'insights'    // V9.6: retention heatmap + hook lab
   | 'export';     // Export & publish
 
 type AspectRatio = '9:16' | '1:1' | '4:5' | '16:9';
@@ -457,6 +460,7 @@ const EDITOR_TABS: { id: EditorTab; label: string; icon: typeof Type }[] = [
   { id: 'audio', label: 'Audio', icon: Volume2 },
   { id: 'layout', label: 'Layout', icon: Layout },
   { id: 'branding', label: 'Branding', icon: Palette },
+  { id: 'insights', label: 'Insights', icon: Activity },
   { id: 'export', label: 'Export', icon: Download },
 ];
 
@@ -1740,9 +1744,23 @@ export const ClipEditorStudio: React.FC<ClipEditorStudioProps> = ({
             )}
 
             {/* ━━━━━━━━ EXPORT TAB ━━━━━━━━ */}
+            {activeTab === 'insights' && (
+              <motion.div key="insights" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
+                <div className="pt-4 px-4">
+                  <PanelHeader icon={Activity} title="Beyond-Opus Insights" subtitle="Retention heatmap & hook lab" />
+                </div>
+                <InsightsPanel jobId={jobId} clipIndex={selectedClipIndex} />
+              </motion.div>
+            )}
+
             {activeTab === 'export' && (
               <motion.div key="export" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="p-4 space-y-5">
                 <PanelHeader icon={Download} title="Export & Publish" subtitle="Re-render and share" />
+
+                <TitleStudio
+                  initialTitle={selectedClip?.title || ''}
+                  clipText={selectedClip?.subtitleSnippet || ''}
+                />
 
                 {hasChanges && (
                   <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center gap-2">

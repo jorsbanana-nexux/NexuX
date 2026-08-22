@@ -957,6 +957,31 @@ class Mode2Request(BaseModel):
     bgm_enabled: bool = True
     target_duration: int = 60
     max_sources: int = 10
+    storyboard: Optional[List[Dict[str, Any]]] = None  # V9.6: pre-selected clips
+
+
+class Mode2StoryboardRequest(BaseModel):
+    keyword: str = Field(..., min_length=1, max_length=100)
+    max_clips: int = 5
+    clips_per_archetype: int = 1
+    extra_queries: int = 3
+
+
+@app.post("/api/mode2/storyboard")
+async def mode2_storyboard(req: Mode2StoryboardRequest, _=Depends(_require_auth)):
+    """Mode 2: keyword → editable storyboard (V9.6).
+
+    Returns a multi-archetype storyboard (Hook → beats → Payoff) that
+    the user can preview, reorder, and edit before compiling.
+    """
+    from engine.mode2_storyboard import plan_storyboard
+    result = await plan_storyboard(
+        keyword=req.keyword,
+        max_clips=req.max_clips,
+        clips_per_archetype=req.clips_per_archetype,
+        extra_queries=req.extra_queries,
+    )
+    return {"status": "ok", **result}
 
 
 @app.post("/api/mode2/generate")
@@ -997,6 +1022,7 @@ async def mode2_generate(req: Mode2Request, _=Depends(_require_auth)):
         target_duration=req.target_duration,
         max_sources=req.max_sources,
         job_id=job_id,
+        storyboard=req.storyboard,
     )
     
     if "error" in result:
@@ -1130,10 +1156,15 @@ async def _process_job(job_id: str, url: str, kwargs: dict):
             stages = result.get("stages", {})
             critiques = result.get("critiques", [])
 
+            smart_cut_by_path = {
+                c.get("path"): c.get("smart_cut")
+                for c in result.get("clip_candidates", [])
+                if c.get("smart_cut")
+            }
             render_meta = []
             for i, clip_path in enumerate(clips):
                 critique = critiques[i] if i < len(critiques) else {}
-                render_meta.append({
+                entry = {
                     "candidate_id": f"{job_id}-c{i}",
                     "editorial_rank": i + 1,
                     "editorial_signals": critique.get("dimensions", {}),
@@ -1143,7 +1174,10 @@ async def _process_job(job_id: str, url: str, kwargs: dict):
                     "timeline": stages.get("render", {}),
                     "render": {"path": clip_path},
                     "voiceover": kwargs.get("voice_over_text") if kwargs.get("voice_over") else None,
-                })
+                }
+                if smart_cut_by_path.get(clip_path):
+                    entry["smart_cut"] = smart_cut_by_path[clip_path]
+                render_meta.append(entry)
 
             analysis_bundle = {
                 "download": stages.get("download", {}),

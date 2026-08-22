@@ -54,6 +54,7 @@ async def main():
     url = sys.argv[1] if len(sys.argv) > 1 else "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
     target = int(sys.argv[2]) if len(sys.argv) > 2 else 30
     clip_count = int(sys.argv[3]) if len(sys.argv) > 3 else 3
+    smart_cut = "--smart-cut" in sys.argv
 
     os.environ.setdefault("WHISPER_MODEL", "tiny")
 
@@ -71,7 +72,7 @@ async def main():
 
     print(f"=== NexuX E2E Benchmark ===")
     print(f"url={url}")
-    print(f"target_duration={target} clip_count={clip_count} whisper={os.environ['WHISPER_MODEL']}")
+    print(f"target_duration={target} clip_count={clip_count} whisper={os.environ['WHISPER_MODEL']} smart_cut={smart_cut}")
     print()
 
     try:
@@ -83,6 +84,7 @@ async def main():
             clip_count=clip_count,
             aspect_ratio="9:16",
             subtitle_style="hormozi",
+            remove_fillers_pauses=smart_cut,
         )
     except Exception as e:
         print(f"\nPIPELINE RAISED: {type(e).__name__}: {e}")
@@ -104,6 +106,11 @@ async def main():
         exists = os.path.exists(c) if c else False
         size = os.path.getsize(c) if exists else 0
         print(f"  - {c}  [exists={exists} size={_fmt_mb(size)}]")
+    for c in result.get("clip_candidates", []):
+        sc = c.get("smart_cut")
+        if sc:
+            print(f"  smart_cut   : {c.get('path')}: removed {sc['removed_seconds']:.1f}s "
+                  f"({sc['removed_pct']:.1f}%) — {sc['filler_count']} fillers, {sc['silence_count']} silences")
     print(f"total time    : {total:.1f}s")
     print(f"peak RAM      : {_fmt_mb(dog.peak)}")
     print(f"stages seen   : {len(stage_log)}")

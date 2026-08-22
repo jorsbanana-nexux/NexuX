@@ -205,6 +205,14 @@ export interface HookLabResult {
   count: number;
 }
 
+export interface TitleCtrResult {
+  score: number;
+  grade: string;
+  strengths: string[];
+  weaknesses: string[];
+  suggestions: string[];
+}
+
 export const nexuxApi = {
   baseUrl: API_BASE,
   health: () => request<NexuXHealth>('/api/health'),
@@ -306,6 +314,12 @@ export const nexuxApi = {
     request<HookLabResult>(
       `/api/clips/${encodeURIComponent(jobId)}/${clipIndex}/hook-lab?n=${n}`,
     ),
+  // V9.6: transparent title CTR prediction (job-agnostic, live scoring)
+  titleCtr: (title: string, clipText = '') =>
+    request<TitleCtrResult>('/api/title-ctr', {
+      method: 'POST',
+      body: JSON.stringify({ title, clip_text: clipText }),
+    }),
   // V8.5: Auto-reframe
   reframe: (jobId: string) =>
     request<Record<string, unknown>>(`/api/reframe/${encodeURIComponent(jobId)}`),
@@ -404,6 +418,7 @@ export interface Mode2Request {
   bgm_enabled: boolean;
   target_duration: number;
   max_sources: number;
+  storyboard?: Array<Record<string, unknown>>;
 }
 
 export interface Mode2Response {

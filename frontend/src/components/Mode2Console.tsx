@@ -19,8 +19,13 @@ import {
   ChevronDown,
   ChevronUp,
   Mic,
+  SlidersHorizontal,
+  Trash2,
 } from 'lucide-react';
-import { mode2Api, type Mode2Response, type Mode2Voice } from '../api/nexuxApi';
+import { mode2Api, buildOutputUrl, type Mode2Response, type Mode2Voice } from '../api/nexuxApi';
+import { v2Api, type Mode2StoryboardResult } from '../api/v2Api';
+import { ClipEditorStudio } from './ClipEditorStudio';
+import type { GeneratedClip } from './VideoResultCard';
 import { sound } from '../utils/soundEffects';
 
 interface Mode2ConsoleProps {
@@ -34,6 +39,11 @@ export const Mode2Console: React.FC<Mode2ConsoleProps> = ({ onBack }) => {
   const [progressMsg, setProgressMsg] = useState('');
   const [result, setResult] = useState<Mode2Response | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showEditor, setShowEditor] = useState(false);
+
+  // Storyboard
+  const [storyboard, setStoryboard] = useState<Mode2StoryboardResult | null>(null);
+  const [storyboardLoading, setStoryboardLoading] = useState(false);
 
   // Settings
   const [voiceEnabled, setVoiceEnabled] = useState(true);
@@ -53,6 +63,78 @@ export const Mode2Console: React.FC<Mode2ConsoleProps> = ({ onBack }) => {
     mode2Api.voices().then(res => setVoices(res.voices || [])).catch(() => {});
     inputRef.current?.focus();
   }, []);
+
+  const handleStoryboard = async () => {
+    if (!keyword.trim()) return;
+    setStoryboardLoading(true);
+    setStoryboard(null);
+    try {
+      const res = await v2Api.mode2Storyboard({ keyword: keyword.trim(), max_clips: 5 });
+      setStoryboard(res);
+    } catch {
+      // ignore — user can still hit Generate
+    } finally {
+      setStoryboardLoading(false);
+    }
+  };
+
+  const relabelStoryboard = (clips: Mode2StoryboardResult['storyboard']) =>
+    clips.map((c, i) => ({
+      ...c,
+      clip_idx: i + 1,
+      role: (i === 0 ? 'hook' : i === clips.length - 1 ? 'payoff' : 'beat') as 'hook' | 'beat' | 'payoff',
+    }));
+
+  const removeStoryboardClip = (clipIdx: number) => {
+    if (!storyboard) return;
+    const remaining = storyboard.storyboard.filter((c) => c.clip_idx !== clipIdx);
+    setStoryboard({
+      ...storyboard,
+      storyboard: relabelStoryboard(remaining),
+      total_clips: remaining.length,
+    });
+  };
+
+  const moveStoryboardClip = (clipIdx: number, dir: -1 | 1) => {
+    if (!storyboard) return;
+    const clips = [...storyboard.storyboard];
+    const i = clips.findIndex((c) => c.clip_idx === clipIdx);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= clips.length) return;
+    [clips[i], clips[j]] = [clips[j], clips[i]];
+    setStoryboard({
+      ...storyboard,
+      storyboard: relabelStoryboard(clips),
+    });
+  };
+
+  const handleGenerateFromStoryboard = async () => {
+    if (!storyboard || storyboard.total_clips === 0) return;
+    setStage('processing');
+    setProgress(0);
+    setProgressMsg('Compiling storyboard...');
+    setResult(null);
+    try {
+      const res = await mode2Api.generate({
+        keyword: keyword.trim(),
+        voice_enabled: voiceEnabled,
+        voice_name: voiceName,
+        sfx_enabled: sfxEnabled,
+        bgm_enabled: bgmEnabled,
+        target_duration: targetDuration,
+        max_sources: maxSources,
+        storyboard: storyboard.storyboard as unknown as Array<Record<string, unknown>>,
+      });
+      if (res.status === 'error') {
+        setStage('error');
+      } else {
+        setResult(res);
+        setStage('results');
+      }
+    } catch (err) {
+      setStage('error');
+    }
+  };
 
   const handleGenerate = async () => {
     if (!keyword.trim()) {
@@ -158,6 +240,83 @@ export const Mode2Console: React.FC<Mode2ConsoleProps> = ({ onBack }) => {
                     Generate
                   </button>
                 </div>
+
+                {/* Storyboard planner */}
+                <div className="mt-4 flex items-center justify-between">
+                  <button
+                    onClick={handleStoryboard}
+                    disabled={!keyword.trim() || storyboardLoading}
+                    className="text-xs text-cyan-300 hover:text-cyan-200 disabled:text-gray-600 flex items-center gap-1.5 transition-colors"
+                  >
+                    {storyboardLoading ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <FileText className="w-3.5 h-3.5" />
+                    )}
+                    Preview Storyboard (multi-archetype)
+                  </button>
+                </div>
+
+                {storyboard && storyboard.total_clips > 0 && (
+                  <div className="mt-3 space-y-2">
+                    <div className="text-[11px] text-gray-400 font-mono uppercase tracking-wider">
+                      Storyboard — {storyboard.total_clips} klip
+                    </div>
+                    {storyboard.storyboard.map((clip, idx) => (
+                      <div key={clip.video_url} className="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10">
+                        {clip.thumbnail_url && (
+                          <img
+                            src={clip.thumbnail_url}
+                            alt=""
+                            className="w-16 h-10 rounded object-cover shrink-0 bg-black/40"
+                            loading="lazy"
+                          />
+                        )}
+                        <span className={`w-16 shrink-0 text-[10px] font-mono uppercase ${
+                          clip.role === 'hook' ? 'text-amber-400' : clip.role === 'payoff' ? 'text-emerald-400' : 'text-cyan-300'
+                        }`}>
+                          {clip.role}
+                        </span>
+                        <span className="flex-1 text-xs text-gray-200 truncate" title={clip.video_title}>
+                          {clip.video_title}
+                        </span>
+                        <span className="text-[10px] text-gray-500 font-mono">{clip.duration}s</span>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={() => moveStoryboardClip(clip.clip_idx, -1)}
+                            disabled={idx === 0}
+                            aria-label="Move up"
+                            className="p-1 rounded text-gray-500 hover:text-white disabled:opacity-20 transition-colors"
+                          >
+                            <ChevronUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => moveStoryboardClip(clip.clip_idx, 1)}
+                            disabled={idx === storyboard.storyboard.length - 1}
+                            aria-label="Move down"
+                            className="p-1 rounded text-gray-500 hover:text-white disabled:opacity-20 transition-colors"
+                          >
+                            <ChevronDown className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => removeStoryboardClip(clip.clip_idx)}
+                            aria-label="Remove clip"
+                            className="p-1 rounded text-gray-500 hover:text-red-400 transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    <button
+                      onClick={handleGenerateFromStoryboard}
+                      className="w-full mt-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 text-white text-sm font-medium flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      Buat dari Storyboard ({storyboard.total_clips} klip)
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -363,7 +522,7 @@ export const Mode2Console: React.FC<Mode2ConsoleProps> = ({ onBack }) => {
               </div>
             )}
 
-            {/* Download Button */}
+            {/* Download + Edit Buttons */}
             <div className="flex justify-center gap-3">
               <a
                 href={`/api/download/${result.job_id}`}
@@ -371,6 +530,14 @@ export const Mode2Console: React.FC<Mode2ConsoleProps> = ({ onBack }) => {
               >
                 <Download className="w-5 h-5" /> Download Video
               </a>
+              {result.output_path && (
+                <button
+                  onClick={() => { sound.playClick(); setShowEditor(true); }}
+                  className="px-6 py-3 rounded-xl bg-cyan-500/15 border border-cyan-500/40 text-cyan-200 hover:bg-cyan-500/25 transition-colors flex items-center gap-2"
+                >
+                  <SlidersHorizontal className="w-5 h-5" /> Edit Video
+                </button>
+              )}
               <button
                 onClick={handleReset}
                 className="px-6 py-3 rounded-xl bg-white/5 border border-white/10 text-white hover:bg-white/10 transition-colors"
@@ -400,6 +567,36 @@ export const Mode2Console: React.FC<Mode2ConsoleProps> = ({ onBack }) => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* V9.6: Post-render editor handoff (Creative Mode) */}
+      <AnimatePresence>
+        {showEditor && result?.output_path && (
+          <ClipEditorStudio
+            clips={buildEditorClip(result)}
+            jobId={result.job_id}
+            onClose={() => setShowEditor(false)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 };
+
+/** Build a single GeneratedClip from a Mode 2 result for the editor. */
+function buildEditorClip(result: Mode2Response): GeneratedClip[] {
+  const dur = result.metadata?.total_duration || 0;
+  const mm = Math.floor(dur / 60);
+  const ss = Math.round(dur % 60).toString().padStart(2, '0');
+  return [{
+    id: `${result.job_id}-clip-1`,
+    title: result.metadata?.title || result.metadata?.keyword || 'Creative Video',
+    hookCategory: 'Creative Compilation',
+    duration: dur > 0 ? `${mm}:${ss}` : '—',
+    viralScore: 75,
+    timestampRange: '—',
+    subtitleSnippet: result.metadata?.description?.slice(0, 120) || 'Video ready for preview',
+    aspectRatio: '9:16',
+    videoUrl: buildOutputUrl(result.output_path || null) || '',
+    tags: result.metadata?.hashtags?.slice(0, 4) || [],
+  }];
+}

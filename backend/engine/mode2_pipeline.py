@@ -66,9 +66,22 @@ async def run_mode2_pipeline(
     if progress_callback:
         progress_callback(5, "Searching YouTube for related videos...")
     
-    # ── Step 1: Search YouTube ──
-    log.info(f"[Mode2] Step 1: Searching YouTube for '{keyword}'")
-    videos = await _run_async(search_youtube, keyword, max_sources)
+    # ── Step 1: Get videos (storyboard override OR search YouTube) ──
+    if storyboard:
+        log.info(f"[Mode2] Step 1: Using provided storyboard ({len(storyboard)} clips)")
+        videos = [
+            {
+                "url": c.get("video_url", ""),
+                "title": c.get("video_title", "")[:120],
+                "duration": c.get("duration", 0),
+                "view_count": c.get("view_count", 0),
+                "channel": c.get("channel", ""),
+            }
+            for c in storyboard if c.get("video_url")
+        ]
+    else:
+        log.info(f"[Mode2] Step 1: Searching YouTube for '{keyword}'")
+        videos = await _run_async(search_youtube, keyword, max_sources)
     
     if not videos:
         log.error("[Mode2] No videos found!")

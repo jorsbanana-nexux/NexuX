@@ -320,3 +320,156 @@ class TestBeyondOpusEndpoints:
 
     def test_retention_unknown_job_404(self, client):
         assert client.get("/api/clips/nope/0/retention").status_code == 404
+
+
+class TestSmartCutRenderMetaPropagation:
+    """pipeline clip_candidates.smart_cut must reach job render_meta."""
+
+    def test_render_meta_carries_smart_cut(self, tmp_path, monkeypatch):
+        import asyncio
+        monkeypatch.setenv("NEXUX_DB_PATH", str(tmp_path / "test.db"))
+        monkeypatch.setenv("NEXUX_API_KEY", "")
+        import main
+        main.jobs.clear()
+        main.cancel_flags.clear()
+        main.active_count = 0
+
+        clip_path = "/tmp/fake_clip.mp4"
+        smart_cut = {"removed_seconds": 3.2, "removed_pct": 10.7,
+                     "filler_count": 2, "silence_count": 1}
+
+        async def fake_pipeline(url, job_id, progress, **kwargs):
+            return {
+                "status": "completed", "clips": [clip_path],
+                "output_path": clip_path,
+                "stages": {"render": {"status": "ok"}},
+                "critiques": [{"clip_index": 0, "verdict": "GOLD", "score": 0.9,
+                               "dimensions": {}, "issues": []}],
+                "clip_candidates": [{"path": clip_path, "start": 0, "end": 30,
+                                     "score": 0.9, "reason": "test",
+                                     "smart_cut": smart_cut}],
+                "transcript_segments": [],
+            }
+
+        monkeypatch.setattr(main, "run_pipeline", fake_pipeline)
+
+        job = main._new_job("sc-prop-1")
+        main.jobs["sc-prop-1"] = job
+        main.cancel_flags["sc-prop-1"] = False
+        main.active_count = 1
+
+        asyncio.run(main._process_job("sc-prop-1", "https://youtu.be/x", {}))
+
+        meta = main.jobs["sc-prop-1"]["render_meta"][0]
+        assert meta["smart_cut"]["removed_seconds"] == 3.2
+        assert meta["smart_cut"]["filler_count"] == 2
+
+    def test_render_meta_without_smart_cut(self, tmp_path, monkeypatch):
+        import asyncio
+        monkeypatch.setenv("NEXUX_DB_PATH", str(tmp_path / "test.db"))
+        monkeypatch.setenv("NEXUX_API_KEY", "")
+        import main
+        main.jobs.clear()
+        main.cancel_flags.clear()
+        main.active_count = 0
+
+        async def fake_pipeline(url, job_id, progress, **kwargs):
+            return {
+                "status": "completed", "clips": ["/tmp/c.mp4"],
+                "output_path": "/tmp/c.mp4", "stages": {}, "critiques": [],
+                "clip_candidates": [{"path": "/tmp/c.mp4", "smart_cut": None}],
+                "transcript_segments": [],
+            }
+
+        monkeypatch.setattr(main, "run_pipeline", fake_pipeline)
+        job = main._new_job("sc-prop-2")
+        main.jobs["sc-prop-2"] = job
+        main.cancel_flags["sc-prop-2"] = False
+        main.active_count = 1
+
+        asyncio.run(main._process_job("sc-prop-2", "https://youtu.be/x", {}))
+        assert "smart_cut" not in main.jobs["sc-prop-2"]["render_meta"][0]
+
+
+class TestTitleCtrEndpoint:
+    def test_title_ctr_scores_good_title(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("NEXUX_DB_PATH", str(tmp_path / "test.db"))
+        monkeypatch.setenv("NEXUX_API_KEY", "")
+        from fastapi.testclient import TestClient
+        import main
+        client = TestClient(main.app)
+        r = client.post("/api/title-ctr", json={
+            "title": "This 1 Secret Trick Nobody Tells You About Podcasts?"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["score"] > 60
+        assert data["strengths"]
+
+    def test_title_ctr_rejects_empty(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("NEXUX_DB_PATH", str(tmp_path / "test.db"))
+        monkeypatch.setenv("NEXUX_API_KEY", "")
+        from fastapi.testclient import TestClient
+        import main
+        client = TestClient(main.app)
+        r = client.post("/api/title-ctr", json={"title": ""})
+        assert r.status_code == 422
+
+
+class TestMode2Storyboard:
+    def test_storyboard_endpoint_returns_plan(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("NEXUX_DB_PATH", str(tmp_path / "test.db"))
+        monkeypatch.setenv("NEXUX_API_KEY", "")
+        from fastapi.testclient import TestClient
+        import main
+        client = TestClient(main.app)
+        from engine import mode2_search
+        monkeypatch.setattr(mode2_search, "search_youtube", lambda kw, max_results=1: [
+            {"url": f"https://youtu.be/{kw[:8]}", "title": f"{kw.title()} Viral!", "duration": 45, "view_count": 100000, "channel": "TestChannel"},
+        ])
+        r = client.post("/api/mode2/storyboard", json={"keyword": "saitama"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["status"] == "ok"
+        assert data["keyword"] == "saitama"
+        assert data["total_clips"] > 0
+        roles = [c["role"] for c in data["storyboard"]]
+        assert "hook" in roles and "payoff" in roles
+
+    def test_storyboard_rejects_empty_keyword(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("NEXUX_DB_PATH", str(tmp_path / "test.db"))
+        monkeypatch.setenv("NEXUX_API_KEY", "")
+        from fastapi.testclient import TestClient
+        import main
+        client = TestClient(main.app)
+        r = client.post("/api/mode2/storyboard", json={"keyword": ""})
+        assert r.status_code == 422
+
+
+class TestMode2GenerateWithStoryboard:
+    def test_generate_accepts_storyboard(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("NEXUX_DB_PATH", str(tmp_path / "test.db"))
+        monkeypatch.setenv("NEXUX_API_KEY", "")
+        from fastapi.testclient import TestClient
+        import main
+        client = TestClient(main.app)
+
+        captured = {}
+
+        async def fake_pipeline(**kwargs):
+            captured.update(kwargs)
+            return {"job_id": "mode2_fake", "status": "success", "metadata": {}}
+
+        import engine.mode2_pipeline as m2p
+        monkeypatch.setattr(m2p, "run_mode2_pipeline", fake_pipeline)
+
+        r = client.post("/api/mode2/generate", json={
+            "keyword": "saitama",
+            "storyboard": [
+                {"video_url": "https://youtu.be/abc123", "video_title": "Clip A", "duration": 45},
+                {"video_url": "https://youtu.be/def456", "video_title": "Clip B", "duration": 30},
+            ],
+        })
+        assert r.status_code == 200
+        assert r.json()["status"] == "success"
+        assert captured["storyboard"] is not None
+        assert len(captured["storyboard"]) == 2

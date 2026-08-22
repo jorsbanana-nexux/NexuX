@@ -10,6 +10,7 @@ GET  /api/caption-quality/{job_id}           → caption quality report per clip
 GET  /api/reframe/{job_id}                   → auto-reframe data per clip
 GET  /api/clips/{job_id}/{idx}/retention     → per-second retention heatmap (V9.6)
 GET  /api/clips/{job_id}/{idx}/hook-lab      → hook variants + title CTR (V9.6)
+POST /api/title-ctr                          → transparent CTR prediction for any title (V9.6)
 GET  /api/platforms                          → supported publish platforms
 GET  /api/repair/diagnose                    → self-healing diagnostics
 POST /api/repair/fix-all                     → auto-fix all detected issues
@@ -202,6 +203,23 @@ async def get_hook_lab(job_id: str, clip_idx: int, n: int = 5):
         "variants": variants,
         "count": len(variants),
     }
+
+
+class TitleCtrRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=300)
+    clip_text: str = Field("", max_length=5000)
+
+
+@router.post("/title-ctr")
+async def post_title_ctr(req: TitleCtrRequest):
+    r"""Predict relative CTR for any title string (V9.6).
+
+    Job-agnostic: works before/without a job so the editor can score
+    candidate titles live while typing.
+    """
+    from engine.hook_lab import predict_title_ctr
+
+    return predict_title_ctr(req.title, clip_text=req.clip_text)
 
 
 @router.get("/caption-quality/{job_id}")
