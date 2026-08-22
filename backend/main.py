@@ -957,6 +957,7 @@ class Mode2Request(BaseModel):
     bgm_enabled: bool = True
     target_duration: int = 60
     max_sources: int = 10
+    storyboard: Optional[List[Dict[str, Any]]] = None  # V9.6: pre-selected clips
 
 
 class Mode2StoryboardRequest(BaseModel):
@@ -1021,6 +1022,7 @@ async def mode2_generate(req: Mode2Request, _=Depends(_require_auth)):
         target_duration=req.target_duration,
         max_sources=req.max_sources,
         job_id=job_id,
+        storyboard=req.storyboard,
     )
     
     if "error" in result:

@@ -418,6 +418,7 @@ export interface Mode2Request {
   bgm_enabled: boolean;
   target_duration: number;
   max_sources: number;
+  storyboard?: Array<Record<string, unknown>>;
 }
 
 export interface Mode2Response {

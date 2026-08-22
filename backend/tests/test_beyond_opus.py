@@ -443,3 +443,33 @@ class TestMode2Storyboard:
         client = TestClient(main.app)
         r = client.post("/api/mode2/storyboard", json={"keyword": ""})
         assert r.status_code == 422
+
+
+class TestMode2GenerateWithStoryboard:
+    def test_generate_accepts_storyboard(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("NEXUX_DB_PATH", str(tmp_path / "test.db"))
+        monkeypatch.setenv("NEXUX_API_KEY", "")
+        from fastapi.testclient import TestClient
+        import main
+        client = TestClient(main.app)
+
+        captured = {}
+
+        async def fake_pipeline(**kwargs):
+            captured.update(kwargs)
+            return {"job_id": "mode2_fake", "status": "success", "metadata": {}}
+
+        import engine.mode2_pipeline as m2p
+        monkeypatch.setattr(m2p, "run_mode2_pipeline", fake_pipeline)
+
+        r = client.post("/api/mode2/generate", json={
+            "keyword": "saitama",
+            "storyboard": [
+                {"video_url": "https://youtu.be/abc123", "video_title": "Clip A", "duration": 45},
+                {"video_url": "https://youtu.be/def456", "video_title": "Clip B", "duration": 30},
+            ],
+        })
+        assert r.status_code == 200
+        assert r.json()["status"] == "success"
+        assert captured["storyboard"] is not None
+        assert len(captured["storyboard"]) == 2

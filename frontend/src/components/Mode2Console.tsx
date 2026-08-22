@@ -92,6 +92,7 @@ export const Mode2Console: React.FC<Mode2ConsoleProps> = ({ onBack }) => {
         bgm_enabled: bgmEnabled,
         target_duration: targetDuration,
         max_sources: maxSources,
+        storyboard: storyboard.storyboard as unknown as Array<Record<string, unknown>>,
       });
       if (res.status === 'error') {
         setStage('error');
