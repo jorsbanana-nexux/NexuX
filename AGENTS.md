@@ -1,10 +1,10 @@
 # NexuX — Agent Knowledge Base
 
 ## Project
-Local-first AI video repurposing engine (V9.6.0). Dual-mode: Podcast Mode (long video → viral clips) + AI Creative Mode (keyword → multi-source compilation). FastAPI backend + React 19/TS frontend.
+Local-first AI video repurposing engine (V9.5.2). Dual-mode: Podcast Mode (long video → viral clips) + AI Creative Mode (keyword → multi-source compilation). FastAPI backend + React 19/TS frontend.
 
 ## Canonical structure
-- `backend/main.py` — canonical FastAPI app. VERSION = "9.6.0". Job store = SQLite (`NEXUX_DB_PATH`) + in-memory hot cache (`jobs` dict).
+- `backend/main.py` — canonical FastAPI app. VERSION = "9.5.2". Job store = SQLite (`NEXUX_DB_PATH`) + in-memory hot cache (`jobs` dict).
 - Routers mounted in main.py: `api_v95_modes` (/api/v2/*), `api_v95_editor` (/api/editor/*), `api_v95_extras` (virality/hooks/repair/rerender legacy).
 - `backend/engine/` — 38 pipeline modules. Heavy deps (torch, whisper, mediapipe) are LAZILY imported — never import them at module top level.
 - Frontend: `frontend/src/api/{nexuxApi,v2Api,editorApi}.ts` mirror the three backend surfaces.
@@ -43,11 +43,3 @@ Log: /tmp/benchmark_e2e*.log. Output: engine/output/bench_e2e/.
 - Re-run benchmark E2E penuh setelah fix offset (verifikasi 3 klip valid + subtitle burn-in)
 - Sambungkan auto-open editor ke Mode 2 (keyword/creative)
 - Benchmark kualitas: bandingkan output vs target Opus Clip
-
-## V9.6.0 — "Beyond Opus" engines (2026-08-22)
-- `engine/smart_cut.py` — compute_keep_segments + remap_transcript. Word dicts may use "word" (whisper) OR "text" (json3) keys — always read via `w.get("word", w.get("text", ""))`.
-- Smart cut render integration: `render_clip_pro(..., smart_cuts=dict)` runs Pass 0 (trim/concat filter_complex), remaps transcript AND the clip dict to the compressed [0, N] timeline — downstream passes read the clip dict, so forgetting `clip = {**clip, "start": 0, "end": new_dur}` desyncs karaoke subtitles.
-- `engine/retention_heatmap.py` — per-second retention; `_speech_density` weights by overlap fraction so segment-level transcripts don't read as dense.
-- `engine/hook_lab.py` — hook variants reuse hook_detection internals; CTR predictor is deterministic (7 factors).
-- Endpoints live in api_v95_extras: `/api/clips/{job}/{idx}/retention` + `/hook-lab`.
-- Test gotcha: extras router resolves NEXUX_DB_PATH per call, but main.py's db binds at import — seed test jobs via raw sqlite3 into env path, not main._save_job.

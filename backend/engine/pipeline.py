@@ -31,7 +31,6 @@ from .download import (
 from .transcribe import transcribe
 from .analyze import analyze_content
 from .render_pro import render_clip_pro, concatenate_clips_pro
-from .smart_cut import compute_keep_segments
 from .critic import evaluate_clip, apply_revision_directives
 from .subtitle_quality import process_subtitle_quality
 from .audio_enhancer import enhance_audio
@@ -311,17 +310,6 @@ async def run_pipeline(
                 
                 # Generate hook text from first segment of this clip
                 hook_text = _generate_hook_text(clip, transcript, clip_idx)
-
-                # Smart Cut: jump-cut silences & fillers (V9.6)
-                smart_cuts = None
-                if kwargs.get("remove_fillers_pauses"):
-                    try:
-                        sc = compute_keep_segments(
-                            transcript, clip.get("start", 0), clip.get("end", 0))
-                        if sc.worth_cutting:
-                            smart_cuts = sc.to_dict()
-                    except Exception as e:
-                        log.warning(f"[Pipeline] Smart cut analysis failed: {e}")
                 
                 out_path = await _run_sync(
                     render_clip_pro, section_path, job_id, clip, transcript,
@@ -337,9 +325,8 @@ async def run_pipeline(
                     kwargs.get("output_resolution", "hd"),
                     # Section file starts at t=0; seek relative, not absolute
                     clip.get("start", 0),
-                    smart_cuts=smart_cuts,
                 )
-                entry = {
+                return {
                     "clip_index": clip_idx,
                     "path": str(out_path),
                     "start": clip["start"],
@@ -348,14 +335,6 @@ async def run_pipeline(
                     "reason": clip.get("reason", ""),
                     "status": "ok",
                 }
-                if smart_cuts:
-                    entry["smart_cut"] = {
-                        "removed_seconds": smart_cuts["removed_seconds"],
-                        "removed_pct": smart_cuts["removed_pct"],
-                        "filler_count": smart_cuts["filler_count"],
-                        "silence_count": smart_cuts["silence_count"],
-                    }
-                return entry
             except Exception as e:
                 log.error(f"[Pipeline] Render {clip_idx} failed: {e}")
                 return {

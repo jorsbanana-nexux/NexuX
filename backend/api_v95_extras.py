@@ -8,8 +8,6 @@ GET  /api/virality/{job_id}                  → 8-dimension virality scores per
 GET  /api/hooks/{job_id}                     → hook detection per clip
 GET  /api/caption-quality/{job_id}           → caption quality report per clip
 GET  /api/reframe/{job_id}                   → auto-reframe data per clip
-GET  /api/clips/{job_id}/{idx}/retention     → per-second retention heatmap (V9.6)
-GET  /api/clips/{job_id}/{idx}/hook-lab      → hook variants + title CTR (V9.6)
 GET  /api/platforms                          → supported publish platforms
 GET  /api/repair/diagnose                    → self-healing diagnostics
 POST /api/repair/fix-all                     → auto-fix all detected issues
@@ -147,61 +145,6 @@ async def get_hooks(job_id: str):
         results.append({"clip_index": i, **hook_to_api_dict(hook)})
 
     return {"job_id": job_id, "hooks": results, "count": len(results)}
-
-
-@router.get("/clips/{job_id}/{clip_idx}/retention")
-async def get_retention_heatmap(job_id: str, clip_idx: int):
-    r"""Per-second retention heatmap for one clip (V9.6 — Beyond Opus)."""
-    from engine.retention_heatmap import predict_retention_curve
-    from engine.hook_detection import detect_best_hook
-
-    job = _load_job(job_id)
-    bundle = job.get("analysis_bundle") or {}
-    segments = bundle.get("transcript_segments") or []
-    clips = _clip_windows(job)
-
-    if not segments or not clips:
-        raise HTTPException(409, "Job has no transcript/clip analysis data yet")
-    if clip_idx < 0 or clip_idx >= len(clips):
-        raise HTTPException(404, f"Clip index {clip_idx} out of range")
-
-    clip = clips[clip_idx]
-    transcript = {"segments": segments}
-    hook = detect_best_hook(segments, clip["start"], clip["end"])
-    raw = getattr(hook, "hook_score", 0) if hook else 0
-    hook_strength = (raw / 100.0) if raw else 0.5
-
-    heatmap = predict_retention_curve(
-        clip, transcript, hook_strength=hook_strength)
-    return {"job_id": job_id, "clip_index": clip_idx, **heatmap}
-
-
-@router.get("/clips/{job_id}/{clip_idx}/hook-lab")
-async def get_hook_lab(job_id: str, clip_idx: int, n: int = 5):
-    r"""Hook variants with scores/archetypes + CTR prediction lab (V9.6)."""
-    from engine.hook_lab import generate_hook_variants
-
-    job = _load_job(job_id)
-    bundle = job.get("analysis_bundle") or {}
-    segments = bundle.get("transcript_segments") or []
-    clips = _clip_windows(job)
-
-    if not segments or not clips:
-        raise HTTPException(409, "Job has no transcript/clip analysis data yet")
-    if clip_idx < 0 or clip_idx >= len(clips):
-        raise HTTPException(404, f"Clip index {clip_idx} out of range")
-
-    clip = clips[clip_idx]
-    transcript = {"segments": segments}
-    variants = generate_hook_variants(
-        clip, transcript, n=max(1, min(n, 10)))
-
-    return {
-        "job_id": job_id,
-        "clip_index": clip_idx,
-        "variants": variants,
-        "count": len(variants),
-    }
 
 
 @router.get("/caption-quality/{job_id}")
