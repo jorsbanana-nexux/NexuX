@@ -169,6 +169,42 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+export interface RetentionPoint {
+  t: number;
+  retention: number;
+  speech_rate: number;
+  silent: boolean;
+  spike: boolean;
+}
+
+export interface RetentionHeatmap {
+  curve: RetentionPoint[];
+  avg_retention: number;
+  final_retention: number;
+  grade: string;
+  dropoff_points: { t: number; drop: number; reason: string }[];
+  strongest_window: { t_start: number; t_end: number; retention: number } | null;
+  hook_strength: number;
+  duration: number;
+}
+
+export interface HookVariant {
+  text: string;
+  start_offset: number;
+  duration: number;
+  score: number;
+  archetype: string;
+  description: string;
+  rank: number;
+}
+
+export interface HookLabResult {
+  job_id: string;
+  clip_index: number;
+  variants: HookVariant[];
+  count: number;
+}
+
 export const nexuxApi = {
   baseUrl: API_BASE,
   health: () => request<NexuXHealth>('/api/health'),
@@ -260,6 +296,16 @@ export const nexuxApi = {
   // V8.5: Hook analysis
   hooks: (jobId: string) =>
     request<Record<string, unknown>>(`/api/hooks/${encodeURIComponent(jobId)}`),
+  // V9.6: Per-second retention heatmap for a clip
+  retentionHeatmap: (jobId: string, clipIndex: number) =>
+    request<RetentionHeatmap>(
+      `/api/clips/${encodeURIComponent(jobId)}/${clipIndex}/retention`,
+    ),
+  // V9.6: Hook variants lab (ranked hook options per clip)
+  hookLab: (jobId: string, clipIndex: number, n = 5) =>
+    request<HookLabResult>(
+      `/api/clips/${encodeURIComponent(jobId)}/${clipIndex}/hook-lab?n=${n}`,
+    ),
   // V8.5: Auto-reframe
   reframe: (jobId: string) =>
     request<Record<string, unknown>>(`/api/reframe/${encodeURIComponent(jobId)}`),

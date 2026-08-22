@@ -1,10 +1,10 @@
-# 🚀 NexuX V9.5 — Autonomous AI Video Repurposing Engine
+# 🚀 NexuX V9.6 — Autonomous AI Video Repurposing Engine
 
 > **Local-first, zero cloud cost, production-ready.** Transform long-form videos into viral clips — entirely on your own machine.
 >
 > **V9.5:** Dual-mode system — Podcast Mode (clip podcasts/interviews) + AI Creative Mode (keyword → multi-source compilation). Opus Killer scoring (8 dimensions), auto viral titles, keyword expansion, post-render editor.
 
-[![Version](https://img.shields.io/badge/version-9.5.2-cyan)]()
+[![Version](https://img.shields.io/badge/version-9.6.0-cyan)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)]()
 [![Python](https://img.shields.io/badge/Python-3.11+-yellow)]()
 [![React](https://img.shields.io/badge/React-19-black)]()
@@ -108,7 +108,7 @@ Tahapan progress:
 
 ## 🏆 Fitur yang Melampaui Opus Clip
 
-| Fitur | Opus Clip | NexuX V9.5 |
+| Fitur | Opus Clip | NexuX V9.6 |
 |-------|-----------|------------|
 | **Biaya** | $19–$39/bulan | **Gratis selamanya** |
 | **Privasi** | Video diupload ke cloud | Tetap di mesin Anda |
@@ -117,7 +117,9 @@ Tahapan progress:
 | **Upload lokal** | Cloud | ✅ `POST /api/upload` → token `local://` |
 | **Subtitle Presets** | Template brand | ✅ 46+ preset creator |
 | **Emoji Injection** | Template | ✅ Auto emoji + emphasis (Caption Engine v2) |
-| **Filler Detection** | Berbayar | ✅ Tandai "um/uh/eh" word-level |
+| **Filler Removal** | Berbayar, black box | ✅ **Smart Cut: jump-cut nyata di render**, tiap potongan dilaporkan (V9.6) |
+| **Retention Heatmap** | 1 angka retensi | ✅ Kurva per detik + alasan drop-off (V9.6) |
+| **Hook Variants** | 1 hook terpilih | ✅ Hook Lab: N varian ter-ranking + skor CTR judul transparan (V9.6) |
 | **Voice-over (TTS)** | Limit harian | ✅ Unlimited edge-tts |
 | **Conversation Flow** | ❌ | ✅ Analisis turn-taking pembicara |
 | **Retention Curve** | ❌ | ✅ Prediksi titik drop-off |
@@ -347,6 +349,8 @@ Base URL: `http://127.0.0.1:8000`. Referensi interaktif lengkap: `/docs`.
 |--------|------|-----------|
 | GET | `/api/virality/{job_id}` | skor virality 8 dimensi per klip |
 | GET | `/api/hooks/{job_id}` | hasil hook detection per klip |
+| GET | `/api/clips/{job_id}/{idx}/retention` | heatmap retensi per detik + titik drop-off (V9.6) |
+| GET | `/api/clips/{job_id}/{idx}/hook-lab` | varian hook ter-ranking + lab CTR judul (V9.6) |
 | GET | `/api/caption-quality/{job_id}` | laporan kualitas caption per klip |
 | GET | `/api/reframe/{job_id}` | data auto-reframe per klip |
 | GET | `/api/platforms` | platform publish yang didukung |
@@ -477,6 +481,20 @@ PORT=8001 python main.py
 ---
 
 ## 📦 Changelog
+
+### V9.6.0 (Agustus 2026) — "Beyond Opus": Smart Cut, Retention Heatmap, Hook Lab
+
+**NEW — tiga engine yang melampaui Opus Clip:**
+- **Smart Cut Engine** (`engine/smart_cut.py`) — `remove_fillers_pauses` kini BENAR-BENAR memotong video: jump-cut silence > 0.45s + filler words (EN+ID) langsung di render via Pass 0 `trim`/`concat` FFmpeg, dengan re-timing transkrip agar karaoke subtitle tetap sinkron. Setiap potongan dilaporkan dengan alasannya (`silence`/`filler`) — bukan black box. Safety valve menolak pemotongan > 50% (deteksi transkrip misaligned).
+- **Retention Heatmap** (`engine/retention_heatmap.py` + `GET /api/clips/{job_id}/{idx}/retention`) — kurva retensi per detik dengan alasan drop-off (silence/low_density/natural_decay), strongest window, dan grade. Opus Clip hanya menampilkan satu angka; NexuX menampilkan seluruh kurva.
+- **Hook Lab** (`engine/hook_lab.py` + `GET /api/clips/{job_id}/{idx}/hook-lab`) — N varian hook ter-ranking (arketipe + skor + start-shift) dan prediktor CTR judul transparan 7 faktor (`predict_title_ctr`) dengan saran rewrite konkret.
+
+**Integrasi:**
+- `render_clip_pro` menerima `smart_cuts=` (Pass 0) — pass 1–4 berjalan transparan di timeline terkompresi.
+- `pipeline.py` menghitung smart cut per klip saat `remove_fillers_pauses=True`; statistik potongan masuk metadata klip.
+- Frontend: `nexuxApi.retentionHeatmap()` + `nexuxApi.hookLab()` typed client.
+
+**Tests:** 34 test baru di `tests/test_beyond_opus.py` (unit engine + endpoint via TestClient). Total backend: 83 passed.
 
 ### V9.5.3 (Agustus 2026) — Rombakan Total: Rancangan ↔ Realita
 

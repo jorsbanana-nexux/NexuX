@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     )
 
     PROJECT_NAME: str = "NexuX"
-    PROJECT_VERSION: str = "9.5.2"
+    PROJECT_VERSION: str = "9.6.0"
     DEBUG: bool = False
     HOST: str = "0.0.0.0"
     PORT: int = 8000
