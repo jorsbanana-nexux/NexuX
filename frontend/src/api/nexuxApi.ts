@@ -1,3 +1,17 @@
+export interface JobCompareRow {
+  job_id: string;
+  mode: 'mode2' | 'podcast';
+  keyword: string;
+  title: string;
+  total_duration: number;
+  sources_used: number;
+  clips_count: number;
+  has_storyboard: boolean;
+  processing_time: number | null;
+  avg_source_duration?: number | null;
+  avg_virality?: number | null;
+}
+
 export type NexuXStatus =
   | 'queued'
   | 'processing'
@@ -265,6 +279,10 @@ export const nexuxApi = {
     request<{ job_id: string; status: string }>(
       `/api/job/${encodeURIComponent(jobId)}`,
       { method: 'DELETE' },
+    ),
+  jobsCompare: (limit = 20) =>
+    request<{ total: number; jobs: JobCompareRow[] }>(
+      `/api/jobs/compare?limit=${limit}`,
     ),
   vision: (jobId: string) =>
     request<NexuXVision>(`/api/vision/${encodeURIComponent(jobId)}`),

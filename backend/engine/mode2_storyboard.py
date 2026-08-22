@@ -32,20 +32,34 @@ EXTRA_QUERIES = [
 ]
 
 
+# Source duration preference for Shorts compilations (seconds).
+# Clips from full movies / podcasts (hours long) make poor Shorts sources.
+MIN_SOURCE_DURATION = 30
+MAX_SOURCE_DURATION = 600
+# Overfetch so filtering still leaves enough candidates per archetype
+OVERFETCH = 3
+
+
 async def plan_storyboard(
     keyword: str,
     max_clips: int = 5,
     clips_per_archetype: int = 1,
     extra_queries: int = 3,
+    min_duration: int = MIN_SOURCE_DURATION,
+    max_duration: int = MAX_SOURCE_DURATION,
 ) -> Dict:
     """Build a storyboard from ONE keyword.
 
     Strategy:
     1. Expand keyword into archetype queries (kenapa X, fakta X, sisi gelap X…)
-    2. Search YouTube for each archetype
+    2. Search YouTube for each archetype (overfetch, then duration-filter)
     3. Deduplicate by URL
     4. Score & select the best clips across archetypes
     5. Return ordered storyboard (Hook → … → Payoff)
+
+    Source-quality filter: prefer videos between min_duration and max_duration
+    seconds — Shorts compilations from 1-hour+ sources (movies, podcasts)
+    consistently produce worse compilations than short-form sources.
 
     Returns:
         {
@@ -74,20 +88,28 @@ async def plan_storyboard(
     for tpl in EXTRA_QUERIES[:extra_queries]:
         queries.append({"label": "Extra", "query": tpl.format(kw=keyword)})
 
-    # Parallel search for all queries
+    # Parallel search for all queries (overfetch — duration filter trims after)
     search_tasks = [
-        asyncio.to_thread(search_youtube, q["query"], max_results=clips_per_archetype)
+        asyncio.to_thread(
+            search_youtube, q["query"],
+            max_results=clips_per_archetype * OVERFETCH,
+        )
         for q in queries
     ]
     search_results = await asyncio.gather(*search_tasks)
 
-    # Collect & dedupe clips
+    # Collect & dedupe clips, preferring sources in the ideal duration window
     seen_urls = set()
     storyboard = []
+    skipped_duration = 0
     for q_info, results in zip(queries, search_results):
         for r in results:
             url = r.get("url", "")
             if not url or url in seen_urls:
+                continue
+            dur = r.get("duration") or 0
+            if dur and not (min_duration <= dur <= max_duration):
+                skipped_duration += 1
                 continue
             seen_urls.add(url)
 
@@ -155,4 +177,6 @@ async def plan_storyboard(
         "storyboard": storyboard,
         "clips_per_archetype": clips_per_archetype,
         "total_clips": len(storyboard),
+        "duration_window": [min_duration, max_duration],
+        "skipped_by_duration": skipped_duration,
     }

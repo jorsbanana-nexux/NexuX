@@ -18,6 +18,7 @@ import { initLenis, destroyLenis } from './utils/lenis';
 
 // Lazy-loaded below-the-fold components (reduces initial bundle)
 const PostRenderFlow = lazy(() => import('./components/PostRenderFlow').then(m => ({ default: m.PostRenderFlow })));
+const JobCompareView = lazy(() => import('./components/JobCompareView'));
 const SubtitleEngineStudio = lazy(() => import('./components/SubtitleEngineStudio').then(m => ({ default: m.SubtitleEngineStudio })));
 const ShowcaseSection = lazy(() => import('./components/ShowcaseSection').then(m => ({ default: m.ShowcaseSection })));
 const TryModal = lazy(() => import('./components/TryModal').then(m => ({ default: m.TryModal })));
@@ -101,6 +102,11 @@ export default function App() {
       {/* 6. Dual-Mode Flow: Mode Selector → Podcast Console (Spaceship) or AI Creative Console (Mode 2) */}
       <Suspense fallback={<LazyFallback />}>
         <PostRenderFlow />
+      </Suspense>
+
+      {/* 6.5 Multi-Job Compare Dashboard — cross-job quality matrix (beyond Opus Clip) */}
+      <Suspense fallback={<LazyFallback />}>
+        <JobCompareView />
       </Suspense>
 
       {/* 7. Subtitle Engine Studio with Word-by-Word, Line-by-Line, Bounce-Zoom & Hormozi, Minimal, Gamer Presets */}
