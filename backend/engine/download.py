@@ -14,12 +14,48 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import logging
 
-from .constants import OUTPUT_DIR, UPLOAD_DIR, DOWNLOAD_TIMEOUT
+from .constants import (
+    OUTPUT_DIR, UPLOAD_DIR, DOWNLOAD_TIMEOUT,
+    COOKIES_FILE, COOKIES_BROWSER, PLAYER_CLIENTS, PROXY,
+)
 from .utils import retry
+from . import ytdlp_updater
 
 log = logging.getLogger("nexus.download")
 
 LOCAL_PREFIX = "local://"
+
+
+def _ytdlp_common_args() -> List[str]:
+    """Shared anti-block/network args applied to EVERY yt-dlp invocation.
+
+    - cookies (file or browser): authenticate as a real session → bypasses
+      most "Sign in to confirm you're not a bot" / HTTP 403 blocks.
+    - player_client: emulate alternate YouTube clients (android/ios/...)
+      when the default web client gets blocked.
+    - proxy: route all yt-dlp traffic (metadata + streams) through a proxy,
+      used when the host network cannot reach googlevideo.com at all.
+    """
+    args: List[str] = []
+    if COOKIES_FILE:
+        args += ["--cookies", COOKIES_FILE]
+    elif COOKIES_BROWSER:
+        args += ["--cookies-from-browser", COOKIES_BROWSER]
+    if PLAYER_CLIENTS:
+        args += ["--extractor-args", f"youtube:player_client={PLAYER_CLIENTS}"]
+    if PROXY:
+        args += ["--proxy", PROXY]
+    return args
+
+
+def _run_ytdlp(cmd: List[str], timeout: int) -> subprocess.CompletedProcess:
+    """Run a yt-dlp command; on an HTTP 403 signature, self-heal by upgrading
+    yt-dlp once and retrying the command a single time."""
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    if r.returncode != 0 and ytdlp_updater.maybe_update_on_403(r.stderr):
+        log.info("[Download] yt-dlp updated after 403 — retrying command once")
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    return r
 
 
 def resolve_local_source(url: str) -> Optional[Path]:
@@ -94,12 +130,13 @@ def get_video_info(url: str) -> Dict:
         return _probe_local(local)
     cmd = [
         "yt-dlp",
+        *_ytdlp_common_args(),
         "--dump-json",
         "--no-playlist",
         "--no-warnings",
         url,
     ]
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+    r = _run_ytdlp(cmd, timeout=60)
     if r.returncode != 0:
         raise RuntimeError(f"yt-dlp info failed: {r.stderr[-300:]}")
 
@@ -157,12 +194,13 @@ def fetch_auto_captions(
     # First, check what auto-captions are available
     cmd_info = [
         "yt-dlp",
+        *_ytdlp_common_args(),
         "--dump-json",
         "--no-playlist",
         "--no-warnings",
         url,
     ]
-    r = subprocess.run(cmd_info, capture_output=True, text=True, timeout=60)
+    r = _run_ytdlp(cmd_info, timeout=60)
     if r.returncode != 0:
         log.warning(f"[Download] Cannot fetch video info for captions: {r.stderr[-200:]}")
         return None
@@ -212,6 +250,7 @@ def fetch_auto_captions(
     sub_file = work_dir / f"auto_caption.{best_format.get('ext', 'vtt')}"
     cmd_sub = [
         "yt-dlp",
+        *_ytdlp_common_args(),
         "--no-playlist",
         "--no-warnings",
         "--write-auto-sub",
@@ -221,7 +260,7 @@ def fetch_auto_captions(
         "-o", str(work_dir / "auto_caption"),
         url,
     ]
-    r = subprocess.run(cmd_sub, capture_output=True, text=True, timeout=60)
+    r = _run_ytdlp(cmd_sub, timeout=60)
     if r.returncode != 0:
         log.warning(f"[Download] Auto-caption download failed: {r.stderr[-200:]}")
         return None
@@ -424,6 +463,7 @@ def download_clip_section(
 
     cmd = [
         "yt-dlp",
+        *_ytdlp_common_args(),
         "-f", fmt,
         "-o", tmpl,
         "--download-sections", section,
@@ -441,7 +481,7 @@ def download_clip_section(
     def _download():
         duration = end - start
         log.info(f"[Download] Section {clip_index}: {start:.1f}s-{end:.1f}s ({duration:.0f}s)")
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=DOWNLOAD_TIMEOUT)
+        r = _run_ytdlp(cmd, timeout=DOWNLOAD_TIMEOUT)
 
         if r.returncode != 0:
             err = r.stderr[-500:] if len(r.stderr) > 500 else r.stderr
@@ -489,6 +529,7 @@ def download_youtube(url: str, job_id: str, max_height: int = 1080) -> Path:
 
     cmd = [
         "yt-dlp",
+        *_ytdlp_common_args(),
         "-f", fmt,
         "-o", tmpl,
         "--no-playlist",
@@ -503,7 +544,7 @@ def download_youtube(url: str, job_id: str, max_height: int = 1080) -> Path:
 
     def _download():
         log.info(f"[Download] Full video: {url[:80]}...")
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=DOWNLOAD_TIMEOUT)
+        r = _run_ytdlp(cmd, timeout=DOWNLOAD_TIMEOUT)
 
         if r.returncode != 0:
             err = r.stderr[-500:] if len(r.stderr) > 500 else r.stderr
@@ -592,6 +633,7 @@ def download_audio_only(url: str, job_id: str) -> Path:
     tmpl = str(work_dir / "audio.%(ext)s")
     cmd = [
         "yt-dlp",
+        *_ytdlp_common_args(),
         "-f", "bestaudio[ext=m4a]/bestaudio",
         "-o", tmpl,
         "--no-playlist",
@@ -605,7 +647,7 @@ def download_audio_only(url: str, job_id: str) -> Path:
 
     def _download():
         log.info(f"[Download] Audio-only for transcription...")
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        r = _run_ytdlp(cmd, timeout=300)
 
         if r.returncode != 0:
             err = r.stderr[-500:] if len(r.stderr) > 500 else r.stderr
@@ -627,13 +669,14 @@ def search_youtube(query: str, max_results: int = 10) -> list:
     """Search YouTube for videos matching query."""
     cmd = [
         "yt-dlp",
+        *_ytdlp_common_args(),
         f"ytsearch{max_results}:{query}",
         "--dump-json",
         "--no-playlist",
         "--no-warnings",
     ]
 
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+    r = _run_ytdlp(cmd, timeout=60)
     if r.returncode != 0:
         raise RuntimeError(f"yt-dlp search failed: {r.stderr[-300:]}")
 

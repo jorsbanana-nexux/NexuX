@@ -25,6 +25,29 @@ RENDER_TIMEOUT = 1200
 MAX_CONCURRENT_JOBS = int(os.environ.get("MAX_CONCURRENT_JOBS", "3"))
 JOB_TIMEOUT_MINUTES = int(os.environ.get("JOB_TIMEOUT_MINUTES", "30"))
 
+# ── YouTube / yt-dlp resilience (V9.6.2) ───────────────
+# Anti-403: cookies authenticate yt-dlp as a real logged-in browser session.
+# NEXUX_COOKIES_FILE  → path to a Netscape-format cookies.txt
+# NEXUX_COOKIES_BROWSER → e.g. "chrome", "firefox", "chrome:Default" (cookies-from-browser)
+COOKIES_FILE = os.environ.get("NEXUX_COOKIES_FILE", "")
+COOKIES_BROWSER = os.environ.get("NEXUX_COOKIES_BROWSER", "")
+
+# Anti-403: YouTube player client emulation (extractor-args player_client=...).
+# Empty = use yt-dlp default client chain.
+PLAYER_CLIENTS = os.environ.get("NEXUX_PLAYER_CLIENTS", "")
+
+# Proxy for ALL yt-dlp traffic (metadata, captions, video streams).
+# e.g. http://user:pass@host:port or socks5://127.0.0.1:1080
+PROXY = os.environ.get("NEXUX_PROXY", "")
+
+# yt-dlp auto-update. On by default; set NEXUX_YTDLP_AUTO_UPDATE=0 to disable
+# (e.g. fully air-gapped or centrally managed deployments).
+YTDLP_AUTO_UPDATE = os.environ.get("NEXUX_YTDLP_AUTO_UPDATE", "1") not in ("0", "false", "no")
+# Extra args appended to the pip install command (comma-separated), e.g. a private index.
+YTDLP_PIP_EXTRA_ARGS = [a for a in os.environ.get("NEXUX_YTDLP_PIP_ARGS", "").split(",") if a]
+# Delay (seconds) before the background updater starts — keeps startup fast.
+YTDLP_UPDATE_DELAY = int(os.environ.get("NEXUX_YTDLP_UPDATE_DELAY", "120"))
+
 # ── Aspect Ratios (width, height) ─────────────────────
 ASPECT_RATIOS = {
     "9:16":  (1080, 1920),   # TikTok, Reels, Shorts

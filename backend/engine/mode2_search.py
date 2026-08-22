@@ -16,6 +16,7 @@ from logging import getLogger
 import hashlib
 
 from .constants import OUTPUT_DIR
+from .download import _ytdlp_common_args
 
 log = getLogger("nexus.mode2.search")
 
@@ -30,6 +31,7 @@ def search_youtube(keyword: str, max_results: int = 10) -> List[Dict]:
     
     cmd = [
         "yt-dlp",
+        *_ytdlp_common_args(),
         f"ytsearch{max_results}:{keyword}",
         "--dump-json",
         "--no-warnings",
@@ -44,6 +46,7 @@ def search_youtube(keyword: str, max_results: int = 10) -> List[Dict]:
         # Fallback: try without flat-playlist for more details
         cmd2 = [
             "yt-dlp",
+            *_ytdlp_common_args(),
             f"ytsearch{max_results}:{keyword}",
             "--dump-json",
             "--no-warnings",
@@ -104,6 +107,7 @@ def get_auto_captions(url: str, lang: str = "en") -> Optional[Dict]:
     with tempfile.TemporaryDirectory() as tmpdir:
         cmd = [
             "yt-dlp",
+            *_ytdlp_common_args(),
             "--write-auto-subs",
             "--sub-lang", f"{lang},id",
             "--skip-download",
@@ -180,6 +184,7 @@ def download_video_moments(
         
         cmd = [
             "yt-dlp",
+            *_ytdlp_common_args(),
             "--download-sections", sections,
             "-f", "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
             "--merge-output-format", "mp4",
@@ -196,6 +201,7 @@ def download_video_moments(
             # Fallback: simpler format
             cmd2 = [
                 "yt-dlp",
+                *_ytdlp_common_args(),
                 "--download-sections", sections,
                 "-f", "best[ext=mp4]",
                 "-o", str(out_path),

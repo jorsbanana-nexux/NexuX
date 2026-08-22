@@ -51,6 +51,7 @@ from engine import (
     OUTPUT_DIR,
 )
 from engine.constants import MAX_CONCURRENT_JOBS, UPLOAD_DIR
+from engine import ytdlp_updater
 
 # ── V9.5 Editor, Modes & Extras API Routers ──
 from api_v95_editor import router as editor_router
@@ -442,6 +443,7 @@ async def lifespan(app: FastAPI):
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     _init_db()
     _cleanup_old_jobs()
+    ytdlp_updater.start_background_updater()
     # Restore in-progress jobs from DB (mark as interrupted)
     if db:
         rows = db.execute("SELECT job_id FROM jobs WHERE status IN ('queued', 'processing')").fetchall()
