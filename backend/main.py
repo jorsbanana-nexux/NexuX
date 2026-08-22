@@ -741,6 +741,86 @@ async def list_jobs(
         "offset": offset,
     }
 
+@app.get("/api/jobs/compare")
+async def compare_jobs(
+    limit: int = Query(20, ge=1, le=100),
+    _=Depends(_require_auth),
+):
+    """Multi-job compare view — aggregate per-job metrics across completed jobs.
+
+    Returns per-job scores (virality/hook/retention/CTR-predictors) so the UI
+    can render a cross-job dashboard. Mode-2 jobs are read from their
+    persisted metadata.json (storyboard traceability); Mode-1 jobs from the
+    jobs DB hot cache / SQLite.
+    """
+    rows = []
+
+    # Mode-2 jobs from OUTPUT_DIR metadata.json (traceability data)
+    try:
+        from engine.constants import OUTPUT_DIR as M2_OUT
+        m2_dir = M2_OUT if isinstance(M2_OUT, Path) else Path(str(M2_OUT))
+        if m2_dir.exists():
+            for item in sorted(m2_dir.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
+                if not item.is_dir() or not item.name.startswith("mode2_"):
+                    continue
+                meta_path = item / "metadata.json"
+                if not meta_path.exists():
+                    continue
+                try:
+                    meta = json.loads(meta_path.read_text())
+                except Exception:
+                    continue
+                sb = meta.get("storyboard", []) or []
+                rows.append({
+                    "job_id": item.name,
+                    "mode": "mode2",
+                    "keyword": meta.get("keyword", ""),
+                    "title": meta.get("title", ""),
+                    "total_duration": meta.get("total_duration", 0),
+                    "sources_used": meta.get("sources_used", len(sb)),
+                    "clips_count": len(sb),
+                    "has_storyboard": bool(sb),
+                    "processing_time": meta.get("processing_time"),
+                    "avg_source_duration": (
+                        round(sum(c.get("duration", 0) for c in sb) / len(sb), 1) if sb else None
+                    ),
+                })
+    except Exception as e:
+        log.warning(f"[Compare] mode2 scan failed: {e}")
+
+    # Mode-1 jobs from jobs DB
+    try:
+        all_mode1 = {**jobs}
+        for j in _load_jobs(None, limit, 0):
+            all_mode1.setdefault(j["job_id"], j)
+        for jid, j in all_mode1.items():
+            if j.get("status") != "completed":
+                continue
+            clips = j.get("clips", []) or []
+            scores = []
+            for c in clips:
+                if isinstance(c, dict):
+                    s = c.get("virality_score") or c.get("score")
+                    if isinstance(s, (int, float)):
+                        scores.append(s)
+            rows.append({
+                "job_id": jid,
+                "mode": "podcast",
+                "keyword": j.get("keyword") or "",
+                "title": j.get("title", ""),
+                "total_duration": j.get("duration", 0),
+                "sources_used": 1,
+                "clips_count": len(clips),
+                "has_storyboard": False,
+                "processing_time": j.get("processing_time"),
+                "avg_virality": round(sum(scores) / len(scores), 2) if scores else None,
+            })
+    except Exception as e:
+        log.warning(f"[Compare] mode1 scan failed: {e}")
+
+    return {"total": len(rows), "jobs": rows[:limit]}
+
+
 @app.delete("/api/job/{job_id}")
 async def cancel_job(job_id: str, _=Depends(_require_auth)):
     global active_count

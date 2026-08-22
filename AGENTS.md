@@ -51,3 +51,11 @@ Log: /tmp/benchmark_e2e*.log. Output: engine/output/bench_e2e/.
 - `engine/hook_lab.py` — hook variants reuse hook_detection internals; CTR predictor is deterministic (7 factors).
 - Endpoints live in api_v95_extras: `/api/clips/{job}/{idx}/retention` + `/hook-lab`.
 - Test gotcha: extras router resolves NEXUX_DB_PATH per call, but main.py's db binds at import — seed test jobs via raw sqlite3 into env path, not main._save_job.
+
+## V9.6.1 — Quality & Traceability (2026-08-22)
+- **Duration filter** (`mode2_storyboard.py`): MIN_SOURCE_DURATION=30, MAX_SOURCE_DURATION=600. Overfetch 3x then filter. Storyboard returns `skipped_by_duration`.
+- **Traceability** (`mode2_pipeline.py`): metadata["storyboard"] persisted to `OUTPUT_DIR/{job_id}/metadata.json`. `/api/mode2/jobs` reads it. Without this, jobs endpoint always empty.
+- **Compare view**: `GET /api/jobs/compare` aggregates mode2 (metadata.json) + podcast (jobs DB). Frontend: `JobCompareView.tsx` + `nexuxApi.jobsCompare`.
+- **yt-dlp 2026**: `-y` flag removed. Never use it — check `yt-dlp --version` before adding flags.
+- **Sandbox YouTube 403**: Video download blocked; subtitle fetch works. E2E test with real keyword hits 403 — verify fix with mock, not real download.
+- `run_mode2_pipeline` signature includes `storyboard: Optional[List[Dict]]` — when set, skips YouTube search. Don't remove it or TestMode2Traceability fails.

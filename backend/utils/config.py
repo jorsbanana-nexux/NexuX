@@ -1,4 +1,4 @@
-"""NexuX V9.5 — Configuration"""
+"""NexuX V9.6 — Configuration"""
 import os, platform
 from pathlib import Path
 from typing import Optional

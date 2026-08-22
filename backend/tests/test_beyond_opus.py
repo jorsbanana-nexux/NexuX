@@ -422,8 +422,8 @@ class TestMode2Storyboard:
         from fastapi.testclient import TestClient
         import main
         client = TestClient(main.app)
-        from engine import mode2_search
-        monkeypatch.setattr(mode2_search, "search_youtube", lambda kw, max_results=1: [
+        from engine import mode2_storyboard as _sb
+        monkeypatch.setattr(_sb, "search_youtube", lambda kw, max_results=1: [
             {"url": f"https://youtu.be/{kw[:8]}", "title": f"{kw.title()} Viral!", "duration": 45, "view_count": 100000, "channel": "TestChannel"},
         ])
         r = client.post("/api/mode2/storyboard", json={"keyword": "saitama"})
@@ -443,6 +443,27 @@ class TestMode2Storyboard:
         client = TestClient(main.app)
         r = client.post("/api/mode2/storyboard", json={"keyword": ""})
         assert r.status_code == 422
+
+    def test_storyboard_filters_out_of_window_sources(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("NEXUX_DB_PATH", str(tmp_path / "test.db"))
+        monkeypatch.setenv("NEXUX_API_KEY", "")
+        from fastapi.testclient import TestClient
+        import main
+        client = TestClient(main.app)
+        from engine import mode2_storyboard as _sb
+        monkeypatch.setattr(_sb, "search_youtube", lambda kw, max_results=1: [
+            {"url": "https://youtu.be/movie", "title": "FULL MOVIE", "duration": 5054, "view_count": 999999, "channel": "X"},
+            {"url": "https://youtu.be/short1", "title": f"{kw.title()} short clip", "duration": 120, "view_count": 500, "channel": "Y"},
+            {"url": "https://youtu.be/tooshort", "title": "5s teaser", "duration": 5, "view_count": 100, "channel": "Z"},
+        ])
+        r = client.post("/api/mode2/storyboard", json={"keyword": "saitama"})
+        assert r.status_code == 200
+        data = r.json()
+        urls = [c["video_url"] for c in data["storyboard"]]
+        assert "https://youtu.be/movie" not in urls
+        assert "https://youtu.be/tooshort" not in urls
+        assert all(30 <= c["duration"] <= 600 for c in data["storyboard"])
+        assert data["skipped_by_duration"] >= 2
 
 
 class TestMode2GenerateWithStoryboard:
@@ -473,3 +494,59 @@ class TestMode2GenerateWithStoryboard:
         assert r.json()["status"] == "success"
         assert captured["storyboard"] is not None
         assert len(captured["storyboard"]) == 2
+
+
+class TestMode2Traceability:
+    def test_metadata_json_written_with_storyboard(self, tmp_path, monkeypatch):
+        import json, asyncio
+        import engine.mode2_pipeline as m2p
+
+        async def fake_run_async(func, *a, **k):
+            if func.__name__ == "search_youtube":
+                return [{"url": "https://youtu.be/x", "title": "X", "duration": 100, "channel": "C", "view_count": 1}]
+            if func.__name__ == "analyze_videos_for_keyword":
+                return [{"video_idx": 0, "video_url": "https://youtu.be/x", "start": 0, "end": 10, "text": "moment"}]
+            if func.__name__ == "generate_narrative":
+                return {"script": "...", "title": "T", "hashtags": ["#t"]}
+            if func.__name__ == "download_video_moments":
+                return ["clip.mp4"]
+            if func.__name__ == "compile_video":
+                out = tmp_path / "out.mp4"; out.write_bytes(b"fake")
+                return {"output_path": str(out), "thumbnail_path": None, "metadata": {"title": "T", "hashtags": ["#t"], "sources_used": 1, "total_duration": 10}}
+            return None
+        monkeypatch.setattr(m2p, "_run_async", fake_run_async)
+        monkeypatch.setattr(m2p, "OUTPUT_DIR", tmp_path / "jobs")
+
+        storyboard = [{"video_url": "https://youtu.be/x", "video_title": "X", "duration": 100, "channel": "C"}]
+        result = asyncio.run(m2p.run_mode2_pipeline(keyword="test", storyboard=storyboard, job_id="mode2_trace"))
+        meta_file = tmp_path / "jobs" / "mode2_trace" / "metadata.json"
+        assert meta_file.exists()
+        meta = json.loads(meta_file.read_text())
+        assert meta["storyboard"][0]["video_url"] == "https://youtu.be/x"
+        assert result["metadata"]["storyboard"] == storyboard
+
+
+class TestJobsCompare:
+    def test_compare_aggregates_mode2_jobs(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("NEXUX_DB_PATH", str(tmp_path / "test.db"))
+        monkeypatch.setenv("NEXUX_API_KEY", "")
+        from fastapi.testclient import TestClient
+        import json
+        import engine.constants as c, main
+        out = tmp_path / "out"; out.mkdir()
+        for jid, n in [("mode2_a", 3), ("mode2_b", 2)]:
+            d = out / jid; d.mkdir()
+            (d / "metadata.json").write_text(json.dumps({
+                "keyword": jid, "title": jid.upper(), "total_duration": 50,
+                "storyboard": [{"clip_idx": i+1, "role": "hook", "video_url": f"https://youtu.be/{i}", "video_title": f"c{i}", "duration": 100} for i in range(n)]
+            }))
+        monkeypatch.setattr(c, "OUTPUT_DIR", out)
+        monkeypatch.setattr(main, "OUTPUT_DIR", out)
+        client = TestClient(main.app)
+        r = client.get("/api/jobs/compare")
+        assert r.status_code == 200
+        data = r.json()
+        assert data["total"] == 2
+        modes = {j["mode"] for j in data["jobs"]}
+        assert modes == {"mode2"}
+        assert all(j["has_storyboard"] for j in data["jobs"])

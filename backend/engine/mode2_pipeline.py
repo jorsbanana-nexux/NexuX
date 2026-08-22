@@ -40,6 +40,7 @@ async def run_mode2_pipeline(
     max_moments_per_video: int = 3,
     job_id: Optional[str] = None,
     progress_callback: Optional[callable] = None,
+    storyboard: Optional[List[Dict]] = None,
 ) -> Dict:
     """Run the complete Mode 2 pipeline.
     
@@ -184,12 +185,34 @@ async def run_mode2_pipeline(
     metadata["sources_found"] = len(videos)
     metadata["moments_found"] = len(moments)
     metadata["clips_downloaded"] = total_downloaded
+    # Traceability: persist the exact storyboard that produced this compilation
+    metadata["storyboard"] = storyboard or [
+        {
+            "clip_idx": i + 1,
+            "role": "hook" if i == 0 else ("payoff" if i == len(videos) - 1 else "beat"),
+            "video_url": v.get("url", ""),
+            "video_title": v.get("title", "")[:120],
+            "duration": v.get("duration", 0),
+            "channel": v.get("channel", ""),
+        }
+        for i, v in enumerate(videos)
+    ]
     
     log.info(f"[Mode2] ✅ Complete in {elapsed:.1f}s")
-    
+
+    # Persist metadata for traceability (/api/mode2/jobs reads this)
+    try:
+        job_dir = OUTPUT_DIR / job_id
+        job_dir.mkdir(parents=True, exist_ok=True)
+        (job_dir / "metadata.json").write_text(
+            json.dumps(metadata, ensure_ascii=False, indent=2)
+        )
+    except Exception as e:
+        log.warning(f"[Mode2] Failed to persist metadata.json: {e}")
+
     if progress_callback:
         progress_callback(100, "Done!")
-    
+
     return {
         "job_id": job_id,
         "output_path": str(result["output_path"]),

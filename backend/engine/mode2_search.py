@@ -179,7 +179,7 @@ def download_video_moments(
         sections = f"*{start}-{end}"
         
         cmd = [
-            "yt-dlp", "-y",
+            "yt-dlp",
             "--download-sections", sections,
             "-f", "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
             "--merge-output-format", "mp4",
@@ -195,7 +195,7 @@ def download_video_moments(
             log.warning(f"[Mode2] Download failed for {url} [{start}-{end}]: {r.stderr[-200:]}")
             # Fallback: simpler format
             cmd2 = [
-                "yt-dlp", "-y",
+                "yt-dlp",
                 "--download-sections", sections,
                 "-f", "best[ext=mp4]",
                 "-o", str(out_path),
