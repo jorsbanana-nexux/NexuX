@@ -88,6 +88,28 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+export interface Mode2StoryboardClip {
+  clip_idx: number;
+  archetype: string;
+  role: 'hook' | 'beat' | 'payoff';
+  video_title: string;
+  video_url: string;
+  duration: number;
+  view_count: number;
+  channel: string;
+  reason: string;
+  source_query: string;
+}
+
+export interface Mode2StoryboardResult {
+  status: string;
+  keyword: string;
+  archetypes: string[];
+  storyboard: Mode2StoryboardClip[];
+  clips_per_archetype: number;
+  total_clips: number;
+}
+
 export const v2Api = {
   modes: () => request<V2ModeInfo[]>('/api/v2/modes'),
 
@@ -98,6 +120,17 @@ export const v2Api = {
     request<V2KeywordExpansion>(
       `/api/v2/keyword/expand?keyword=${encodeURIComponent(keyword)}&max_terms=${maxTerms}`,
     ),
+
+  mode2Storyboard: (payload: {
+    keyword: string;
+    max_clips?: number;
+    clips_per_archetype?: number;
+    extra_queries?: number;
+  }) =>
+    request<Mode2StoryboardResult>('/api/mode2/storyboard', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
 
   generate: (payload: V2GenerateRequest) =>
     request<V2GenerateResponse>('/api/v2/generate', {

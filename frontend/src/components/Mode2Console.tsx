@@ -22,6 +22,7 @@ import {
   SlidersHorizontal,
 } from 'lucide-react';
 import { mode2Api, buildOutputUrl, type Mode2Response, type Mode2Voice } from '../api/nexuxApi';
+import { v2Api, type Mode2StoryboardResult } from '../api/v2Api';
 import { ClipEditorStudio } from './ClipEditorStudio';
 import type { GeneratedClip } from './VideoResultCard';
 import { sound } from '../utils/soundEffects';
@@ -38,6 +39,10 @@ export const Mode2Console: React.FC<Mode2ConsoleProps> = ({ onBack }) => {
   const [result, setResult] = useState<Mode2Response | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showEditor, setShowEditor] = useState(false);
+
+  // Storyboard
+  const [storyboard, setStoryboard] = useState<Mode2StoryboardResult | null>(null);
+  const [storyboardLoading, setStoryboardLoading] = useState(false);
 
   // Settings
   const [voiceEnabled, setVoiceEnabled] = useState(true);
@@ -57,6 +62,47 @@ export const Mode2Console: React.FC<Mode2ConsoleProps> = ({ onBack }) => {
     mode2Api.voices().then(res => setVoices(res.voices || [])).catch(() => {});
     inputRef.current?.focus();
   }, []);
+
+  const handleStoryboard = async () => {
+    if (!keyword.trim()) return;
+    setStoryboardLoading(true);
+    setStoryboard(null);
+    try {
+      const res = await v2Api.mode2Storyboard({ keyword: keyword.trim(), max_clips: 5 });
+      setStoryboard(res);
+    } catch {
+      // ignore — user can still hit Generate
+    } finally {
+      setStoryboardLoading(false);
+    }
+  };
+
+  const handleGenerateFromStoryboard = async () => {
+    if (!storyboard || storyboard.total_clips === 0) return;
+    setStage('processing');
+    setProgress(0);
+    setProgressMsg('Compiling storyboard...');
+    setResult(null);
+    try {
+      const res = await mode2Api.generate({
+        keyword: keyword.trim(),
+        voice_enabled: voiceEnabled,
+        voice_name: voiceName,
+        sfx_enabled: sfxEnabled,
+        bgm_enabled: bgmEnabled,
+        target_duration: targetDuration,
+        max_sources: maxSources,
+      });
+      if (res.status === 'error') {
+        setStage('error');
+      } else {
+        setResult(res);
+        setStage('results');
+      }
+    } catch (err) {
+      setStage('error');
+    }
+  };
 
   const handleGenerate = async () => {
     if (!keyword.trim()) {
@@ -162,6 +208,50 @@ export const Mode2Console: React.FC<Mode2ConsoleProps> = ({ onBack }) => {
                     Generate
                   </button>
                 </div>
+
+                {/* Storyboard planner */}
+                <div className="mt-4 flex items-center justify-between">
+                  <button
+                    onClick={handleStoryboard}
+                    disabled={!keyword.trim() || storyboardLoading}
+                    className="text-xs text-cyan-300 hover:text-cyan-200 disabled:text-gray-600 flex items-center gap-1.5 transition-colors"
+                  >
+                    {storyboardLoading ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <FileText className="w-3.5 h-3.5" />
+                    )}
+                    Preview Storyboard (multi-archetype)
+                  </button>
+                </div>
+
+                {storyboard && storyboard.total_clips > 0 && (
+                  <div className="mt-3 space-y-2">
+                    <div className="text-[11px] text-gray-400 font-mono uppercase tracking-wider">
+                      Storyboard — {storyboard.total_clips} klip
+                    </div>
+                    {storyboard.storyboard.map((clip) => (
+                      <div key={clip.clip_idx} className="flex items-center gap-3 p-3 rounded-lg bg-white/5 border border-white/10">
+                        <span className={`w-16 shrink-0 text-[10px] font-mono uppercase ${
+                          clip.role === 'hook' ? 'text-amber-400' : clip.role === 'payoff' ? 'text-emerald-400' : 'text-cyan-300'
+                        }`}>
+                          {clip.role}
+                        </span>
+                        <span className="flex-1 text-xs text-gray-200 truncate" title={clip.video_title}>
+                          {clip.video_title}
+                        </span>
+                        <span className="text-[10px] text-gray-500 font-mono">{clip.duration}s</span>
+                      </div>
+                    ))}
+                    <button
+                      onClick={handleGenerateFromStoryboard}
+                      className="w-full mt-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 text-white text-sm font-medium flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      Buat dari Storyboard ({storyboard.total_clips} klip)
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 

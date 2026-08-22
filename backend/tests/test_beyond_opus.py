@@ -413,3 +413,33 @@ class TestTitleCtrEndpoint:
         client = TestClient(main.app)
         r = client.post("/api/title-ctr", json={"title": ""})
         assert r.status_code == 422
+
+
+class TestMode2Storyboard:
+    def test_storyboard_endpoint_returns_plan(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("NEXUX_DB_PATH", str(tmp_path / "test.db"))
+        monkeypatch.setenv("NEXUX_API_KEY", "")
+        from fastapi.testclient import TestClient
+        import main
+        client = TestClient(main.app)
+        from engine import mode2_search
+        monkeypatch.setattr(mode2_search, "search_youtube", lambda kw, max_results=1: [
+            {"url": f"https://youtu.be/{kw[:8]}", "title": f"{kw.title()} Viral!", "duration": 45, "view_count": 100000, "channel": "TestChannel"},
+        ])
+        r = client.post("/api/mode2/storyboard", json={"keyword": "saitama"})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["status"] == "ok"
+        assert data["keyword"] == "saitama"
+        assert data["total_clips"] > 0
+        roles = [c["role"] for c in data["storyboard"]]
+        assert "hook" in roles and "payoff" in roles
+
+    def test_storyboard_rejects_empty_keyword(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("NEXUX_DB_PATH", str(tmp_path / "test.db"))
+        monkeypatch.setenv("NEXUX_API_KEY", "")
+        from fastapi.testclient import TestClient
+        import main
+        client = TestClient(main.app)
+        r = client.post("/api/mode2/storyboard", json={"keyword": ""})
+        assert r.status_code == 422

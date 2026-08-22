@@ -959,6 +959,30 @@ class Mode2Request(BaseModel):
     max_sources: int = 10
 
 
+class Mode2StoryboardRequest(BaseModel):
+    keyword: str = Field(..., min_length=1, max_length=100)
+    max_clips: int = 5
+    clips_per_archetype: int = 1
+    extra_queries: int = 3
+
+
+@app.post("/api/mode2/storyboard")
+async def mode2_storyboard(req: Mode2StoryboardRequest, _=Depends(_require_auth)):
+    """Mode 2: keyword → editable storyboard (V9.6).
+
+    Returns a multi-archetype storyboard (Hook → beats → Payoff) that
+    the user can preview, reorder, and edit before compiling.
+    """
+    from engine.mode2_storyboard import plan_storyboard
+    result = await plan_storyboard(
+        keyword=req.keyword,
+        max_clips=req.max_clips,
+        clips_per_archetype=req.clips_per_archetype,
+        extra_queries=req.extra_queries,
+    )
+    return {"status": "ok", **result}
+
+
 @app.post("/api/mode2/generate")
 async def mode2_generate(req: Mode2Request, _=Depends(_require_auth)):
     """Mode 2: AI creative compilation.
