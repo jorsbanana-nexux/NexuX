@@ -59,3 +59,9 @@ Log: /tmp/benchmark_e2e*.log. Output: engine/output/bench_e2e/.
 - **yt-dlp 2026**: `-y` flag removed. Never use it — check `yt-dlp --version` before adding flags.
 - **Sandbox YouTube 403**: Video download blocked; subtitle fetch works. E2E test with real keyword hits 403 — verify fix with mock, not real download.
 - `run_mode2_pipeline` signature includes `storyboard: Optional[List[Dict]]` — when set, skips YouTube search. Don't remove it or TestMode2Traceability fails.
+
+## V9.6.2 — yt-dlp resilience (2026-08-22)
+- **`download._ytdlp_common_args()`** — single source of anti-block args, injected into EVERY yt-dlp call in download.py + mode2_search.py: `NEXUX_COOKIES_FILE` / `NEXUX_COOKIES_BROWSER` (file wins over browser), `NEXUX_PLAYER_CLIENTS` (→ `--extractor-args youtube:player_client=...`), `NEXUX_PROXY` (→ `--proxy`, covers metadata AND streams).
+- **`engine/ytdlp_updater.py`** — self-heal: background thread at startup (`main.lifespan`, delayed `NEXUX_YTDLP_UPDATE_DELAY`=120s) + reactive: `download._run_ytdlp` upgrades yt-dlp once and retries once when stderr matches 403. Process-wide lock; failures never crash the app. Opt out: `NEXUX_YTDLP_AUTO_UPDATE=0`.
+- Sandbox finding: metadata fetch works, but stream download 403s even with player_client — cookies + proxy are the durable fixes; on a hostile network only `NEXUX_PROXY` (or local upload) unblocks googlevideo.
+- Tests: `tests/test_ytdlp_resilience.py` (13 tests). Never add yt-dlp subprocess calls without `_ytdlp_common_args()`.
