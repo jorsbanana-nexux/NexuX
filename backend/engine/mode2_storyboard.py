@@ -91,11 +91,16 @@ async def plan_storyboard(
                 continue
             seen_urls.add(url)
 
+            vid = r.get("id", "")
+            thumbnail_url = f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg" if vid else ""
+
             storyboard.append({
                 "archetype": q_info["label"],
                 "source_query": q_info["query"],
                 "video_title": r.get("title", "")[:120],
                 "video_url": url,
+                "video_id": vid,
+                "thumbnail_url": thumbnail_url,
                 "duration": r.get("duration", 0),
                 "view_count": r.get("view_count", 0),
                 "channel": r.get("channel", ""),

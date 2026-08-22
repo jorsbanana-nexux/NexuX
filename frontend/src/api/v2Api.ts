@@ -94,6 +94,8 @@ export interface Mode2StoryboardClip {
   role: 'hook' | 'beat' | 'payoff';
   video_title: string;
   video_url: string;
+  video_id: string;
+  thumbnail_url: string;
   duration: number;
   view_count: number;
   channel: string;
