@@ -19,8 +19,11 @@ import {
   ChevronDown,
   ChevronUp,
   Mic,
+  SlidersHorizontal,
 } from 'lucide-react';
-import { mode2Api, type Mode2Response, type Mode2Voice } from '../api/nexuxApi';
+import { mode2Api, buildOutputUrl, type Mode2Response, type Mode2Voice } from '../api/nexuxApi';
+import { ClipEditorStudio } from './ClipEditorStudio';
+import type { GeneratedClip } from './VideoResultCard';
 import { sound } from '../utils/soundEffects';
 
 interface Mode2ConsoleProps {
@@ -34,6 +37,7 @@ export const Mode2Console: React.FC<Mode2ConsoleProps> = ({ onBack }) => {
   const [progressMsg, setProgressMsg] = useState('');
   const [result, setResult] = useState<Mode2Response | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showEditor, setShowEditor] = useState(false);
 
   // Settings
   const [voiceEnabled, setVoiceEnabled] = useState(true);
@@ -363,7 +367,7 @@ export const Mode2Console: React.FC<Mode2ConsoleProps> = ({ onBack }) => {
               </div>
             )}
 
-            {/* Download Button */}
+            {/* Download + Edit Buttons */}
             <div className="flex justify-center gap-3">
               <a
                 href={`/api/download/${result.job_id}`}
@@ -371,6 +375,14 @@ export const Mode2Console: React.FC<Mode2ConsoleProps> = ({ onBack }) => {
               >
                 <Download className="w-5 h-5" /> Download Video
               </a>
+              {result.output_path && (
+                <button
+                  onClick={() => { sound.playClick(); setShowEditor(true); }}
+                  className="px-6 py-3 rounded-xl bg-cyan-500/15 border border-cyan-500/40 text-cyan-200 hover:bg-cyan-500/25 transition-colors flex items-center gap-2"
+                >
+                  <SlidersHorizontal className="w-5 h-5" /> Edit Video
+                </button>
+              )}
               <button
                 onClick={handleReset}
                 className="px-6 py-3 rounded-xl bg-white/5 border border-white/10 text-white hover:bg-white/10 transition-colors"
@@ -400,6 +412,36 @@ export const Mode2Console: React.FC<Mode2ConsoleProps> = ({ onBack }) => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* V9.6: Post-render editor handoff (Creative Mode) */}
+      <AnimatePresence>
+        {showEditor && result?.output_path && (
+          <ClipEditorStudio
+            clips={buildEditorClip(result)}
+            jobId={result.job_id}
+            onClose={() => setShowEditor(false)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 };
+
+/** Build a single GeneratedClip from a Mode 2 result for the editor. */
+function buildEditorClip(result: Mode2Response): GeneratedClip[] {
+  const dur = result.metadata?.total_duration || 0;
+  const mm = Math.floor(dur / 60);
+  const ss = Math.round(dur % 60).toString().padStart(2, '0');
+  return [{
+    id: `${result.job_id}-clip-1`,
+    title: result.metadata?.title || result.metadata?.keyword || 'Creative Video',
+    hookCategory: 'Creative Compilation',
+    duration: dur > 0 ? `${mm}:${ss}` : '—',
+    viralScore: 75,
+    timestampRange: '—',
+    subtitleSnippet: result.metadata?.description?.slice(0, 120) || 'Video ready for preview',
+    aspectRatio: '9:16',
+    videoUrl: buildOutputUrl(result.output_path || null) || '',
+    tags: result.metadata?.hashtags?.slice(0, 4) || [],
+  }];
+}

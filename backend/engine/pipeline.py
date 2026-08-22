@@ -489,6 +489,7 @@ async def run_pipeline(
                 "end": r.get("end", 60),
                 "score": r.get("score", 0),
                 "reason": r.get("reason", ""),
+                "smart_cut": r.get("smart_cut"),
             }
             for r in successful_clips if r.get("path")
         ]
